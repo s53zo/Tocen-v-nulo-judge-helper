@@ -5,6 +5,7 @@ import copy
 import csv
 import hashlib
 import math
+import re
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -13,7 +14,11 @@ from io import BytesIO
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
-from PIL import Image
+try:
+    from PIL import Image  # optional compression for handout photos
+except ImportError:  # pragma: no cover - Pillow is optional
+    Image = None  # type: ignore[assignment]
+
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import RectangleObject
 from reportlab.lib import colors
@@ -24,31 +29,46 @@ from reportlab.pdfgen import canvas
 
 # ---------------------------------------------------------------------------
 # Configuration
-#   Adjust input paths, drawing toggles, and handout behaviour here.
-#   Cropped-map settings preserve true scale while fitting within A4 pages.
 # ---------------------------------------------------------------------------
-PDF_PATH = Path("1 200k original karta.pdf")
-GPX_PATH = Path("activity_20435991472.gpx")
-PHOTO_PATTERN = "IMG_*.jpg"
+
+# --- Input & output --------------------------------------------------------
+PDF_PATH = Path("1 200k original karta.pdf")  # base map (page 1)
+GPX_PATH = Path("activity_20435991472.gpx")  # GPX flight track
+PHOTO_PATTERN = "IMG_*.jpg"  # onboard photos sourced from camera
+
 PHOTO_ANALYSIS_CSV = Path("photo_analysis.csv")
 OUTPUT_OVERLAY = Path("route_overlay.pdf")
 OUTPUT_MERGED = Path("route_marked.pdf")
 OUTPUT_KEY = Path("photo_overlay_key.csv")
 HANDOUT_PDF = Path("photo_handout.pdf")
-MAP_IMAGE = Path("map_page.png")
+MAP_IMAGE = Path("map_page.png")  # cached raster of base map
 CROPPED_MAP_PDF = Path("route_cropped.pdf")
 
-BASE_WIDTH = 1191.0
-BASE_HEIGHT = 842.0
+# --- Map geometry ----------------------------------------------------------
+BASE_WIDTH = 1191.0  # px width of preview coordinate system
+BASE_HEIGHT = 842.0  # px height of preview coordinate system
+METERS_PER_MM = 200.0  # paper scale (1 mm = 200 m)
 
-# Visual style toggles
-DRAW_ROUTE = True
-DRAW_TURNPOINTS = True
-DRAW_PHOTO_MARKERS = True
-DRAW_HEADINGS = True
+# --- Feature visibility ----------------------------------------------------
+#DRAW_ROUTE = True  # draw main route polyline
+DRAW_ROUTE = False  # draw main route polyline
+#DRAW_TURNPOINTS = True  # draw turnpoint circles and labels
+DRAW_TURNPOINTS = False  # draw turnpoint circles and labels
+#DRAW_PHOTO_MARKERS = True  # mark photo positions on the map
+DRAW_PHOTO_MARKERS = False  # mark photo positions on the map
+#DRAW_CONTROL_PHOTO_MARKERS = True  # include SP/TP/FP photo markers on the map
+DRAW_CONTROL_PHOTO_MARKERS = False  # include SP/TP/FP photo markers on the map
+#DRAW_PHOTO_DOTS = True  # show exact GPS location of each photo and check for lateral distance
+DRAW_PHOTO_DOTS = False  # show exact GPS location of each photo and check for lateral distance
+#DRAW_HEADINGS = True  # annotate leg headings
+DRAW_HEADINGS = False  # annotate leg headings
+#DRAW_MINUTE_MARKERS = True  # place minute ticks along the route
+DRAW_MINUTE_MARKERS = False  # place minute ticks along the route
 
-# Colours (normalized RGB). Available keys: red, dark_red, orange, yellow,
-# lime, green, teal, cyan, blue, navy, violet, magenta, brown, grey, black, white.
+#HANDOUT_INCLUDE_SUMMARY = True  # append executive summary page to handout
+HANDOUT_INCLUDE_SUMMARY = False  # append executive summary page to handout
+
+# --- Colour palette --------------------------------------------------------
 COLOURS = {
     "red": (1.0, 0.0, 0.0),
     "dark_red": (0.82, 0.0, 0.0),
@@ -68,73 +88,79 @@ COLOURS = {
     "white": (1.0, 1.0, 1.0),
 }
 
-ROUTE_COLOR = COLOURS["dark_red"]
-TP_COLOR = COLOURS["dark_red"]
-PHOTO_COLOR = COLOURS["violet"]
-HEADING_COLOR = COLOURS["red"]
-TP_LABEL_COLOR = COLOURS["black"]
-PHOTO_LABEL_COLOR = COLOURS["violet"]
-PHOTO_LABEL_HALO = COLOURS["white"]
+ROUTE_COLOR = COLOURS["dark_red"]  # stroke color for route polyline
+TP_COLOR = COLOURS["dark_red"]  # color of turnpoint circles
+PHOTO_COLOR = COLOURS["violet"]  # marker color for photos
+HEADING_COLOR = COLOURS["red"]  # color for leg heading text
+TP_LABEL_COLOR = COLOURS["black"]  # TP label text color
+PHOTO_LABEL_COLOR = COLOURS["violet"]  # photo label text color
+PHOTO_LABEL_HALO = COLOURS["white"]  # halo behind photo labels
 
-# Width / size parameters (multipliers applied to auto scale)
-ROUTE_WIDTH_SCALE = 2.5
-TP_RADIUS_SCALE = 20.0
-PHOTO_TICK_HALF_SCALE = 7.0
-PHOTO_LINE_WIDTH_SCALE = 4.2
-TP_FONT_SCALE = 12.0
-PHOTO_FONT_SCALE = 14.0
-HEADING_FONT_SCALE = 18.0
-HEADING_OFFSET_SCALE = 60.0
-PHOTO_LABEL_OFFSET_MULTIPLIER = 4.0
-LABEL_MIN_DISTANCE = 10.0
-LABEL_DISTANCE_STEP = 5.0
-MAX_LABEL_ADJUST_STEPS = 12
-LABEL_COLLISION_MARGIN = 3.0
+# --- Vector styling --------------------------------------------------------
+ROUTE_WIDTH_SCALE = 2.5  # route line thickness multiplier
+TP_RADIUS_SCALE = 20.0  # turnpoint circle radius multiplier
+PHOTO_TICK_HALF_SCALE = 7.0  # half-length of photo marker cross
+PHOTO_LINE_WIDTH_SCALE = 4.2  # thickness of photo marker lines
+PHOTO_DOT_RADIUS_SCALE = 5.0  # radius multiplier for exact-location dots
+TP_FONT_SCALE = 12.0  # base font size for turnpoint labels
+PHOTO_FONT_SCALE = 14.0  # font size for photo labels on overlay
+HEADING_FONT_SCALE = 18.0  # font size for leg heading text
+HEADING_OFFSET_SCALE = 60.0  # distance headings sit from leg
+PHOTO_LABEL_OFFSET_MULTIPLIER = 4.0  # label distance from photo marker
+LABEL_MIN_DISTANCE = 10.0  # minimum spacing between labels (pt)
+LABEL_DISTANCE_STEP = 5.0  # step per adjustment iteration (pt)
+MAX_LABEL_ADJUST_STEPS = 12  # max retries when nudging labels
+LABEL_COLLISION_MARGIN = 3.0  # padding around label bounding boxes
 
-PHOTO_MIN_DISTANCE_AFTER_TP_NM = 1.0
+# --- Route timing & spacing ------------------------------------------------
+PHOTO_MIN_DISTANCE_AFTER_TP_NM = 1.0  # minimum photo spacing after TP (NM)
+PHOTO_MAX_LATERAL_DISTANCE_M = 1000.0  # maximum lateral offset allowed for photos
+TP_TIME_FONT_SCALE = 12.0  # base font size for TP timing annotation
+TP_LABEL_OFFSET_FACTOR = 0.35  # TP font multiplier controlling label offset
+TP_TIME_SWEEP_FACTOR = 0.85  # multiplier determining time label distance
+TAKEOFF_TO_SP_MIN = 4.0  # minutes from takeoff to start point (SP)
+DEFAULT_SPEED_VALUE = 75.0  # default groundspeed magnitude
+DEFAULT_SPEED_UNIT = "kt"  # accepted: kt or mph
 
-TP_TIME_FONT_SCALE = 12.0
+# --- Minute markers --------------------------------------------------------
+MINUTE_TICK_HALF_SCALE = 7.0  # half-length of minute marker cross
+MINUTE_LINE_WIDTH_SCALE = 1.2  # thickness of minute markers
+MINUTE_LABEL_FONT_SCALE = 10.0  # font size for minute labels
+MINUTE_LABEL_OFFSET_MULTIPLIER = 4.0  # distance minute labels sit from marker
+MINUTE_LABEL_PREFIX = ""  # optional prefix before minute numbers
+MINUTE_MARKER_COLOR = COLOURS["navy"]  # color for minute tick marks
+MINUTE_LABEL_COLOR = COLOURS["navy"]  # color for minute label text
+MINUTE_LABEL_HALO = COLOURS["white"]  # halo color around minute labels
 
-DRAW_MINUTE_MARKERS = True
-TAKEOFF_TO_SP_MIN = 4.0
-DEFAULT_SPEED_VALUE = 75.0
-DEFAULT_SPEED_UNIT = "kt"  # kt or mph
+# --- Unit conversions ------------------------------------------------------
+KNOT_TO_MPS = 0.514444  # converts knots to metres per second
+MPH_TO_MPS = 0.44704  # converts miles per hour to metres per second
+NM_TO_METERS = 1852.0  # length of one nautical mile in metres
 
-MINUTE_TICK_HALF_SCALE = 7.0
-MINUTE_LINE_WIDTH_SCALE = 1.2
-MINUTE_LABEL_FONT_SCALE = 10.0
-MINUTE_LABEL_OFFSET_MULTIPLIER = 4.0
-MINUTE_LABEL_PREFIX = ""
-MINUTE_MARKER_COLOR = COLOURS["navy"]
-MINUTE_LABEL_COLOR = COLOURS["navy"]
-MINUTE_LABEL_HALO = COLOURS["white"]
-
-KNOT_TO_MPS = 0.514444
-MPH_TO_MPS = 0.44704
-NM_TO_METERS = 1852.0
-
+# --- Style variants --------------------------------------------------------
 STYLE_VARIANTS = [
     {
         "id": "",
-        "label": "Default tp26",
+        "label": "Route overlay",
         "tp_radius_scale": TP_RADIUS_SCALE,
     }
 ]
 
-HANDOUT_LETTER_SALT = "TVN2025"
-HANDOUT_SPLIT_TP = "TP5"
-HANDOUT_LETTER_SCALE = 0.15  # fraction of the shorter photo side
-HANDOUT_PHOTO_DPI = 220  # target effective resolution for embedded handout photos
-CROPPED_MAP_MARGIN_MM = 15.0
+# --- Handout behaviour -----------------------------------------------------
+HANDOUT_LETTER_SALT = "TVN2025"  # salt used for deterministic photo lettering
+HANDOUT_SPLIT_TP = "TP5"  # turnpoint splitting alphabet halves
+HANDOUT_LETTER_SCALE = 0.15  # handout letter size vs photo slot
+HANDOUT_PHOTO_DPI = 220  # target DPI when compressing handout photos
+CROPPED_MAP_MARGIN_MM = 10.0  # desired margin (mm) around route crop
 A4_WIDTH, A4_HEIGHT = A4
-PORTRAIT_PAGE = (A4_WIDTH, A4_HEIGHT)
-LANDSCAPE_PAGE = (A4_HEIGHT, A4_WIDTH)
+PORTRAIT_PAGE = (A4_WIDTH, A4_HEIGHT)  # portrait A4 dimensions
+LANDSCAPE_PAGE = (A4_HEIGHT, A4_WIDTH)  # landscape A4 dimensions
 
 ROUTE_POINTS = [
     ("SP", 46.60085033500145, 16.18002295367121),
     ("TP1", 46.500800369520974, 16.155215089283285),
     ("TP2", 46.51512847255438, 16.00836867366053),
-    ("TP3", 46.61698167472042, 16.069057084510902),
+    ("TP3", 46.616968940165265, 16.069071738369164),
     ("TP4", 46.800823749993334, 16.036800946819525),
     ("TP5", 46.83695523, 16.30844783),
     ("TP6", 46.77518719523106, 16.202892517628687),
@@ -148,11 +174,12 @@ CONTROL_POINTS = [
     ("TP1", 46.500800369520974, 16.155215089283285, 609.0, 653.0),
     ("TP4", 46.80079362139448, 16.036790112456796, 476.0, 183.0),
     ("TP5", 46.83695523, 16.30844783, 768.0, 118.0),
+    ("TP3", 46.616968940165265, 16.069071738369164,  513, 471),
 ]
-
 LOCAL_TZ = timezone(timedelta(hours=2))
 EARTH_RADIUS_M = 6_371_000.0
-METERS_PER_MM = 200.0  # map scale 1:200 000
+
+# DO NOT EDIT AFTER THIS
 
 lat0 = sum(pt[1] for pt in ROUTE_POINTS) / len(ROUTE_POINTS)
 lon0 = sum(pt[2] for pt in ROUTE_POINTS) / len(ROUTE_POINTS)
@@ -330,6 +357,17 @@ def interpolate_track_time(track: List[Tuple[datetime, float, float]], target: d
     return lat_interp, lon_interp
 
 
+def extract_control_hint(photo_name: str) -> str | None:
+    """Return claimed control token (SP, FP, TPn) from filename if present."""
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", photo_name).upper()
+    for token in cleaned.split():
+        if token in {"SP", "FP"}:
+            return token
+        if token.startswith("TP") and token[2:].isdigit():
+            return token
+    return None
+
+
 def project_to_leg(lat: float, lon: float) -> dict:
     px, py = latlon_to_xy(lat, lon)
     best = None
@@ -394,6 +432,7 @@ def analyse_photos() -> List[dict]:
         utc_dt = local_dt.astimezone(timezone.utc)
         lat_interp, lon_interp = interpolate_track_time(track, utc_dt)
         leg_info = project_to_leg(lat_interp, lon_interp)
+        control_hint = extract_control_hint(photo.name)
         analysis_rows.append(
             {
                 "photo": photo.name,
@@ -401,6 +440,7 @@ def analyse_photos() -> List[dict]:
                 "utc_time": utc_dt.isoformat(),
                 "lat": lat_interp,
                 "lon": lon_interp,
+                "control_hint": control_hint,
                 **leg_info,
             }
         )
@@ -413,6 +453,7 @@ def analyse_photos() -> List[dict]:
         "lat",
         "lon",
         "leg",
+        "control_hint",
         "from_point",
         "fraction_on_leg",
         "leg_distance_m",
@@ -823,6 +864,10 @@ def control_point_handout_label(photo: dict) -> str | None:
     if not photo.get("is_control"):
         return None
 
+    hint = photo.get("control_hint")
+    if isinstance(hint, str) and hint:
+        return hint
+
     leg = photo.get("leg")
     if not leg or "-" not in leg:
         return None
@@ -858,6 +903,7 @@ def generate_summary_page(output_path: Path, info: dict) -> None:
     enroute_count = max(0, len(photo_data) - control_count)
     minute_markers = info.get("minute_markers", [])
     excluded_photos = info.get("excluded_photos", [])
+    offroute_warnings = info.get("offroute_warnings", [])
     control_close = info.get("control_close", [])
 
     def draw_metric(x: float, y: float, label: str, value: str) -> float:
@@ -918,7 +964,7 @@ def generate_summary_page(output_path: Path, info: dict) -> None:
         metric_x_right,
         metric_y_right,
         "Warnings",
-        f"{len(excluded_photos)} excluded, {len(control_close)} control close",
+        f"{len(excluded_photos)} removed, {len(offroute_warnings)} flagged, {len(control_close)} control close",
     )
 
     y = min(metric_y_left, metric_y_right) - 6 * mm
@@ -962,6 +1008,10 @@ def generate_summary_page(output_path: Path, info: dict) -> None:
     notes: List[str] = []
     if excluded_photos:
         notes.append(f"{len(excluded_photos)} photos removed for TP spacing")
+    if offroute_warnings:
+        notes.append(
+            f"{len(offroute_warnings)} photos flagged for >{PHOTO_MAX_LATERAL_DISTANCE_M:.0f} m offset"
+        )
     if control_close:
         notes.append(
             f"{len(control_close)} control photos within {PHOTO_MIN_DISTANCE_AFTER_TP_NM:.1f} NM"
@@ -1166,6 +1216,7 @@ def generate_overlay(
 
     photo_data: List[dict] = []
     excluded_photos: List[Tuple[str, str, str, float]] = []
+    offroute_warnings: List[Tuple[str, str, str, float]] = []
     control_close: List[Tuple[str, str, str, float]] = []
     min_distance_m = (PHOTO_MIN_DISTANCE_AFTER_TP_NM * NM_TO_METERS
                       if PHOTO_MIN_DISTANCE_AFTER_TP_NM else 0.0)
@@ -1178,11 +1229,17 @@ def generate_overlay(
         leg_distance_m = float(row["leg_distance_m"])
         label = f"P{idx:02d}"
         photo_file = row["photo"]
-        fname_lower = photo_file.lower()
-        is_control = any(keyword in fname_lower for keyword in ("sp", "tp", "fp"))
+        control_hint = row.get("control_hint")
+        is_control = control_hint is not None
+        lateral_m = float(row.get("lateral_m", 0.0))
         too_close = (
             PHOTO_MIN_DISTANCE_AFTER_TP_NM > 0
             and leg_distance_m < min_distance_m
+        )
+        too_far = (
+            DRAW_PHOTO_DOTS
+            and PHOTO_MAX_LATERAL_DISTANCE_M > 0
+            and lateral_m > PHOTO_MAX_LATERAL_DISTANCE_M
         )
 
         if too_close and not is_control:
@@ -1190,6 +1247,8 @@ def generate_overlay(
             continue
         if too_close and is_control:
             control_close.append((label, photo_file, row["leg"], leg_distance_m))
+        if too_far:
+            offroute_warnings.append((label, photo_file, row["leg"], lateral_m))
 
         photo_data.append(
             {
@@ -1206,7 +1265,9 @@ def generate_overlay(
                 "base_y": yb,
                 "pdf_x": xp,
                 "pdf_y": yp,
+                "lateral_m": lateral_m,
                 "is_control": is_control,
+                "control_hint": control_hint,
             }
         )
 
@@ -1366,29 +1427,79 @@ def generate_overlay(
             if math.hypot(*exterior) < 1e-6:
                 exterior = normalize(vout_u[1], -vout_u[0])
 
-            base_offset = tp_radius + max(tp_font, route_line_width * 2) + tp_font * 0.6
+            label_margin = max(
+                tp_font * TP_LABEL_OFFSET_FACTOR,
+                route_line_width * 2.5,
+                photo_cross_half * 2.5,
+                minute_cross_half * 2.2,
+            )
+            base_radius = tp_radius + label_margin
             heading_angle = math.degrees(math.atan2(vin_u[1], vin_u[0])) - 90.0
-            fallback_dir_angle = math.degrees(math.atan2(vin_u[1], vin_u[0]))
             if idx == 0 and len(route_xy) > 1:
                 first_vec = (route_xy[1][3] - x, route_xy[1][4] - y)
                 heading_angle = math.degrees(math.atan2(first_vec[1], first_vec[0])) - 90.0
-                fallback_dir_angle = math.degrees(math.atan2(first_vec[1], first_vec[0]))
 
-            name_anchor_x = x + exterior[0] * base_offset
-            name_anchor_y = y + exterior[1] * base_offset
+            radial_dir = exterior
+            if math.hypot(*radial_dir) < 1e-6:
+                radial_dir = (1.0, 0.0)
+            radial_dir = normalize(*radial_dir)
+            tangential_dir = normalize(-radial_dir[1], radial_dir[0])
+
             name_width = c.stringWidth(label_text, "Helvetica-Bold", tp_font)
             name_height = tp_font
-            name_x, name_y, name_box = adjust_label_position(
-                name_anchor_x,
-                name_anchor_y,
-                exterior[0],
-                exterior[1],
-                name_width,
-                name_height,
-                heading_angle,
-                placed_label_boxes,
-                fallback_angle=fallback_dir_angle,
-            )
+
+            candidate_dirs: List[tuple[tuple[float, float], float]] = []
+            for radial_weight, tangential_weight in (
+                (1.0, 0.0),
+                (0.95, 0.25),
+                (0.95, -0.25),
+                (0.85, 0.45),
+                (0.85, -0.45),
+            ):
+                vec = (
+                    radial_dir[0] * radial_weight + tangential_dir[0] * tangential_weight,
+                    radial_dir[1] * radial_weight + tangential_dir[1] * tangential_weight,
+                )
+                if math.hypot(*vec) < 1e-6:
+                    continue
+                vec = normalize(*vec)
+                if vec[0] * radial_dir[0] + vec[1] * radial_dir[1] <= 0.25:
+                    continue
+                candidate_dirs.append((vec, math.degrees(math.atan2(vec[1], vec[0]))))
+
+            best_label = None
+            for direction_vec, direction_angle in candidate_dirs:
+                anchor_x = x + direction_vec[0] * base_radius
+                anchor_y = y + direction_vec[1] * base_radius
+                cand_x, cand_y, cand_box = adjust_label_position(
+                    anchor_x,
+                    anchor_y,
+                    direction_vec[0],
+                    direction_vec[1],
+                    name_width,
+                    name_height,
+                    heading_angle,
+                    placed_label_boxes,
+                    fallback_angle=direction_angle,
+                )
+                distance = math.hypot(cand_x - x, cand_y - y)
+                if best_label is None or distance < best_label[0]:
+                    best_label = (distance, cand_x, cand_y, cand_box, direction_vec)
+
+            if best_label is None:
+                name_x, name_y, name_box = adjust_label_position(
+                    x + radial_dir[0] * base_radius,
+                    y + radial_dir[1] * base_radius,
+                    radial_dir[0],
+                    radial_dir[1],
+                    name_width,
+                    name_height,
+                    heading_angle,
+                    placed_label_boxes,
+                )
+                chosen_dir = radial_dir
+            else:
+                _, name_x, name_y, name_box, chosen_dir = best_label
             register_label_box(name_box)
 
             time_x = time_y = None
@@ -1396,20 +1507,71 @@ def generate_overlay(
             if time_text:
                 time_width = c.stringWidth(time_text, "Helvetica-Bold", tp_time_font)
                 time_height = tp_time_font
-                time_anchor_x = name_x + exterior[1] * (tp_time_font * 1.3)
-                time_anchor_y = name_y - exterior[0] * (tp_time_font * 1.3)
-                time_x, time_y, time_box = adjust_label_position(
-                    time_anchor_x,
-                    time_anchor_y,
-                    exterior[1],
-                    -exterior[0],
-                    time_width,
-                    time_height,
-                    heading_angle,
-                    placed_label_boxes,
-                    fallback_angle=fallback_dir_angle + 90.0,
+                time_margin = max(
+                    tp_time_font * 0.6,
+                    route_line_width * 1.2,
+                    photo_cross_half,
+                    minute_cross_half,
                 )
-                register_label_box(time_box)
+                time_radius = tp_radius + label_margin + time_margin
+                base_tangent = normalize(-chosen_dir[1], chosen_dir[0])
+
+                time_candidates: List[tuple[float, float, tuple[float, float, float, float]]] = []
+                for radial_w, tangential_w in (
+                    (0.35, 0.95),
+                    (0.35, -0.95),
+                    (0.55, 0.75),
+                    (0.55, -0.75),
+                    (0.2, 1.0),
+                    (0.2, -1.0),
+                ):
+                    vec = (
+                        chosen_dir[0] * radial_w + tangential_dir[0] * tangential_w,
+                        chosen_dir[1] * radial_w + tangential_dir[1] * tangential_w,
+                    )
+                    if math.hypot(*vec) < 1e-6:
+                        continue
+                    vec = normalize(*vec)
+                    if vec[0] * chosen_dir[0] + vec[1] * chosen_dir[1] <= 0.2:
+                        continue
+                    anchor_x = x + vec[0] * time_radius
+                    anchor_y = y + vec[1] * time_radius
+                    cand_x, cand_y, cand_box = adjust_label_position(
+                        anchor_x,
+                        anchor_y,
+                        vec[0],
+                        vec[1],
+                        time_width,
+                        time_height,
+                        heading_angle,
+                        placed_label_boxes,
+                        fallback_angle=math.degrees(math.atan2(vec[1], vec[0])),
+                    )
+                    dist = math.hypot(cand_x - x, cand_y - y)
+                    if dist < tp_radius + route_line_width * 0.6:
+                        continue
+                    separation = math.hypot(cand_x - name_x, cand_y - name_y)
+                    time_candidates.append((dist, separation, (cand_x, cand_y, cand_box)))
+
+                if time_candidates:
+                    time_candidates.sort()
+                    _, _, best_box = time_candidates[0]
+                    time_x, time_y, time_box = best_box
+                    register_label_box(time_box)
+                else:
+                    time_anchor_x = name_x + base_tangent[0] * (tp_time_font * TP_TIME_SWEEP_FACTOR)
+                    time_anchor_y = name_y + base_tangent[1] * (tp_time_font * TP_TIME_SWEEP_FACTOR)
+                    time_x, time_y, time_box = adjust_label_position(
+                        time_anchor_x,
+                        time_anchor_y,
+                        base_tangent[0],
+                        base_tangent[1],
+                        time_width,
+                        time_height,
+                        heading_angle,
+                        placed_label_boxes,
+                    )
+                    register_label_box(time_box)
 
             c.saveState()
             c.translate(name_x, name_y)
@@ -1419,7 +1581,7 @@ def generate_overlay(
             c.drawString(0, 0, label_text)
             c.restoreState()
 
-            if time_text and time_x is not None and time_y is not None:
+            if DRAW_MINUTE_MARKERS and time_text and time_x is not None and time_y is not None:
                 c.saveState()
                 c.translate(time_x, time_y)
                 c.rotate(heading_angle)
@@ -1428,8 +1590,21 @@ def generate_overlay(
                 c.drawString(0, 0, time_text)
                 c.restoreState()
 
+    if DRAW_PHOTO_DOTS:
+        dot_radius = max(1.2, PHOTO_DOT_RADIUS_SCALE * style_scale)
+        for photo in photo_data:
+            if photo.get("is_control") and not DRAW_CONTROL_PHOTO_MARKERS:
+                continue
+            c.saveState()
+            c.setFillColorRGB(*PHOTO_COLOR)
+            c.circle(photo["pdf_x"], photo["pdf_y"], dot_radius, stroke=0, fill=1)
+            c.restoreState()
+            add_point_to_bounds(content_bounds, photo["pdf_x"], photo["pdf_y"])
+
     if DRAW_PHOTO_MARKERS:
         for photo in photo_data:
+            if photo.get("is_control") and not DRAW_CONTROL_PHOTO_MARKERS:
+                continue
             leg = photo["leg"]
             start_name, end_name = leg.split("-")
             start_coord = coord_lookup.get(start_name)
@@ -1670,11 +1845,14 @@ def generate_overlay(
     for leg in LEGS:
         bearing = bearing_degrees(leg["from_lat"], leg["from_lon"], leg["to_lat"], leg["to_lon"])
         bearing_deg = int(float(f"{bearing:.0f}"))
+        leg_km = leg["length"] / 1000.0
+        leg_mm = leg["length"] / METERS_PER_MM
         print(
             f"  {leg['from_name']} -> {leg['to_name']}: "
-            f"{leg['length']/1000:.2f} km, bearing {bearing_deg:03d}°"
+            f"{leg_km:.2f} km ({leg_mm:.1f} mm), bearing {bearing_deg:03d}°"
         )
-    print(f"  Total course distance: {total_distance_km:.2f} km")
+    total_mm = total_distance_km * 1000.0 / METERS_PER_MM
+    print(f"  Total course distance: {total_distance_km:.2f} km ({total_mm:.1f} mm)")
 
     if DRAW_MINUTE_MARKERS and minute_markers:
         first_minute = min(m["minute"] for m in minute_markers)
@@ -1724,6 +1902,13 @@ def generate_overlay(
             f"\nAll photos satisfy the {PHOTO_MIN_DISTANCE_AFTER_TP_NM:.1f} NM minimum after TP."
         )
 
+    if offroute_warnings:
+        print(
+            f"[{variant_label}] WARNING: Photos farther than {PHOTO_MAX_LATERAL_DISTANCE_M:.0f} m from route:"
+        )
+        for label, fname, leg_name, lateral_m in offroute_warnings:
+            print(f"  {label} ({fname}) on {leg_name} at {lateral_m:.0f} m lateral offset")
+
     if control_close:
         print(
             f"[{variant_label}] Note: control photos within {PHOTO_MIN_DISTANCE_AFTER_TP_NM:.1f} NM retained:"
@@ -1745,6 +1930,7 @@ def generate_overlay(
         "total_distance_km": total_distance_km,
         "minute_markers": minute_markers,
         "excluded_photos": excluded_photos,
+        "offroute_warnings": offroute_warnings,
         "control_close": control_close,
         "legs": [
             {
@@ -1778,13 +1964,32 @@ def generate_handout_pdf(
     enroute_photos = [p for p in photo_data if not p.get("is_control")]
     ordered_enroute = ordered_enroute_photos(enroute_photos)
 
+    def split_by_handout_tp(items: List[dict]) -> tuple[List[dict], List[dict]]:
+        before: List[dict] = []
+        after: List[dict] = []
+        split_idx = ROUTE_POINT_INDEX.get(HANDOUT_SPLIT_TP)
+        for photo in items:
+            leg = photo.get("leg", "")
+            if "-" in leg:
+                _, leg_to = leg.split("-", 1)
+            else:
+                leg_to = leg
+            dest_idx = ROUTE_POINT_INDEX.get(leg_to)
+            if split_idx is None or dest_idx is None or dest_idx <= split_idx:
+                before.append(photo)
+            else:
+                after.append(photo)
+        return before, after
+
+    enroute_before, enroute_after = split_by_handout_tp(ordered_enroute)
+
     page_width, page_height = A4
     c = canvas.Canvas(str(HANDOUT_PDF), pagesize=A4)
-    margin_x = 12 * mm
-    margin_y = 12 * mm
+    margin_x = 6 * mm
+    margin_y = 6 * mm
     columns = 2
     rows = 2
-    inner_margin = 4 * mm
+    inner_margin = 1 * mm
     slot_width = (page_width - margin_x * 2) / columns
     slot_height = (page_height - margin_y * 2) / rows
     per_page = columns * rows
@@ -1792,13 +1997,26 @@ def generate_handout_pdf(
     def draw_section(title: str, photos: List[dict], first_page: bool) -> bool:
         if not photos:
             return first_page
+        title_y = page_height - margin_y - 2 * mm
         if not first_page:
             c.showPage()
+        def draw_heading() -> None:
+            c.saveState()
+            c.setFont("Helvetica-Bold", 16)
+            heading_x = page_width - margin_x
+            heading_y = margin_y + 4 * mm
+            c.translate(heading_x, heading_y)
+            c.rotate(90)
+            c.drawString(0, 0, title)
+            c.restoreState()
+
+        draw_heading()
         for idx, photo in enumerate(photos):
             slot = idx % per_page
             if slot == 0:
                 if idx != 0:
                     c.showPage()
+                    draw_heading()
 
             col = slot % columns
             row = slot // columns
@@ -1809,9 +2027,30 @@ def generate_handout_pdf(
             if not photo_path.is_absolute():
                 photo_path = Path.cwd() / photo_path
             try:
-                with Image.open(photo_path) as pil_img:
-                    pil_img = pil_img.convert("RGB")
-                    img_w, img_h = pil_img.size
+                if Image is not None:
+                    with Image.open(photo_path) as pil_img:
+                        pil_img = pil_img.convert("RGB")
+                        img_w, img_h = pil_img.size
+
+                        available_photo_width = slot_width - inner_margin * 2
+                        available_photo_height = slot_height - inner_margin * 2
+                        photo_scale = min(available_photo_width / img_h, available_photo_height / img_w)
+                        photo_width = img_h * photo_scale
+                        photo_height = img_w * photo_scale
+                        photo_x = origin_x + (slot_width - photo_width) / 2
+                        photo_y = origin_y + (slot_height - photo_height) / 2
+
+                        target_px_w = max(1, int(photo_height / 72.0 * HANDOUT_PHOTO_DPI))
+                        target_px_h = max(1, int(photo_width / 72.0 * HANDOUT_PHOTO_DPI))
+                        pil_copy = pil_img.copy()
+                        pil_copy.thumbnail((target_px_w, target_px_h), Image.LANCZOS)
+                        buffer = BytesIO()
+                        pil_copy.save(buffer, format="JPEG", quality=85, optimize=True)
+                        buffer.seek(0)
+                        image_reader = ImageReader(buffer)
+                else:
+                    image_reader = ImageReader(str(photo_path))
+                    img_w, img_h = image_reader.getSize()
 
                     available_photo_width = slot_width - inner_margin * 2
                     available_photo_height = slot_height - inner_margin * 2
@@ -1820,15 +2059,6 @@ def generate_handout_pdf(
                     photo_height = img_w * photo_scale
                     photo_x = origin_x + (slot_width - photo_width) / 2
                     photo_y = origin_y + (slot_height - photo_height) / 2
-
-                    target_px_w = max(1, int(photo_height / 72.0 * HANDOUT_PHOTO_DPI))
-                    target_px_h = max(1, int(photo_width / 72.0 * HANDOUT_PHOTO_DPI))
-                    pil_copy = pil_img.copy()
-                    pil_copy.thumbnail((target_px_w, target_px_h), Image.LANCZOS)
-                    buffer = BytesIO()
-                    pil_copy.save(buffer, format="JPEG", quality=85, optimize=True)
-                    buffer.seek(0)
-                    image_reader = ImageReader(buffer)
             except Exception as exc:
                 print(f"Warning: unable to load {photo_path}: {exc}")
                 continue
@@ -1854,8 +2084,8 @@ def generate_handout_pdf(
                 c.setFillColor(colors.red)
                 letter_margin = inner_margin + letter_font * 0.1
                 letter_width = c.stringWidth(letter, "Helvetica-Bold", letter_font)
-                anchor_x = photo_x + letter_margin + letter_font * 0.3
-                anchor_y = photo_y + photo_height - letter_margin - letter_width - letter_font * 0.35
+                anchor_x = photo_x + letter_margin + letter_font * 0.6
+                anchor_y = photo_y + photo_height - letter_margin - letter_width - letter_font * 0.15
                 anchor_y = max(anchor_y, photo_y + letter_margin)
                 c.saveState()
                 c.translate(anchor_x, anchor_y)
@@ -1865,10 +2095,12 @@ def generate_handout_pdf(
         return False
 
     first_page = True
-    for title, photos in (("Control Point Photos", control_photos), ("Enroute Photos", ordered_enroute)):
-        if not photos:
-            continue
-        first_page = draw_section(title, photos, first_page)
+    if control_photos:
+        first_page = draw_section("Control Point Photos", control_photos, first_page)
+    if enroute_before:
+        first_page = draw_section(f"Photos before {HANDOUT_SPLIT_TP}", enroute_before, first_page)
+    if enroute_after:
+        first_page = draw_section(f"Photos after {HANDOUT_SPLIT_TP}", enroute_after, first_page)
 
     def append_pdfs(base_path: Path, append_paths: List[Path]) -> None:
         try:
@@ -1891,7 +2123,7 @@ def generate_handout_pdf(
     extras: List[Path] = []
     cleanup: List[Path] = []
 
-    if summary_info:
+    if HANDOUT_INCLUDE_SUMMARY and summary_info:
         summary_page = HANDOUT_PDF.with_name("photo_handout_summary.pdf")
         try:
             generate_summary_page(summary_page, summary_info)
@@ -1924,7 +2156,8 @@ if __name__ == "__main__":
 
     handout_payload = None
     for variant in STYLE_VARIANTS:
-        print("\n=== Generating variant:", variant.get("label", variant.get("id", "default")), "===")
+        variant_label = variant.get("label", variant.get("id", "route"))
+        print(f"\n=== Generating variant: {variant_label} ===")
         result = generate_overlay(analysis, speed_mps, speed_label, variant)
         if handout_payload is None:
             handout_payload = result

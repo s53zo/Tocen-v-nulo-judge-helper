@@ -1,31 +1,29 @@
- # Repository Guidelines
+# Repository Guidelines
 
-  ## Project Structure & Module Organization
+## Project Structure & Module Organization
+- `create_route_overlay.py` is the single entry point. It handles GPX parsing, photo analysis, overlay rendering, and handout generation. All configuration constants and feature toggles are defined near the top of the module.
+- Required inputs live in the repository root: the base map (`1 200k original karta.pdf`), the GPX track (`activity_20435991472.gpx`), and camera photos matching `IMG_*.jpg`.
+- Generated artefacts (`photo_analysis.csv`, `route_overlay.pdf`, `route_marked.pdf`, `photo_overlay_key.csv`, `photo_handout.pdf`) are written alongside the script. The raster cache `map_page.png` is created automatically if missing.
 
-  - create_route_overlay.py ??? single entry point; orchestrates GPX parsing, photo analysis, PDF overlay generation, and handout creation. Configuration constants and style toggles live near the top.
-  - Data inputs live at repo root: source map (1 200k original karta.pdf), GPX track (activity_20435991472.gpx), and photos matching IMG_*.jpg.
-  - Generated outputs are written alongside the script: photo_analysis.csv, route_overlay.pdf, route_marked.pdf, photo_overlay_key.csv, and photo_handout.pdf. Temporary raster map_page.png is auto-
-  created if missing.
+## Build, Test & Development Commands
+- `pip install PyPDF2 reportlab` — install mandatory PDF toolchain into your virtual environment.
+- `python create_route_overlay.py --speed 75` — full pipeline run. Adjust the `--speed` flag to test different groundspeeds. The script prints spacing/offset warnings that should be reviewed after each run.
 
-  ## Build, Test & Development Commands
+## Configuration Highlights
+- Map overlay visibility is controlled with module constants: `DRAW_ROUTE`, `DRAW_TURNPOINTS`, `DRAW_PHOTO_MARKERS`, `DRAW_CONTROL_PHOTO_MARKERS`, `DRAW_PHOTO_DOTS`, `DRAW_HEADINGS`, `DRAW_MINUTE_MARKERS`.
+- Setting `DRAW_PHOTO_DOTS = True` draws exact GPS dots and enables the lateral-offset warning threshold (`PHOTO_MAX_LATERAL_DISTANCE_M`, default 300 m). When dots are disabled no lateral distance check is performed.
+- Turnpoint time labels now respect `DRAW_MINUTE_MARKERS`; enabling minute markers automatically enables timing text, while `DRAW_TURNPOINTS` controls only the TP name glyph.
+- Handout behaviour is configured via `HANDOUT_*` constants. Set `HANDOUT_INCLUDE_SUMMARY = False` to skip the executive-summary appendix. Photos are grouped into “before/after {HANDOUT_SPLIT_TP}` sections, and margins are tuned for near edge-to-edge prints.
 
-  - pip install PyPDF2 reportlab ??? install required PDF libraries inside your virtual environment.
-  - python create_route_overlay.py --speed 75 ??? end-to-end run: parses inputs, enforces 1???NM rules, generates overlays and handout. Adjust --speed to test different groundspeeds.
+## Coding Style & Naming Conventions
+- Target Python 3.10+, PEP 8 compliant (4-space indentation, snake_case identifiers, upper-case module constants).
+- Prefer type hints and f-strings. Keep new constants with the existing block at the top of `create_route_overlay.py`.
 
-  ## Coding Style & Naming Conventions
+## Testing Guidelines
+- There is no automated test suite. Validate changes by re-running `python create_route_overlay.py --speed 75` and inspecting regenerated PDFs/CSV outputs.
+- When modifying geographic calculations, spacing logic, or control-photo handling, review console warnings and visually confirm affected photos in `route_marked.pdf` and the handout.
 
-  - Python 3.10+ with PEP???8 conventions: 4-space indentation, snake_case variables, UPPER_CASE module constants.
-  - Prefer type hints (used throughout) and f-strings for formatting.
-  - Configuration toggles and colour palettes belong with the existing constant block; keep new constants grouped there.
-
-  ## Testing Guidelines
-
-  - No automated test suite; validate changes by re-running python create_route_overlay.py --speed 75 and reviewing regenerated PDFs/CSV.
-  - When altering geographic maths or exclusion rules, spot-check the console warnings and verify affected photos visually in route_marked.pdf.
-
-  ## Commit & Pull Request Guidelines
-
-  - Write concise, imperative commit messages (e.g., ???Add control-photo exceptions for 1???NM rule???).
-  - PRs should summarize intent, list key impacts (new inputs, outputs, or settings), and note manual verification steps (e.g., ???Rebuilt overlay and reviewed TP4 timing photo???).
-  - Include before/after screenshots of overlays or handout pages when visual changes are introduced, and reference related issues or tasks.
-
+## Commit & Pull Request Guidelines
+- Use concise, imperative commit messages (e.g., `Add control-photo exceptions for 1.0 NM rule`).
+- PRs should summarise intent, list key impacts (new inputs, outputs, or toggles), and record manual verification (`Rebuilt overlay and reviewed TP4 timing photo`).
+- Provide before/after overlays or handout excerpts for visual changes and reference related issues or tasks where applicable.

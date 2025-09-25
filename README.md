@@ -10,7 +10,9 @@ This repository contains a single Python entry point, `create_route_overlay.py`,
 - Required Python packages (install inside your virtual environment):
 
 ```bash
-pip install PyPDF2 reportlab Pillow
+pip install PyPDF2 reportlab
+# Optional (recommended for smaller handouts):
+pip install Pillow
 ```
 
 ## Expected Inputs
