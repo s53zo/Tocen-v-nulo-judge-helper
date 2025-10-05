@@ -1,0 +1,187 @@
+name,id,type,country,latitude,longitude
+Abakian-Pince Marof,,Airfield,Slovenia,N46 30 56,E16 30 13
+Ajdovščina,LJAJ,Aerodrome,Slovenia,N45 53 21,E013 53 09
+Andrenci,,Airfield,Slovenia,N46 32 51,E15 57 03
+Bela krajina-Prilozje,,Airfield,Slovenia,N45 35 19,E15 15 34
+Bovec,LJBO,Aerodrome,Slovenia,N46 19 44,E013 32 56
+Brezovica-Brezovica,,Airfield,Slovenia,N46 01 04,E14 25 22
+Celje,LJCL,Aerodrome,Slovenia,N46 14 45,E015 13 21
+Cerklje ob Krki,LJCE,Aerodrome,Slovenia,N45 54 00,E015 31 49
+Cerknica-Marof,,Airfield,Slovenia,N45 46 40,E14 23 17
+Cerkvenjak-Čagona,,Airfield,Slovenia,N46 32 56,E15 54 53
+Depala vas,,Airfield,Slovenia,N46 07 36,E14 34 14
+Divača,LJDI,Aerodrome,Slovenia,N45 40 59,E014 00 10
+Heliport SB Celje,LJHC,Heliport,Slovenia,N46 14 03,E015 15 41
+Heliport SB Izola,LJHI,Heliport,Slovenia,N46 32 39,E013 41 19
+Heliport SB Slovenj Gradec,LJHS,Heliport,Slovenia,N46 30 28,E015 04 56
+Heliport Jesenice,LJHJ,Heliport,Slovenia,N46 26 32,E014 02 15
+Heliport UKC Ljubljana,LJHL,Heliport,Slovenia,N46 03 18,E014 31 15
+Imeno-Podčetrtek,,Airfield,Slovenia,N46 07 36,E15 36 14
+Kamnik-Duplica,,Airfield,Slovenia,N46 11 50,E14 34 51
+Kaplja vas-Prebold,,Airfield,Slovenia,N46 14 32,E15 04 24
+Lastovka-Prvenci,,Airfield,Slovenia,N46 24 26,E15 57 07
+Lesce-Bled,LJBL,Aerodrome,Slovenia,N46 21 23,E014 10 28
+Libelišče-Libelišče,,Airfield,Slovenia,N46 37 26,E14 57 18
+Ligojna,,Airfield,Slovenia,N45 59 14,E14 18 01
+Ljubljana/Brnik,LJLJ,Aerodrome,Slovenia,N46 13 28,E014 27 22
+Lopata-Celje,,Airfield,Slovenia,N46 16 16,E15 14 20
+Maribor/Orehova vas,LJMB,Aerodrome,Slovenia,N46 28 48,E015 41 10
+Marič-Noršinci,,Airfield,Slovenia,N46 40 56,E16 12 14
+Mihalovec-Dobova,,Airfield,Slovenia,N45 53 11,E15 39 06
+Mostje-Lendava,,Airfield,Slovenia,N46 36 00,E16 26 13
+Murska Sobota,LJMS,Aerodrome,Slovenia,N46 37 47,E016 10 32
+Novi Lazi-Kočevska Reka,,Airfield,Slovenia,N45 34 12,E14 51 30
+Novo Mesto,LJNM,Aerodrome,Slovenia,N45 48 09,E015 06 22
+Pobrežje-Zg.Pobrežje,,Airfield,Slovenia,N46 18 15,E14 54 16
+Podpeč-Podpeč,,Airfield,Slovenia,N45 58 24,E14 24 44
+Portorož/Secovlje,LJPZ,Aerodrome,Slovenia,N45 28 24,E013 36 54
+Postojna,LJPO,Aerodrome,Slovenia,N45 45 14,E014 11 45
+Ptuj,LJPT,Aerodrome,Slovenia,N46 25 35,E015 59 20
+Šentvid-Šentvid pri Stični,,Airfield,Slovenia,N45 56 39,E14 51 03
+Slovenj Gradec,LJSG,Aerodrome,Slovenia,N46 28 18,E015 07 03
+Slovenske Konjice,LJSK,Aerodrome,Slovenia,N46 18 38,E015 29 31
+Sostro-Sostro,,Airfield,Slovenia,N46 02 35,E14 36 54
+Šoštanj,LJSO,Aerodrome,Slovenia,N46 23 53,E015 02 42
+Veržej-Veržej,,Airfield,Slovenia,N46 34 25,E16 11 45
+Zagorje-Zagorje ob Savi,,Airfield,Slovenia,N46 08 33,E14 59 55
+Feldkirchen (Ossiacher See),LOKF,Aerodrome,Austria,N46 42 31,E014 04 35
+Ferlach (Glainach),LOKG,Aerodrome,Austria,N46 31 58,E014 19 51
+Klagenfurt (W??rthersee),LOWK,Aerodrome,Austria,N46 38 34,E014 20 14
+Notsch im Gailtal,LOKN,Aerodrome,Austria,N46 34 51,E013 37 42
+Wolfsberg,LOKW,Aerodrome,Austria,N46 49 03,E014 49 30
+Čakovec (Pribislavec),LDVC,Aerodrome,Croatia,N46 23 32,E016 30 01
+Grobnik (Grobniško Polje),LDRG,Aerodrome,Croatia,N45 22 46,E014 30 13
+Varaždin,LDVA,Aerodrome,Croatia,N46 17 39,E016 23 01
+Zagreb (Lučko),LDZL,Aerodrome,Croatia,N45 46 00,E015 50 55
+Zagreb (Franjo Tuđman),LDZA,Aerodrome,Croatia,N45 44 35,E016 04 08
+Zvekovac,LDZE,Aerodrome,Croatia,N45 49 23,E016 30 00
+Gorizia,LIPG,Aerodrome,Italy,N45 54 24,E013 35 57
+Trieste (Ronchi dei Legionari),LIPQ,Aerodrome,Italy,N45 49 39,E013 28 20
+BRZ,BRZ,NAVAID,Croatia,N45 25 25,E014 20 43
+CL,CL,NAVAID,Slovenia,N45 53 58,E015 29 50
+COK,COK,NAVAID,Slovenia,N45 54 04,E015 31 14
+DOL,DOL,NAVAID,Slovenia,N46 05 03,E014 46 43
+ILB,ILB,NAVAID,Slovenia,N45 33 56,E014 10 15
+KFT,KFT,NAVAID,Austria,N46 35 51,E014 33 44
+KOR,KOR,NAVAID,Austria,N46 47 14,E014 58 16
+LBL,LBL,NAVAID,Slovenia,N46 14 19,E014 25 43
+MG,MG,NAVAID,Slovenia,N46 10 24,E014 33 21
+MI,MI,NAVAID,Slovenia,N46 27 46,E015 42 10
+MR,MR,NAVAID,Slovenia,N46 22 18,E015 47 36
+PIS,PIS,NAVAID,Croatia,N45 36 18,E015 50 38
+POR,POR,NAVAID,Slovenia,N45 28 29,E013 36 44
+PZ,PZ,NAVAID,Slovenia,N45 28 39,E013 36 54
+RCH,RCH,NAVAID,Italy,N45 49 47,E013 28 49
+RK,RK,NAVAID,Slovenia,N45 53 54,E015 23 29
+STK,STK,NAVAID,Austria,N46 50 43,E015 55 55
+VIW,VIW,NAVAID,Austria,N46 41 47,E013 54 54
+ZAG,ZAG,NAVAID,Croatia,N45 53 44,E016 18 24
+S,S,VFR Point,Slovenia,N46 08 21,E014 30 15
+I,I,VFR Point,Slovenia,N46 08 30,E015 31 14
+N,N,VFR Point,Slovenia,N46 10 35,E015 00 56
+E,E,VFR Point,Slovenia,N46 10 35,E015 00 56
+CN2,CN2,VFR Point,Slovenia,N46 08 30,E015 00 56
+CNW,CNW,VFR Point,Slovenia,N46 10 41,E015 10 28
+CSW,CSW,VFR Point,Slovenia,N46 01 30,E014 51 31
+CSE,CSE,VFR Point,Slovenia,N45 58 37,E015 11 18
+CE2,CE2,VFR Point,Slovenia,N45 58 37,E015 11 18
+CS2,CS2,VFR Point,Slovenia,N46 00 18,E015 20 03
+W1,W1,VFR Point,Slovenia,N46 02 52,E014 28 53
+SE,SE,VFR Point,Slovenia,N46 00 17,E014 47 02
+W2,W2,VFR Point,Slovenia,N45 59 52,E014 27 49
+E1,E1,VFR Point,Slovenia,N46 00 17,E014 47 02
+W3,W3,VFR Point,Slovenia,N46 10 17,E014 20 31
+ALMAX,ALMAX,VFR Point,Slovenia,N45 35 24,E014 06 21
+ARVIO,ARVIO,VFR Point,Slovenia,N45 50 57,E014 16 04
+BARJE,BARJE,VFR Point,Slovenia,N46 00 18,E014 30 15
+BEDOV,BEDOV,VFR Point,Slovenia,N46 15 58,E015 49 34
+BREST,BREST,VFR Point,Slovenia,N46 05 06,E014 23 15
+BUGEZ,BUGEZ,VFR Point,Slovenia,N45 27 56,E013 46 24
+BUKOV,BUKOV,VFR Point,Slovenia,N45 59 42,E015 13 21
+DRAVA,DRAVA,VFR Point,Slovenia,N46 31 58,E015 48 26
+DIMLO,DIMLO,VFR Point,Slovenia,N45 59 30,E013 37 09
+DOLEN,DOLEN,VFR Point,Slovenia,N45 54 11,E015 16 32
+EPOMI,EPOMI,VFR Point,Slovenia,N46 01 01,E016 22 43
+GASPI,GASPI,VFR Point,Slovenia,N46 22 19,E014 30 00
+GEMO,GEMO,VFR Point,Slovenia,N45 39 08,E013 52 20
+GEMKA,GEMKA,VFR Point,Slovenia,N45 33 13,E014 12 15
+GERDI,GERDI,VFR Point,Slovenia,N45 51 24,E013 34 37
+GROD,GROD,VFR Point,Slovenia,N45 28 32,E014 08 02
+GROPA,GROPA,VFR Point,Slovenia,N45 44 23,E013 52 35
+GORPA,GORPA,VFR Point,Slovenia,N45 48 23,E015 21 12
+IGDIR,IGDIR,VFR Point,Slovenia,N46 27 56,E015 11 20
+KEGBU,KEGBU,VFR Point,Slovenia,N45 47 56,E014 45 53
+KLANI,KLANI,VFR Point,Slovenia,N46 00 51,E014 48 31
+KRAVA,KRAVA,VFR Point,Slovenia,N46 32 17,E014 49 11
+LULUD,LULUD,VFR Point,Slovenia,N45 33 03,E013 41 00
+MAREN,MAREN,VFR Point,Slovenia,N46 00 18,E014 04 12
+MUREG,MUREG,VFR Point,Slovenia,N46 42 24,E015 46 29
+NEMEG,NEMEG,VFR Point,Slovenia,N45 34 29,E015 17 53
+NIGAT,NIGAT,VFR Point,Slovenia,N45 54 44,E014 14 33
+NIPEL,NIPEL,VFR Point,Slovenia,N46 29 22,E014 01 57
+OBUTI,OBUTI,VFR Point,Slovenia,N45 49 22,E014 16 27
+OTTIX,OTTIX,VFR Point,Slovenia,N45 35 09,E013 42 01
+PETOV,PETOV,VFR Point,Slovenia,N46 17 48,E015 54 42
+PETOT,PETOT,VFR Point,Slovenia,N46 17 12,E015 51 33
+RADLY,RADLY,VFR Point,Slovenia,N45 39 49,E013 12 33
+ROBIG,ROBIG,VFR Point,Slovenia,N46 20 22,E013 25 38
+ROLBA,ROLBA,VFR Point,Slovenia,N45 50 25,E015 39 18
+SAVAR,SAVAR,VFR Point,Slovenia,N46 03 35,E014 49 22
+SOVOX,SOVOX,VFR Point,Slovenia,N45 58 06,E013 36 50
+TEBRO,TEBRO,VFR Point,Slovenia,N46 13 08,E013 28 22
+TOSKA,TOSKA,VFR Point,Slovenia,N46 03 24,E014 23 15
+TUTKI,TUTKI,VFR Point,Slovenia,N45 42 31,E013 49 36
+UNBEK,UNBEK,VFR Point,Slovenia,N45 58 24,E013 41 12
+URAVA,URAVA,VFR Point,Slovenia,N45 28 58,E013 31 56
+VRNAX,VRNAX,VFR Point,Slovenia,N45 52 28,E014 03 53
+ME1,ME1,VFR Point,Slovenia,N46 23 38,E015 33 33
+ME2,ME2,VFR Point,Slovenia,N46 23 40,E016 00 06
+MN1,MN1,VFR Point,Slovenia,N46 35 27,E015 33 34
+MN2,MN2,VFR Point,Slovenia,N46 35 27,E015 50 34
+MW1,MW1,VFR Point,Slovenia,N46 32 37,E015 30 00
+FICKO,FICKO,VFR Point,Slovenia,N46 41 01,E015 53 00
+GOLVA,GOLVA,VFR Point,Slovenia,N46 42 32,E015 09 09
+ME3,ME3,VFR Point,Slovenia,N46 19 06,E015 51 13
+ME4,ME4,VFR Point,Slovenia,N46 32 02,E016 11 01
+MS2,MS2,VFR Point,Slovenia,N46 19 06,E015 37 24
+MS3,MS3,VFR Point,Slovenia,N46 31 58,E015 48 26
+TISKO,TISKO,VFR Point,Slovenia,N46 45 57,E015 05 31
+MS1,MS1,VFR Point,Slovenia,N46 14 23,E015 36 14
+NIMIS,NIMIS,VFR Point,Slovenia,N46 14 23,E015 36 14
+PETOV,PETOV,VFR Point,Slovenia,N46 18 35,E015 55 34
+BUGSY,BUGSY,VFR Point,Slovenia,N45 27 56,E013 46 24
+DRAGA,DRAGA,VFR Point,Slovenia,N45 35 11,E013 48 30
+PSI1,PSI1,VFR Point,Slovenia,N45 24 35,E013 39 24
+PSI2,PSI2,VFR Point,Slovenia,N45 26 51,E013 41 39
+VICKY,VICKY,VFR Point,Slovenia,N45 37 44,E013 15 15
+AJE1,AJE1,VFR Point,Slovenia,N45 52 52,E014 00 06
+AJE2,AJE2,VFR Point,Slovenia,N45 55 20,E013 51 31
+COL,COL,VFR Point,Slovenia,N45 59 30,E013 58 43
+KRIŽ,KRIŽ,VFR Point,Slovenia,N45 53 24,E013 51 15
+BLED,BLED,VFR Point,Slovenia,N46 21 24,E014 17 35
+BLBS,BLBS,VFR Point,Slovenia,N46 24 16,E014 05 35
+BLES,BLES,VFR Point,Slovenia,N46 18 14,E014 11 25
+BLBW,BLBW,VFR Point,Slovenia,N46 20 49,E014 06 13
+BOVEC,BOVEC,VFR Point,Slovenia,N46 20 31,E013 40 40
+SOTA,SOTA,VFR Point,Slovenia,N46 18 14,E013 28 54
+CELE,CELE,VFR Point,Slovenia,N46 13 15,E015 18 56
+CELN,CELN,VFR Point,Slovenia,N46 19 08,E015 17 34
+CELW,CELW,VFR Point,Slovenia,N46 09 23,E015 12 43
+OBST,OBST,VFR Point,Slovenia,N46 15 28,E015 07 18
+GRAD,GRAD,VFR Point,Slovenia,N45 51 46,E015 09 10
+NMS,NMS,VFR Point,Slovenia,N45 43 31,E015 08 28
+POST,POST,VFR Point,Slovenia,N45 58 40,E014 11 50
+UNA1,UNA1,VFR Point,Slovenia,N45 44 43,E014 08 20
+POE1,POE1,VFR Point,Slovenia,N45 49 12,E014 17 24
+PTE,PTE,VFR Point,Slovenia,N46 25 09,E016 06 45
+PTN,PTN,VFR Point,Slovenia,N46 29 03,E015 58 14
+PTS,PTS,VFR Point,Slovenia,N46 23 40,E015 54 30
+PTW,PTW,VFR Point,Slovenia,N46 26 36,E015 55 37
+SGN,SGN,VFR Point,Slovenia,N46 26 37,E015 12 12
+SGNE,SGNE,VFR Point,Slovenia,N46 29 44,E015 11 44
+SGNW,SGNW,VFR Point,Slovenia,N46 30 40,E015 01 10
+SGSW,SGSW,VFR Point,Slovenia,N46 22 40,E014 57 15
+SKN,SKN,VFR Point,Slovenia,N46 22 38,E015 29 13
+SOE1,SOE1,VFR Point,Slovenia,N46 21 40,E015 08 10
+SOS1,SOS1,VFR Point,Slovenia,N46 25 38,E015 10 04
+SOW1,SOW1,VFR Point,Slovenia,N46 25 20,E014 59 20

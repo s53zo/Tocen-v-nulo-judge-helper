@@ -1,1 +1,2061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Route Overlay Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
+  <style>
+    :root {
+      --font-ui: 'Inter', system-ui, sans-serif;
+      --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      --color-background: #f0edea;
+      --color-panel-bg: #ffffff;
+      --color-header-bg: #1a1a1a;
+      --color-text: #212529;
+      --color-text-muted: #6c757d;
+      --color-border: #d8d8d8;
+      --color-border-strong: #b7b7b7;
+      --color-accent: #2e7d32;
+      --color-accent-hover: #388e3c;
+      --color-secondary: #343a40;
+      --color-secondary-hover: #495057;
+      --color-danger: #c62828;
+      --shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+      --border-radius: 8px;
+    }
 
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-ui);
+      line-height: 1.6;
+      background: var(--color-background);
+      color: var(--color-text);
+      overflow-y: scroll;
+    }
+
+    header {
+      background: var(--color-header-bg);
+      color: #fff;
+      padding: 0.75rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    header p {
+      margin: 0.35rem 0 0;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+    }
+
+    .header-logo {
+      height: 48px;
+      width: auto;
+      display: block;
+      border-radius: 6px;
+    }
+
+    .header-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .header-text h1 {
+      margin: 0;
+    }
+
+    .header-text p {
+      margin: 0;
+    }
+
+    main {
+      padding: 2rem;
+    }
+
+    .desk-layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 2rem;
+      max-width: 1600px;
+      margin: 0 auto;
+      align-items: flex-start;
+    }
+
+    .control-panel,
+    .results-panel {
+      background: var(--color-panel-bg);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow);
+    }
+
+    .control-panel {
+      position: sticky;
+      top: 96px;
+    }
+
+    .panel-content {
+      padding: 1.75rem;
+    }
+
+    .control-group + .control-group {
+      margin-top: 2rem;
+    }
+
+    .control-group h2 {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 0.5rem;
+    }
+
+    .map-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    .preset-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      padding: 0.9rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      background: #f8faf9;
+      cursor: pointer;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      text-align: left;
+    }
+
+    .preset-card span {
+      display: block;
+    }
+
+    .preset-card .preset-title {
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .preset-card .preset-meta {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      line-height: 1.35;
+    }
+
+    .preset-card:hover {
+      border-color: var(--color-accent);
+      box-shadow: 0 6px 16px rgba(46, 125, 50, 0.12);
+      background: #f4f8f4;
+    }
+
+    .preset-card.is-selected {
+      border-color: var(--color-accent);
+      background: linear-gradient(145deg, #f0f9f1, #ffffff);
+      box-shadow: 0 10px 22px rgba(46, 125, 50, 0.16);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="search"],
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--color-border);
+      background: #f8f9fa;
+      border-radius: 6px;
+      padding: 0.65rem 0.75rem;
+      font-size: 0.95rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.18);
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 220px;
+      font-family: var(--font-mono);
+      resize: vertical;
+    }
+
+    .note {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-top: 0.4rem;
+    }
+
+    .input-block {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .input-row {
+      display: grid;
+      gap: 1rem;
+    }
+
+    @media (min-width: 640px) {
+      .input-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .status {
+      margin-top: 1rem;
+      padding: 0.75rem 0.95rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--color-secondary);
+      background: rgba(21, 94, 117, 0.08);
+      border: 1px solid rgba(21, 94, 117, 0.15);
+      white-space: pre-wrap;
+    }
+
+    .status:empty {
+      display: none;
+    }
+
+    .status.is-error {
+      color: var(--color-danger);
+      background: rgba(198, 40, 40, 0.08);
+      border-color: rgba(198, 40, 40, 0.25);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: var(--font-ui);
+    }
+
+    .btn-primary {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+      width: 100%;
+      box-shadow: 0 4px 10px rgba(46, 125, 50, 0.2);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--color-accent-hover);
+      border-color: var(--color-accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .btn-secondary {
+      background: #e9ecef;
+      color: var(--color-text);
+      border: 1px solid #c7ccd1;
+      padding: 0.55rem 1rem;
+      font-size: 0.875rem;
+      width: auto;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #d8dde2;
+    }
+
+    .btn-ghost {
+      background: #fff;
+      color: var(--color-secondary);
+      border: 1px solid rgba(52, 58, 64, 0.3);
+      min-width: 180px;
+      text-align: center;
+    }
+
+    .btn-ghost:hover {
+      background: #f6f7f8;
+      border-color: rgba(52, 58, 64, 0.55);
+      color: var(--color-secondary-hover);
+    }
+
+    .download-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .results-panel .panel-content {
+      padding: 0;
+    }
+
+    .results-inner {
+      padding: 1.75rem;
+    }
+
+    .results-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .results-placeholder {
+      padding: 3rem 1.75rem 3.5rem;
+      text-align: center;
+      color: var(--color-text-muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .results-placeholder svg {
+      width: 48px;
+      height: 48px;
+      color: #9aa1a9;
+    }
+
+    .results-placeholder h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .results-placeholder p {
+      margin: 0;
+      max-width: 420px;
+    }
+
+    .results-content[hidden] {
+      display: none;
+    }
+
+    .results-group + .results-group {
+      margin-top: 2rem;
+    }
+
+    .results-group h2,
+    .results-group h3 {
+      margin-top: 0;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .summary-text {
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--color-border);
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+    }
+
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+    }
+
+    td:not(:first-child),
+    th:not(:first-child) {
+      text-align: right;
+      font-family: var(--font-mono);
+    }
+
+    .map-container {
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 1rem;
+      background: #f1f3f5;
+    }
+
+    #osmMap {
+      width: 100%;
+      height: 360px;
+    }
+
+    .waypoint-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .waypoint-library {
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: #f8fbf9;
+      padding: 1rem;
+      margin-top: 0.75rem;
+      max-height: 360px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .waypoint-library[hidden] {
+      display: none !important;
+    }
+
+    .library-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .library-controls input[type="search"] {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .library-controls select,
+    .library-controls button {
+      min-width: 140px;
+    }
+
+    .locations-list {
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      max-height: 220px;
+      overflow-y: auto;
+      padding-top: 0.5rem;
+    }
+
+    .location-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      gap: 0.6rem;
+    }
+
+    .location-meta {
+      font-size: 0.85rem;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .location-tags {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+
+    .empty-state {
+      font-size: 0.9rem;
+      color: var(--color-text-muted);
+      padding: 0.75rem 0;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: #e9ecef;
+      font-size: 0.75rem;
+      margin-right: 0.4rem;
+    }
+
+    .danger-text {
+      color: var(--color-danger);
+    }
+
+    .preview-image {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--color-border);
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    }
+
+    @media (max-width: 1080px) {
+      .desk-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .control-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 720px) {
+      header {
+        padding: 0.75rem 1.5rem;
+      }
+
+      main {
+        padding: 1.5rem;
+      }
+
+      .panel-content,
+      .results-inner {
+        padding: 1.5rem;
+      }
+    }
+
+    .leaflet-marker-icon.osm-label-icon,
+    .leaflet-marker-icon.osm-minute-label-icon {
+      background: transparent;
+      border: none;
+      pointer-events: none;
+    }
+
+    .leaflet-marker-icon.osm-label-icon {
+      transform: translate(-50%, calc(-100% - 10px));
+    }
+
+    .leaflet-marker-icon.osm-minute-label-icon {
+      transform: translate(-50%, calc(-100% - 6px));
+    }
+
+    .osm-label,
+    .osm-minute-label {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+      white-space: nowrap;
+      font-family: var(--font-ui);
+    }
+
+    .osm-label {
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #821616;
+      color: #821616;
+      font-weight: 600;
+      font-size: 0.85rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    .osm-label-time {
+      color: #333;
+      font-weight: 500;
+      font-size: 0.75rem;
+      margin-top: 0.1rem;
+    }
+
+    .osm-minute-label {
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      background: rgba(21, 62, 115, 0.92);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.8rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="logo.jpg" alt="Route Overlay logo" class="header-logo">
+    <div class="header-text">
+      <h1>Route Overlay Generator</h1>
+      <p>Build a precision flying overlay in your browser using calibrated map presets.</p>
+    </div>
+  </header>
+  <main>
+    <div class="desk-layout">
+      <section class="control-panel">
+        <div class="panel-content">
+          <div class="control-group">
+            <h2>1. Map &amp; Flight Parameters</h2>
+            <p class="note" id="mapStatus">Choose a calibrated map preset. All processing stays in your browser.</p>
+            <div class="map-preset-grid" id="mapPresetGrid">
+              <button type="button" class="preset-card is-selected" data-map-key="vfr">
+                <span class="preset-title">VFR chart Slovenija</span>
+                <span class="preset-meta">Sloveniacontrol.si 2025 VFR Chart</span>
+              </button>
+              <button type="button" class="preset-card" data-map-key="legacy">
+                <span class="preset-title">1:200k legacy chart</span>
+                <span class="preset-meta">Often used at precision flying
+                competitions</span>
+              </button>
+              <button type="button" class="preset-card" data-map-key="osm">
+                <span class="preset-title">OpenStreetMap</span>
+                <span class="preset-meta">Interactive OSM map</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <h2>2. Timing &amp; Markers</h2>
+            <label for="speed">Groundspeed (e.g. 75kt or 85mph)</label>
+            <input id="speed" type="text" value="75kt" autocomplete="off">
+            <div class="input-row" style="margin-top: 1rem;">
+              <div>
+                <label for="minuteInterval">Minute Marker Interval</label>
+                <input id="minuteInterval" type="number" min="1" step="1" value="1" autocomplete="off">
+              </div>
+              <div>
+                <label for="takeoffBuffer">Takeoff to Start (minutes)</label>
+                <input id="takeoffBuffer" type="number" min="0.1" step="0.1" value="4" autocomplete="off">
+              </div>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <h2>3. Waypoints</h2>
+            <label for="waypoints">Route (name,lat,lon per line)</label>
+            <div class="waypoint-actions">
+              <button type="button" id="toggleWaypointLibrary" class="btn
+              btn-secondary">Waypoint Database</button>
+              <span class="note" id="waypointLibraryStatus"></span>
+            </div>
+            <section class="waypoint-library" id="waypointLibrary" hidden>
+              <div class="library-controls" id="libraryControls">
+                <input id="locationSearch" type="search" placeholder="Search by name or identifier" />
+                <select id="locationTypeFilter">
+                  <option value="all">All types</option>
+                </select>
+                <select id="locationCountryFilter">
+                  <option value="all">All countries</option>
+                </select>
+                <button type="button" id="addAllFiltered" class="btn btn-secondary">Add All</button>
+              </div>
+              <div class="locations-list" id="locationsList"></div>
+            </section>
+            <textarea id="waypoints">SP,46.600850,16.180022
+TP1,46.500801,16.155215
+TP2,46.515128,16.008368
+TP3,46.616968,16.069071
+TP4,46.800823,16.036800
+TP5,46.836955,16.308447
+TP6,46.775187,16.202892
+TP7,46.552346,16.430293
+FP,46.608093,16.234769</textarea>
+          </div>
+
+          <button id="generate" class="btn btn-primary">Generate Overlay</button>
+          <div class="status" id="status"></div>
+        </div>
+      </section>
+
+      <section class="results-panel">
+        <div class="panel-content">
+          <div id="resultsPlaceholder" class="results-placeholder">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>
+            </svg>
+            <h3>Awaiting Flight Plan</h3>
+            <p>Complete the inputs on the left and generate to preview downloads and summaries.</p>
+          </div>
+          <div id="resultsContent" class="results-inner results-content" hidden>
+            <div class="results-group">
+              <h2>Downloads</h2>
+              <div class="download-actions" id="outputs" hidden>
+                <a id="downloadPdf" href="#" class="btn btn-ghost">Marked Map (PDF)</a>
+                <a id="downloadOverlay" href="#" class="btn btn-ghost">Overlay Only</a>
+                <a id="downloadCropped" href="#" class="btn btn-ghost">Cropped Map (PDF)</a>
+                <a id="downloadSummary" href="#" class="btn btn-ghost">Summary (JSON)</a>
+              </div>
+            </div>
+
+            <div class="results-group" id="croppedPreviewContainer" hidden>
+              <h2>Preview</h2>
+              <img id="croppedPreviewImage" class="preview-image" alt="Cropped map preview is being generated" />
+              <p class="note" id="croppedPreviewMessage">JPEG preview generated from the cropped PDF.</p>
+            </div>
+
+            <div class="results-group" id="summary" hidden>
+              <h2>Route Summary</h2>
+              <div id="osmMapContainer" class="map-container" hidden style="margin-bottom: 1.25rem;">
+                <div id="osmMap"></div>
+              </div>
+              <p class="summary-text" id="summaryText"></p>
+              <h3>Legs</h3>
+              <table>
+                <thead>
+                  <tr><th>Leg</th><th>Distance (km)</th><th>Bearing (°)</th></tr>
+                </thead>
+                <tbody id="legsTable"></tbody>
+              </table>
+              <h3 style="margin-top: 1.25rem;">Waypoint Schedule</h3>
+              <table>
+                <thead>
+                  <tr><th>Waypoint</th><th>Time from Takeoff</th></tr>
+                </thead>
+                <tbody id="waypointTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const MAP_PRESETS = {
+      vfr: {
+        label: 'VFR chart Slovenija',
+        type: 'pdf',
+        fileName: '00_VFRspredaj_25_SC_WEB_flat.pdf',
+        url: '../00_VFRspredaj_25_SC_WEB_flat.pdf',
+        baseWidth: 2862.0,
+        baseHeight: 1985.0,
+        controlPoints: [
+          ['CP1', 46.32138888888889, 14.341944444444445, 873.0, 715.0],
+          ['CP2', 46.65361111111111, 16.075833333333332, 2382.0, 294.0],
+          ['CP3', 45.73, 15.201388888888888, 1626.0, 1463.0]
+        ]
+      },
+      legacy: {
+        label: '1:200k chart',
+        type: 'pdf',
+        fileName: '1 200k original karta.pdf',
+        url: '../1 200k original karta.pdf',
+        baseWidth: 1191.0,
+        baseHeight: 842.0,
+        controlPoints: [
+          ['TP1', 46.500800369520974, 16.155215089283285, 609.0, 653.0],
+          ['TP4', 46.80079362139448, 16.036790112456796, 476.0, 183.0],
+          ['TP5', 46.83695523, 16.30844783, 768.0, 118.0]
+        ]
+      },
+      osm: {
+        label: 'OpenStreetMap',
+        type: 'osm'
+      }
+    };
+    const DEFAULT_MAP_KEY = 'vfr';
+    let selectedMapKey = DEFAULT_MAP_KEY;
+    const ROUTE_WIDTH_SCALE = 2.5;
+    const TP_RADIUS_SCALE = 20.0;
+    const TP_FONT_SCALE = 12.0;
+    const HEADING_FONT_SCALE = 18.0;
+    const HEADING_OFFSET_SCALE = 60.0;
+    const MINUTE_TICK_HALF_SCALE = 7.0;
+    const MINUTE_LINE_WIDTH_SCALE = 1.2;
+    const MINUTE_LABEL_FONT_SCALE = 10.0;
+    const MINUTE_LABEL_OFFSET_MULTIPLIER = 4.0;
+    const TP_LABEL_OFFSET_FACTOR = 0.35;
+    const DEFAULT_TAKEOFF_TO_SP_MIN = 4.0;
+    const MM_TO_PT = 72 / 25.4;
+    const KNOT_TO_MPS = 0.514444;
+    const MPH_TO_MPS = 0.44704;
+    const EARTH_RADIUS_M = 6371000.0;
+    const LABEL_COLLISION_MARGIN = 3.0;
+    const LABEL_DISTANCE_STEP = 5.0;
+    const MAX_LABEL_ADJUST_STEPS = 12;
+
+    const CONTROL_POINTS = [
+      ["CP1", 46.32138888888889, 14.341944444444445, 872.0, 719.0],
+      ["CP2", 46.65361111111111, 16.075833333333332, 2380.0, 297.0],
+      ["CP3", 45.73, 15.201388888888888, 1624.0, 1464.0]
+    ];
+
+    const statusEl = document.getElementById('status');
+    const generateBtn = document.getElementById('generate');
+    const mapPresetGrid = document.getElementById('mapPresetGrid');
+    const mapPresetButtons = mapPresetGrid ? Array.from(mapPresetGrid.querySelectorAll('[data-map-key]')) : [];
+    const outputsSection = document.getElementById('outputs');
+    const summarySection = document.getElementById('summary');
+    const legsTable = document.getElementById('legsTable');
+    const waypointTable = document.getElementById('waypointTable');
+    const summaryText = document.getElementById('summaryText');
+    const minuteIntervalInput = document.getElementById('minuteInterval');
+    const takeoffBufferInput = document.getElementById('takeoffBuffer');
+    const waypointTextarea = document.getElementById('waypoints');
+    const waypointLibrary = document.getElementById('waypointLibrary');
+    const waypointLibraryToggle = document.getElementById('toggleWaypointLibrary');
+    const waypointLibraryStatus = document.getElementById('waypointLibraryStatus');
+    const locationSearchInput = document.getElementById('locationSearch');
+    const locationTypeFilter = document.getElementById('locationTypeFilter');
+    const locationCountryFilter = document.getElementById('locationCountryFilter');
+    const libraryControls = document.getElementById('libraryControls');
+    const locationsList = document.getElementById('locationsList');
+    const addAllFilteredBtn = document.getElementById('addAllFiltered');
+
+    const downloadPdfLink = document.getElementById('downloadPdf');
+    const downloadOverlayLink = document.getElementById('downloadOverlay');
+    const downloadCroppedLink = document.getElementById('downloadCropped');
+    const downloadSummaryLink = document.getElementById('downloadSummary');
+    downloadCroppedLink.style.display = 'none';
+    const downloadUrls = {
+      pdf: null,
+      overlay: null,
+      cropped: null,
+      summary: null,
+    };
+    const croppedPreviewContainer = document.getElementById('croppedPreviewContainer');
+    const croppedPreviewImage = document.getElementById('croppedPreviewImage');
+    const croppedPreviewMessage = document.getElementById('croppedPreviewMessage');
+    const resultsPlaceholder = document.getElementById('resultsPlaceholder');
+    const resultsContent = document.getElementById('resultsContent');
+    let hasGeneratedOnce = false;
+    const presetCache = new Map();
+    const mapStatus = document.getElementById('mapStatus');
+    const osmMapContainer = document.getElementById('osmMapContainer');
+    const osmMapEl = document.getElementById('osmMap');
+    const PDFJS_PRIMARY_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82';
+    const PDFJS_FALLBACK_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+    let pdfjsPromise = null;
+    let pdfjsBaseUrl = PDFJS_PRIMARY_BASE;
+    const DEFAULT_MINUTE_INTERVAL = 1;
+    const DEFAULT_TAKEOFF_BUFFER = DEFAULT_TAKEOFF_TO_SP_MIN;
+    const LOCATION_FILE = 'locations.txt';
+    let locationLibrary = null;
+    let locationFilters = { search: '', type: 'all', country: 'all' };
+    let osmMap = null;
+    let osmLayers = [];
+    let osmTileLayer = null;
+    const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const PDF_CHAR_REPLACEMENTS = new Map([
+      ['š', 's'],
+      ['đ', 'd'],
+      ['č', 'c'],
+      ['ć', 'c'],
+      ['ž', 'z'],
+      ['Š', 'S'],
+      ['Đ', 'D'],
+      ['Č', 'C'],
+      ['Ć', 'C'],
+      ['Ž', 'Z'],
+    ]);
+
+    function sanitizePdfText(text) {
+      if (!text) {
+        return text;
+      }
+      let dirty = false;
+      const sanitized = Array.from(text, (ch) => {
+        if (PDF_CHAR_REPLACEMENTS.has(ch)) {
+          dirty = true;
+          return PDF_CHAR_REPLACEMENTS.get(ch);
+        }
+        return ch;
+      }).join('');
+      return dirty ? sanitized : text;
+    }
+
+    const HTML_ESCAPE_RE = /[&<>"']/g;
+    const HTML_ESCAPE_LOOKUP = new Map([
+      ['&', '&amp;'],
+      ['<', '&lt;'],
+      ['>', '&gt;'],
+      ['"', '&quot;'],
+      ["'", '&#39;'],
+    ]);
+
+    function escapeHtml(text) {
+      if (!text) {
+        return '';
+      }
+      return String(text).replace(HTML_ESCAPE_RE, (ch) => HTML_ESCAPE_LOOKUP.get(ch) || ch);
+    }
+
+    function setDownloadUrl(key, url, filename, linkEl) {
+      if (downloadUrls[key]) {
+        URL.revokeObjectURL(downloadUrls[key]);
+      }
+      downloadUrls[key] = url;
+      linkEl.href = url;
+      linkEl.download = filename;
+      syncResultsVisibility();
+    }
+
+    function clearDownloadUrl(key, linkEl) {
+      if (downloadUrls[key]) {
+        URL.revokeObjectURL(downloadUrls[key]);
+        downloadUrls[key] = null;
+      }
+      linkEl.removeAttribute('href');
+      linkEl.removeAttribute('download');
+      syncResultsVisibility();
+    }
+
+    function syncResultsVisibility() {
+      if (!resultsContent) {
+        return;
+      }
+      const hasVisibleOutputs = (outputsSection && !outputsSection.hidden)
+        || (summarySection && !summarySection.hidden)
+        || (croppedPreviewContainer && !croppedPreviewContainer.hidden);
+      if (resultsPlaceholder && !hasGeneratedOnce) {
+        resultsPlaceholder.hidden = hasVisibleOutputs;
+      }
+      resultsContent.hidden = !hasVisibleOutputs;
+    }
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle('is-error', message.startsWith('Error:'));
+    }
+
+    function clearCroppedPreview() {
+      croppedPreviewContainer.hidden = true;
+      croppedPreviewImage.removeAttribute('src');
+      croppedPreviewMessage.textContent = 'JPEG preview generated from the cropped PDF.';
+      syncResultsVisibility();
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+      const resultsObserver = new MutationObserver(syncResultsVisibility);
+      [outputsSection, summarySection, croppedPreviewContainer].forEach((el) => {
+        if (el) {
+          resultsObserver.observe(el, { attributes: true, attributeFilter: ['hidden'] });
+        }
+      });
+    }
+    syncResultsVisibility();
+
+    function updateMapStatus(message, isError = false) {
+      if (!mapStatus) {
+        return;
+      }
+      mapStatus.textContent = message;
+      mapStatus.style.color = isError ? '#c62828' : '#555';
+    }
+
+    function getPreset(mapKey = selectedMapKey) {
+      return MAP_PRESETS[mapKey] || MAP_PRESETS[DEFAULT_MAP_KEY];
+    }
+
+    function isPdfPreset(mapKey = selectedMapKey) {
+      const preset = getPreset(mapKey);
+      return (preset?.type ?? 'pdf') !== 'osm';
+    }
+
+    async function ensureOsmMap() {
+      if (!osmMapEl) {
+        return null;
+      }
+      if (typeof window.L === 'undefined') {
+        throw new Error('Leaflet library is not available yet.');
+      }
+      if (!osmMap) {
+        osmMap = L.map(osmMapEl, { center: [46.05, 14.5], zoom: 7, preferCanvas: true });
+        osmTileLayer = L.tileLayer(OSM_TILE_URL, {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors'
+        }).addTo(osmMap);
+      }
+      setTimeout(() => {
+        if (osmMap) {
+          osmMap.invalidateSize();
+        }
+      }, 0);
+      return osmMap;
+    }
+
+    function updateMapInputsVisibility() {
+      const isPdf = isPdfPreset();
+      if (osmMapContainer) {
+        osmMapContainer.hidden = isPdf;
+      }
+      if (!isPdf) {
+        updateMapStatus('Interactive OpenStreetMap view active.');
+        ensureOsmMap().catch((err) => {
+          console.warn('Leaflet map unavailable', err);
+        });
+      } else {
+        const preset = getPreset();
+        updateMapStatus(`Using preset map: ${preset.label}`);
+      }
+    }
+
+    async function ensurePresetBuffer(mapKey, options = {}) {
+      const preset = getPreset(mapKey);
+      if (!preset) {
+        throw new Error(`Unknown map preset: ${mapKey}`);
+      }
+      if (preset.type !== 'pdf') {
+        return null;
+      }
+      if (!options.forceReload && presetCache.has(mapKey)) {
+        if (mapKey === selectedMapKey) {
+          updateMapStatus(`Using preset map: ${preset.label}`);
+        }
+        return presetCache.get(mapKey);
+      }
+      if (!preset.url) {
+        throw new Error(`Preset '${mapKey}' does not include a bundled PDF URL.`);
+      }
+      if (mapKey === selectedMapKey) {
+        updateMapStatus(`Loading preset map: ${preset.label}...`);
+      }
+      const response = await fetch(encodeURI(preset.url));
+      if (!response.ok) {
+        throw new Error(`Failed to load preset PDF (${response.status} ${response.statusText})`);
+      }
+      const buffer = await response.arrayBuffer();
+      presetCache.set(mapKey, buffer);
+      if (mapKey === selectedMapKey) {
+        updateMapStatus(`Using preset map: ${preset.label}`);
+      }
+      return buffer;
+    }
+
+    function selectMapPresetButton(mapKey) {
+      selectedMapKey = MAP_PRESETS[mapKey] ? mapKey : DEFAULT_MAP_KEY;
+      mapPresetButtons.forEach((btn) => {
+        btn.classList.toggle('is-selected', btn.dataset.mapKey === selectedMapKey);
+      });
+    }
+
+    function handleMapPresetChange(newKey = selectedMapKey) {
+      selectMapPresetButton(newKey);
+      updateMapInputsVisibility();
+      if (!isPdfPreset()) {
+        return;
+      }
+      ensurePresetBuffer(selectedMapKey).catch((err) => {
+        console.warn('Failed to load preset map', err);
+        updateMapStatus('Could not load the preset map automatically.', true);
+      });
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const existing = Array.from(document.scripts).find((script) => script.src === src);
+        if (existing && existing.hasAttribute('data-loaded')) {
+          resolve();
+          return;
+        }
+        if (existing && !existing.hasAttribute('data-loading')) {
+          existing.setAttribute('data-loading', 'true');
+          existing.addEventListener('load', () => {
+            existing.setAttribute('data-loaded', 'true');
+            resolve();
+          }, { once: true });
+          existing.addEventListener('error', () => reject(new Error(`Failed to load script: ${src}`)), { once: true });
+          return;
+        }
+        const script = existing || document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.setAttribute('data-loading', 'true');
+        script.addEventListener('load', () => {
+          script.setAttribute('data-loaded', 'true');
+          resolve();
+        }, { once: true });
+        script.addEventListener('error', () => reject(new Error(`Failed to load script: ${src}`)), { once: true });
+        if (!existing) {
+          document.head.appendChild(script);
+        }
+      });
+    }
+
+    async function ensurePdfJs() {
+      if (window.pdfjsLib) {
+        return window.pdfjsLib;
+      }
+      if (!pdfjsPromise) {
+        pdfjsPromise = (async () => {
+          try {
+            await loadScript(`${PDFJS_PRIMARY_BASE}/pdf.min.js`);
+            await loadScript(`${PDFJS_PRIMARY_BASE}/pdf.worker.min.js`);
+            pdfjsBaseUrl = PDFJS_PRIMARY_BASE;
+          } catch (primaryErr) {
+            console.warn('Primary PDF.js load failed, falling back', primaryErr);
+            await loadScript(`${PDFJS_FALLBACK_BASE}/pdf.min.js`);
+            await loadScript(`${PDFJS_FALLBACK_BASE}/pdf.worker.min.js`);
+            pdfjsBaseUrl = PDFJS_FALLBACK_BASE;
+          }
+          if (!window.pdfjsLib) {
+            throw new Error('PDF.js library failed to initialise.');
+          }
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${pdfjsBaseUrl}/pdf.worker.min.js`;
+          return window.pdfjsLib;
+        })();
+      }
+      return pdfjsPromise;
+    }
+
+    async function renderCroppedPreview(bytes) {
+      if (!bytes) {
+        clearCroppedPreview();
+        return;
+      }
+      croppedPreviewContainer.hidden = false;
+      const pdfjsLib = await ensurePdfJs();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1.6 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d', { alpha: false });
+      await page.render({ canvasContext: context, viewport }).promise;
+      croppedPreviewImage.src = canvas.toDataURL('image/jpeg', 0.9);
+      croppedPreviewContainer.hidden = false;
+    }
+
+    function parseControlPoints(rawLines) {
+      const lines = rawLines.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      return lines.map((line) => {
+        const [name, latStr, lonStr, xStr, yStr] = line.split(',').map((part) => part.trim());
+        const lat = Number.parseFloat(latStr);
+        const lon = Number.parseFloat(lonStr);
+        const x = Number.parseFloat(xStr);
+        const y = Number.parseFloat(yStr);
+        if (![name, lat, lon, x, y].every((value) => value !== '' && Number.isFinite(value))) {
+          throw new Error(`Invalid control point line: ${line}`);
+        }
+        return { name, lat, lon, x, y };
+      });
+    }
+
+    function parseSpeed(text) {
+      const token = (text || '').trim().toLowerCase().replace(/\s+/g, '');
+      let unit = 'kt';
+      let numeric = token;
+      if (token.endsWith('kts')) {
+        numeric = token.slice(0, -3);
+      } else if (token.endsWith('kt')) {
+        numeric = token.slice(0, -2);
+      } else if (token.endsWith('mph')) {
+        unit = 'mph';
+        numeric = token.slice(0, -3);
+      }
+      const value = Number.parseFloat(numeric || '75');
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error('Invalid speed value');
+      }
+      const mps = value * (unit === 'kt' ? KNOT_TO_MPS : MPH_TO_MPS);
+      return { value, unit, mps, label: `${value.toFixed(1)} ${unit}` };
+    }
+
+    function parseNumericInput(input, fallback) {
+      const rawValue = input?.value?.trim();
+      if (!rawValue) {
+        input.value = String(fallback);
+        return fallback;
+      }
+      const value = Number.parseFloat(rawValue);
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error(`${input.id} must be a positive number.`);
+      }
+      const rounded = Math.round(value * 100) / 100;
+      input.value = rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded);
+      return rounded;
+    }
+
+    function parseWaypoints(raw) {
+      const points = raw.split(/\r?\n/).map(raw => raw.trim()).filter(line => line && !line.startsWith('#')).map(line => {
+        const parts = line.split(',').map(part => part.trim());
+        if (parts.length !== 3) { throw new Error(`Invalid waypoint line: ${line}`); }
+        const [name, latStr, lonStr] = parts;
+        const lat = Number.parseFloat(latStr); const lon = Number.parseFloat(lonStr);
+        if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) { throw new Error(`Invalid waypoint line: ${line}`); }
+        return [name, lat, lon];
+      });
+      if (points.length < 2) { throw new Error('At least two waypoints are required'); }
+      return points;
+    }
+
+    function dmsToDecimal(raw) {
+      const cleaned = (raw || '').trim().replace(/\s+/g, ' '); if (!cleaned) { return null; }
+      const parts = cleaned.split(' ');
+      const [dir, degPart] = [parts[0][0].toUpperCase(), parts[0].slice(1)];
+      const [degrees, minutes, seconds] = [degPart, parts[1] || '0', parts[2] || '0'].map(p => Number.parseInt(p, 10));
+      if (![degrees, minutes, seconds].every(Number.isFinite)) { return null; }
+      let decimal = degrees + minutes / 60 + seconds / 3600;
+      if (dir === 'S' || dir === 'W') { decimal *= -1; }
+      return Number(decimal.toFixed(6));
+    }
+
+    function parseLocationsCsv(csvText) {
+      const lines = csvText.split(/\r?\n/).filter(line => line.trim());
+      if (lines.length <= 1) { return { records: [], types: [], countries: [] }; }
+      const records = [], types = new Set(), countries = new Set(), seen = new Set();
+      for (let i = 1; i < lines.length; i++) {
+        const [name, id, type, country, latText, lonText] = lines[i].split(',').map(s => (s || '').trim());
+        const lat = dmsToDecimal(latText); const lon = dmsToDecimal(lonText);
+        if (!name || lat === null || lon === null) { continue; }
+        const key = `${name}|${lat}|${lon}`; if (seen.has(key)) { continue; } seen.add(key);
+        const entry = { name, id, type: type || 'Unknown', country: country || 'Unknown', lat, lon };
+        records.push(entry); types.add(entry.type); countries.add(entry.country);
+      }
+      return { records, types: Array.from(types).sort(), countries: Array.from(countries).sort() };
+    }
+
+    async function ensureLocationLibrary() {
+      if (locationLibrary) { return locationLibrary; }
+      try {
+        updateWaypointLibraryStatus('Loading locations...');
+        const response = await fetch(LOCATION_FILE);
+        if (!response.ok) { throw new Error(`${response.status} ${response.statusText}`); }
+        const parsed = parseLocationsCsv(await response.text());
+        locationLibrary = parsed;
+        updateSelectOptions(locationTypeFilter, parsed.types, 'All types');
+        updateSelectOptions(locationCountryFilter, parsed.countries, 'All countries');
+        renderLocationList();
+        updateWaypointLibraryStatus(parsed.records.length ? `Loaded ${parsed.records.length} locations.` : 'No locations found.');
+      } catch (err) {
+        console.error('Failed to load locations', err);
+        updateWaypointLibraryStatus('Could not load saved locations.', true);
+        locationLibrary = { records: [], types: [], countries: [] };
+      }
+      return locationLibrary;
+    }
+    
+    function updateSelectOptions(selectEl, entries, allLabel) {
+        selectEl.innerHTML = `<option value="all">${allLabel}</option>`;
+        for (const value of entries) { selectEl.innerHTML += `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`; }
+    }
+
+    function updateWaypointLibraryStatus(message, isError = false) {
+      if (!waypointLibraryStatus) { return; }
+      waypointLibraryStatus.textContent = message;
+      waypointLibraryStatus.style.color = isError ? 'var(--color-danger)' : 'var(--color-text-muted)';
+    }
+
+    const matchesLocationFilters = (loc) => {
+        const search = (locationFilters.search || '').toLowerCase();
+        return (!search || `${loc.name} ${loc.id}`.toLowerCase().includes(search)) &&
+               (locationFilters.type === 'all' || loc.type === locationFilters.type) &&
+               (locationFilters.country === 'all' || loc.country === locationFilters.country);
+    };
+
+    function renderLocationList() {
+        if (!locationsList || !locationLibrary) { return; }
+        const filtered = locationLibrary.records.filter(matchesLocationFilters);
+        if (filtered.length === 0) {
+            locationsList.innerHTML = `<div style="padding: 0.5rem; color: #6c757d;">No locations match filters.</div>`;
+            return;
+        }
+        locationsList.innerHTML = filtered.map(loc => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid #eee; gap: 0.75rem;">
+                <div>
+                    <div>${escapeHtml(loc.name)}</div>
+                    <div style="font-size: 0.8rem; color: #6c757d;">${escapeHtml(loc.id || '—')} &bull; ${escapeHtml(loc.type)}</div>
+                </div>
+                <button class="btn btn-secondary" data-lat="${loc.lat}" data-lon="${loc.lon}" data-name="${escapeHtml(loc.name)}" data-id="${escapeHtml(loc.id || '')}" data-type="${escapeHtml(loc.type)}">Add</button>
+            </div>
+        `).join('');
+    }
+
+    function appendLocationToWaypoints(name, lat, lon) {
+        const line = `${name},${lat.toFixed(6)},${lon.toFixed(6)}`;
+        const current = waypointTextarea.value.trim();
+        waypointTextarea.value = current ? `${current}\n${line}` : line;
+        waypointTextarea.dispatchEvent(new Event('change'));
+    }
+
+    async function toggleWaypointLibraryVisibility() {
+        const shouldOpen = waypointLibrary.hidden;
+        waypointLibraryToggle.disabled = true;
+        try {
+            if (shouldOpen) {
+                waypointLibrary.hidden = false;
+                await ensureLocationLibrary();
+            } else {
+                waypointLibrary.hidden = true;
+            }
+        } finally {
+            waypointLibraryToggle.disabled = false;
+        }
+    }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const [phi1, phi2, dphi, dlambda] = [lat1, lat2, lat2 - lat1, lon2 - lon1].map(d => d * Math.PI / 180);
+      const a = Math.sin(dphi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlambda / 2) ** 2;
+      return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function buildRoute(points) {
+      const legs = []; let cumulative = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        const [nameA, latA, lonA] = points[i];
+        const [nameB, latB, lonB] = points[i + 1];
+        const length = haversine(latA, lonA, latB, lonB);
+        legs.push({ fromName: nameA, toName: nameB, fromLat: latA, fromLon: lonA, toLat: latB, toLon: lonB, length, cumulativeStart: cumulative });
+        cumulative += length;
+      }
+      return { legs, totalDistance: cumulative };
+    }
+    
+    function solveAffine(cp) {
+      const [lonLat, xT, yT] = [cp.map(([, lat, lon]) => [lon, lat]), cp.map(p => p[3]), cp.map(p => p[4])];
+      const A = lonLat.map(p => [...p, 1]);
+      const det = (m) => m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+      const detA = det(A);
+      if (Math.abs(detA) < 1e-9) { throw new Error('Control points are colinear.'); }
+      const rep = (c, v) => A.map((r, i) => r.map((val, j) => (j === c ? v[i] : val)));
+      const [ax, bx, cx] = [0, 1, 2].map(c => det(rep(c, xT)) / detA);
+      const [ay, by, cy] = [0, 1, 2].map(c => det(rep(c, yT)) / detA);
+      return { project(lat, lon) { return [ax*lon+bx*lat+cx, ay*lon+by*lat+cy]; } };
+    }
+
+    function previewToPdf(x, y, pw, ph, bw, bh) { return [x / bw * pw, ph - (y / bh * ph)]; }
+    function normalize(dx, dy) { const l = Math.hypot(dx, dy); return l === 0 ? [0, 0] : [dx / l, dy / l]; }
+
+    function rotatedBoundingBox(x, y, width, height, angleRad) {
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      const xs = [];
+      const ys = [];
+      [[0, 0], [width, 0], [width, height], [0, height]].forEach(([cx, cy]) => {
+        const px = x + cx * cos - cy * sin;
+        const py = y + cx * sin + cy * cos;
+        xs.push(px);
+        ys.push(py);
+      });
+      return [
+        Math.min(...xs) - LABEL_COLLISION_MARGIN,
+        Math.min(...ys) - LABEL_COLLISION_MARGIN,
+        Math.max(...xs) + LABEL_COLLISION_MARGIN,
+        Math.max(...ys) + LABEL_COLLISION_MARGIN,
+      ];
+    }
+
+    function rotatedCorners(x, y, width, height, angleRad) {
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      return [[0, 0], [width, 0], [width, height], [0, height]].map(([cx, cy]) => [
+        x + cx * cos - cy * sin,
+        y + cx * sin + cy * cos,
+      ]);
+    }
+
+    function boxesOverlap(a, b) {
+      return !(a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1]);
+    }
+
+    function formatElapsedMinutesLabel(totalMinutes, useHourFormat) {
+      if (!Number.isFinite(totalMinutes)) {
+        return '';
+      }
+      const normalized = Math.max(0, totalMinutes);
+      const totalSeconds = Math.round(normalized * 60);
+      if (normalized >= 60 - 1e-6 || (useHourFormat && normalized >= 60)) {
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        return `${hours}:${String(minutes).padStart(2, '0')}`;
+      }
+      return String(Math.round(normalized)).padStart(2, '0');
+    }
+
+    function formatWaypointTimeLabel(totalMinutes) {
+      if (!Number.isFinite(totalMinutes)) {
+        return '';
+      }
+      const normalized = Math.max(0, totalMinutes);
+      const totalSeconds = Math.round(normalized * 60);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (normalized >= 60 - 1e-6) {
+        const hours = Math.floor(totalSeconds / 3600);
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      const wholeMinutes = Math.floor(totalSeconds / 60);
+      return `${String(wholeMinutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function adjustLabelPosition(x, y, dirX, dirY, width, height, angleRad, placedBoxes, options = {}) {
+      const step = options.step ?? LABEL_DISTANCE_STEP;
+      const maxSteps = options.maxSteps ?? MAX_LABEL_ADJUST_STEPS;
+      const fallbackAngleRad = options.fallbackAngleRad ?? null;
+      const allowNegative = options.allowNegative ?? true;
+
+      const length = Math.hypot(dirX, dirY);
+      const primaryDir = length === 0 ? [1, 0] : [dirX / length, dirY / length];
+      const fallbackDir = fallbackAngleRad != null
+        ? [Math.cos(fallbackAngleRad), Math.sin(fallbackAngleRad)]
+        : [primaryDir[1], -primaryDir[0]];
+
+      const directions = [primaryDir, fallbackDir];
+
+      const testPositions = (direction) => {
+        const [dx, dy] = direction;
+        for (let i = 0; i <= maxSteps; i += 1) {
+          const multipliers = i === 0 ? [0] : allowNegative ? [i, -i] : [i];
+          for (const mult of multipliers) {
+            const candX = x + dx * mult * step;
+            const candY = y + dy * mult * step;
+            const bbox = rotatedBoundingBox(candX, candY, width, height, angleRad);
+            if (!placedBoxes.some((existing) => boxesOverlap(bbox, existing))) {
+              return { x: candX, y: candY, box: bbox };
+            }
+          }
+        }
+        return null;
+      };
+
+      for (const direction of directions) {
+        const result = testPositions(direction);
+        if (result) {
+          return result;
+        }
+      }
+
+      return { x, y, box: rotatedBoundingBox(x, y, width, height, angleRad) };
+    }
+    function bearingDegrees(lat1, lon1, lat2, lon2) {
+      const [lat1Rad, lat2Rad, dLon] = [lat1, lat2, lon2 - lon1].map(d => d * Math.PI / 180);
+      const y = Math.sin(dLon) * Math.cos(lat2Rad);
+      const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+    function computeWaypointTimes(route, points, takeoffToSp, metersPerMinute) {
+      return new Map(points.map((p, i) => {
+        let distFromSp = 0;
+        if (i > 0) {
+          const leg = route.legs[i - 1];
+          distFromSp = leg.cumulativeStart + leg.length;
+        }
+        return [p[0], takeoffToSp + distFromSp / metersPerMinute];
+      }));
+    }
+
+    function computeMinuteMarkersRaw(route, takeoffToSp, mpm, interval) {
+      const markers = [];
+      const maxMinute = takeoffToSp + route.totalDistance / mpm;
+      for (let minute = 0; minute <= maxMinute + 1e-6; minute += interval) {
+        const distFromSp = (minute - takeoffToSp) * mpm;
+        if (distFromSp < -1e-6 || distFromSp > route.totalDistance + 1e-6) { continue; }
+        let remaining = distFromSp;
+        for (const leg of route.legs) {
+          if (remaining <= leg.length + 1e-6) {
+            const ratio = leg.length === 0 ? 0 : remaining / Math.max(leg.length, 1e-6);
+            markers.push({ minute, leg, ratio, lat: leg.fromLat + ratio * (leg.toLat - leg.fromLat), lon: leg.fromLon + ratio * (leg.toLon - leg.fromLon) });
+            break;
+          }
+          remaining -= leg.length;
+        }
+      }
+      return markers;
+    }
+    
+    async function generate() {
+      const originalButtonHtml = generateBtn.innerHTML;
+      try {
+        generateBtn.disabled = true;
+        generateBtn.classList.add('is-loading');
+        setStatus('Processing...');
+        resultsContent.hidden = true;
+        if (resultsPlaceholder && !hasGeneratedOnce) {
+          resultsPlaceholder.hidden = false;
+        }
+
+        clearDownloadUrl('pdf', downloadPdfLink);
+        clearDownloadUrl('overlay', downloadOverlayLink);
+        clearDownloadUrl('cropped', downloadCroppedLink);
+        clearDownloadUrl('summary', downloadSummaryLink);
+        downloadOverlayLink.style.display = 'none';
+        downloadCroppedLink.style.display = 'none';
+        downloadSummaryLink.style.display = 'none';
+        clearCroppedPreview();
+        if (outputsSection) {
+          outputsSection.hidden = true;
+        }
+        if (summarySection) {
+          summarySection.hidden = true;
+        }
+        if (osmMapContainer) {
+          osmMapContainer.hidden = true;
+        }
+        syncResultsVisibility();
+
+        const mapConfig = getPreset();
+        if (!mapConfig) { throw new Error(`Unknown map preset: ${selectedMapKey}`); }
+
+        const speed = parseSpeed(document.getElementById('speed').value);
+        const minuteInterval = parseNumericInput(minuteIntervalInput, DEFAULT_MINUTE_INTERVAL);
+        const takeoffToSp = parseNumericInput(takeoffBufferInput, DEFAULT_TAKEOFF_BUFFER);
+        const points = parseWaypoints(document.getElementById('waypoints').value);
+
+        const route = buildRoute(points);
+        const metersPerMinute = speed.mps * 60;
+        const waypointTimes = computeWaypointTimes(route, points, takeoffToSp, metersPerMinute);
+        const legsSummary = route.legs.map((leg) => ({
+          id: `${leg.fromName}-${leg.toName}`,
+          distanceKm: leg.length / 1000,
+          bearingDeg: Math.round(bearingDegrees(leg.fromLat, leg.fromLon, leg.toLat, leg.toLon))
+        }));
+        const routeDurationMinutes = takeoffToSp + route.totalDistance / metersPerMinute;
+        const useHourFormat = routeDurationMinutes >= 60 - 1e-6;
+        const minuteMarkersRaw = computeMinuteMarkersRaw(route, takeoffToSp, metersPerMinute, minuteInterval);
+
+        let summaryMinuteMarkersOutput = minuteMarkersRaw.map(m => ({
+          minute: m.minute,
+          timeLabel: formatElapsedMinutesLabel(m.minute, useHourFormat),
+          leg: `${m.leg.fromName}-${m.leg.toName}`,
+          fraction: m.ratio,
+        }));
+        let summaryCropped = null;
+        let mapFilename = mapConfig.type === 'pdf' ? mapConfig.fileName : null;
+
+        if (mapConfig.type === 'pdf') {
+          const mapBytes = await ensurePresetBuffer(selectedMapKey);
+          if (!mapBytes) { throw new Error('Map PDF unavailable.'); }
+          updateMapStatus(`Using ${mapConfig.label}`);
+          
+          const affine = solveAffine(mapConfig.controlPoints);
+          const { PDFDocument, rgb, StandardFonts } = PDFLib;
+          const pdfDoc = await PDFDocument.load(mapBytes);
+          const overlayDoc = await PDFDocument.create();
+          const [page] = pdfDoc.getPages();
+          const [pageWidth, pageHeight] = [page.getWidth(), page.getHeight()];
+          const overlayPage = overlayDoc.addPage([pageWidth, pageHeight]);
+          const scaleAvg = (pageWidth / mapConfig.baseWidth + pageHeight / mapConfig.baseHeight) / 2;
+          
+          const ds = {
+              routeLineWidth: Math.max(0.4, ROUTE_WIDTH_SCALE * scaleAvg),
+              tpRadius: TP_RADIUS_SCALE * scaleAvg,
+              tpFontSize: Math.max(4, TP_FONT_SCALE * scaleAvg),
+              minuteCrossHalf: MINUTE_TICK_HALF_SCALE * scaleAvg,
+              minuteLineWidth: Math.max(0.4, MINUTE_LINE_WIDTH_SCALE * scaleAvg),
+              minuteFontSize: Math.max(3, MINUTE_LABEL_FONT_SCALE * scaleAvg),
+              headingFontSize: Math.max(4, HEADING_FONT_SCALE * scaleAvg),
+              headingOffset: HEADING_OFFSET_SCALE * scaleAvg,
+          };
+          
+          const overlayFontBold = await overlayDoc.embedFont(StandardFonts.HelveticaBold);
+          const baseFontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+          const drawTargets = [{ page: overlayPage, fontBold: overlayFontBold }, { page, fontBold: baseFontBold }];
+
+          const colors = { route: rgb(0.82, 0, 0), heading: rgb(1, 0, 0), minute: rgb(0.05, 0.15, 0.4) };
+          const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+          const expandBounds = (x, y) => {
+            bounds.minX = Math.min(bounds.minX, x);
+            bounds.minY = Math.min(bounds.minY, y);
+            bounds.maxX = Math.max(bounds.maxX, x);
+            bounds.maxY = Math.max(bounds.maxY, y);
+          };
+          const placedLabelBoxes = [];
+          const registerLabelBox = (box) => {
+            placedLabelBoxes.push(box);
+            const [minX, minY, maxX, maxY] = box;
+            expandBounds(minX, minY);
+            expandBounds(minX, maxY);
+            expandBounds(maxX, minY);
+            expandBounds(maxX, maxY);
+          };
+
+          const projected = points.map(([name, lat, lon]) => ({ name, pdf: previewToPdf(...affine.project(lat, lon), pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight) }));
+          const pointLookup = new Map(projected.map((p) => [p.name, p.pdf]));
+
+          for (let i = 0; i < projected.length - 1; i++) {
+            const [x1, y1] = projected[i].pdf; const [x2, y2] = projected[i+1].pdf;
+            const [dx, dy] = [x2 - x1, y2 - y1]; const dist = Math.hypot(dx, dy); if (dist === 0) continue;
+            const [ux, uy] = normalize(dx, dy);
+            const trim = Math.min(ds.tpRadius, Math.max(0, dist / 2 - ds.routeLineWidth));
+            const [sx, sy, ex, ey] = [x1 + ux * trim, y1 + uy * trim, x2 - ux * trim, y2 - uy * trim];
+            if (Math.hypot(ex-sx, ey-sy) < 0.2) continue;
+            expandBounds(sx, sy); expandBounds(ex, ey);
+            drawTargets.forEach(t => t.page.drawLine({ start: { x: sx, y: sy }, end: { x: ex, y: ey }, thickness: ds.routeLineWidth, color: colors.route }));
+          }
+
+          for (let i = 0; i < projected.length; i++) {
+            const { name, pdf } = projected[i];
+            const [x, y] = pdf;
+            expandBounds(x - ds.tpRadius, y - ds.tpRadius);
+            expandBounds(x + ds.tpRadius, y + ds.tpRadius);
+            drawTargets.forEach((t) => t.page.drawCircle({ x, y, size: ds.tpRadius, borderWidth: ds.routeLineWidth, borderColor: colors.route }));
+
+            const nextVec = i < projected.length - 1 ? [projected[i + 1].pdf[0] - x, projected[i + 1].pdf[1] - y] : [0, 0];
+            const prevVec = i > 0 ? [x - projected[i - 1].pdf[0], y - projected[i - 1].pdf[1]] : [0, 0];
+            let vOut = nextVec;
+            let vIn = prevVec;
+            if (Math.hypot(vOut[0], vOut[1]) < 1e-6 && Math.hypot(vIn[0], vIn[1]) < 1e-6) {
+              vOut = [1, 0];
+            }
+            const vOutUnit = normalize(vOut[0], vOut[1]);
+            let vInUnit = Math.hypot(vIn[0], vIn[1]) < 1e-6 ? [-vOutUnit[0], -vOutUnit[1]] : normalize(vIn[0], vIn[1]);
+            const sumVec = [vInUnit[0] + vOutUnit[0], vInUnit[1] + vOutUnit[1]];
+            const sumLen = Math.hypot(sumVec[0], sumVec[1]);
+            let exterior = sumLen > 1e-6 ? [-sumVec[0] / sumLen, -sumVec[1] / sumLen] : normalize(-vOutUnit[1], vOutUnit[0]);
+            if (Math.hypot(exterior[0], exterior[1]) < 1e-6) {
+              exterior = normalize(vOutUnit[1], -vOutUnit[0]);
+            }
+
+            let headingVec = vInUnit;
+            if (i === 0 && projected.length > 1) {
+              headingVec = normalize(projected[1].pdf[0] - x, projected[1].pdf[1] - y);
+            }
+            if (Math.hypot(headingVec[0], headingVec[1]) < 1e-6) {
+              headingVec = vOutUnit;
+            }
+            const headingAngleRad = Math.atan2(headingVec[1], headingVec[0]) - Math.PI / 2;
+            const headingAngleDeg = headingAngleRad * 180 / Math.PI;
+
+            let radialDir = normalize(exterior[0], exterior[1]);
+            if (Math.hypot(radialDir[0], radialDir[1]) < 1e-6) {
+              radialDir = [1, 0];
+            }
+            let tangentialDir = normalize(-radialDir[1], radialDir[0]);
+            if (Math.hypot(tangentialDir[0], tangentialDir[1]) < 1e-6) {
+              tangentialDir = [0, 1];
+            }
+
+            const labelMargin = Math.max(
+              ds.tpFontSize * TP_LABEL_OFFSET_FACTOR,
+              ds.routeLineWidth * 2.5,
+              ds.minuteCrossHalf * 2.2,
+            );
+            const baseRadius = ds.tpRadius + labelMargin;
+
+            const candidateConfigs = [
+              [1.0, 0.0],
+              [0.95, 0.25],
+              [0.95, -0.25],
+              [0.85, 0.45],
+              [0.85, -0.45],
+            ];
+
+            const pdfName = sanitizePdfText(name);
+            const nameWidth = overlayFontBold.widthOfTextAtSize(pdfName, ds.tpFontSize);
+            const nameHeight = ds.tpFontSize;
+
+            let bestPlacement = null;
+            let bestVec = radialDir;
+            for (const [radialWeight, tangentialWeight] of candidateConfigs) {
+              let vec = [
+                radialDir[0] * radialWeight + tangentialDir[0] * tangentialWeight,
+                radialDir[1] * radialWeight + tangentialDir[1] * tangentialWeight,
+              ];
+              if (Math.hypot(vec[0], vec[1]) < 1e-6) {
+                continue;
+              }
+              vec = normalize(vec[0], vec[1]);
+              if (vec[0] * radialDir[0] + vec[1] * radialDir[1] <= 0.25) {
+                continue;
+              }
+              const anchorX = x + vec[0] * baseRadius;
+              const anchorY = y + vec[1] * baseRadius;
+              const fallbackAngleRad = Math.atan2(vec[1], vec[0]);
+              const adjusted = adjustLabelPosition(
+                anchorX,
+                anchorY,
+                vec[0],
+                vec[1],
+                nameWidth,
+                nameHeight,
+                headingAngleRad,
+                placedLabelBoxes,
+                { fallbackAngleRad, allowNegative: false }
+              );
+              const distance = Math.hypot(adjusted.x - x, adjusted.y - y);
+              if (!bestPlacement || distance < bestPlacement.distance) {
+                bestPlacement = { distance, position: adjusted };
+                bestVec = vec;
+              }
+            }
+
+            if (!bestPlacement) {
+              const adjusted = adjustLabelPosition(
+                x + radialDir[0] * baseRadius,
+                y + radialDir[1] * baseRadius,
+                radialDir[0],
+                radialDir[1],
+                nameWidth,
+                nameHeight,
+                headingAngleRad,
+                placedLabelBoxes,
+                { allowNegative: false }
+              );
+              bestPlacement = { distance: Math.hypot(adjusted.x - x, adjusted.y - y), position: adjusted };
+              bestVec = radialDir;
+            }
+
+            if (bestPlacement.distance < baseRadius - 0.5) {
+              let direction = [bestPlacement.position.x - x, bestPlacement.position.y - y];
+              if (Math.hypot(direction[0], direction[1]) < 1e-6) {
+                direction = bestVec;
+              }
+              direction = normalize(direction[0], direction[1]);
+              const newX = x + direction[0] * baseRadius;
+              const newY = y + direction[1] * baseRadius;
+              const newBox = rotatedBoundingBox(newX, newY, nameWidth, nameHeight, headingAngleRad);
+              if (!placedLabelBoxes.some((existing) => boxesOverlap(newBox, existing))) {
+                bestPlacement = {
+                  distance: baseRadius,
+                  position: { x: newX, y: newY, box: newBox },
+                };
+              }
+            }
+
+            const ensureOutside = () => {
+              const corners = rotatedCorners(bestPlacement.position.x, bestPlacement.position.y, nameWidth, nameHeight, headingAngleRad);
+              const minCornerDistance = Math.min(...corners.map(([cx, cy]) => Math.hypot(cx - x, cy - y)));
+              const requiredDistance = ds.tpRadius + ds.routeLineWidth * 1.5;
+              if (minCornerDistance < requiredDistance) {
+                let direction = normalize(bestVec[0], bestVec[1]);
+                if (Math.hypot(direction[0], direction[1]) < 1e-6) {
+                  direction = [...radialDir];
+                }
+                const push = requiredDistance - minCornerDistance + 1.5;
+                const newX = bestPlacement.position.x + direction[0] * push;
+                const newY = bestPlacement.position.y + direction[1] * push;
+                const newBox = rotatedBoundingBox(newX, newY, nameWidth, nameHeight, headingAngleRad);
+                bestPlacement = {
+                  distance: Math.hypot(newX - x, newY - y),
+                  position: { x: newX, y: newY, box: newBox },
+                };
+              }
+            };
+            ensureOutside();
+
+        registerLabelBox(bestPlacement.position.box);
+        drawTargets.forEach((t) => {
+          t.page.drawText(pdfName, {
+            x: bestPlacement.position.x,
+            y: bestPlacement.position.y,
+            size: ds.tpFontSize,
+            font: t.fontBold,
+            color: colors.route,
+            rotate: PDFLib.degrees(headingAngleDeg),
+          });
+        });
+
+        const timeMinutes = waypointTimes.get(name);
+        const timeLabel = typeof timeMinutes === 'number' ? formatWaypointTimeLabel(timeMinutes) : null;
+        if (timeLabel) {
+          let timeDir = normalize(-bestVec[1], bestVec[0]);
+          if (Math.hypot(timeDir[0], timeDir[1]) < 1e-6) {
+            timeDir = [0, 1];
+          }
+          const timeFontSize = Math.max(4, ds.tpFontSize * 0.75);
+          const timeMargin = Math.max(timeFontSize * 0.6, ds.routeLineWidth * 1.4, ds.minuteCrossHalf);
+          const timeRadius = baseRadius + timeMargin;
+          const timeAnchorX = x + timeDir[0] * timeRadius;
+          const timeAnchorY = y + timeDir[1] * timeRadius;
+          const fallbackAngleRad = Math.atan2(bestVec[1], bestVec[0]);
+          const timeWidth = overlayFontBold.widthOfTextAtSize(timeLabel, timeFontSize);
+          const timeHeight = timeFontSize;
+          const adjustedTime = adjustLabelPosition(
+            timeAnchorX,
+            timeAnchorY,
+            timeDir[0],
+            timeDir[1],
+            timeWidth,
+            timeHeight,
+            headingAngleRad,
+            placedLabelBoxes,
+            { fallbackAngleRad }
+          );
+          registerLabelBox(adjustedTime.box);
+          drawTargets.forEach((t) => {
+            t.page.drawText(timeLabel, {
+              x: adjustedTime.x,
+              y: adjustedTime.y,
+              size: timeFontSize,
+              font: t.fontBold,
+              color: colors.minute,
+              rotate: PDFLib.degrees(headingAngleDeg),
+            });
+          });
+        }
+      }
+
+          minuteMarkersRaw.forEach((m) => {
+            const legStart = pointLookup.get(m.leg.fromName);
+            const legEnd = pointLookup.get(m.leg.toName);
+            if (!legStart || !legEnd) {
+              return;
+            }
+            const [dx, dy] = [legEnd[0] - legStart[0], legEnd[1] - legStart[1]];
+            const segLength = Math.hypot(dx, dy);
+            if (segLength === 0) {
+              return;
+            }
+            const [ux, uy] = [dx / segLength, dy / segLength];
+            const [pxVec, pyVec] = [-uy, ux];
+            const [xp, yp] = previewToPdf(...affine.project(m.lat, m.lon), pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
+            if (Math.hypot(xp - legStart[0], yp - legStart[1]) < ds.tpRadius || Math.hypot(xp - legEnd[0], yp - legEnd[1]) < ds.tpRadius) {
+              return;
+            }
+            const markerOffset = ds.minuteCrossHalf;
+            const [x1, y1, x2, y2] = [
+              xp - pxVec * markerOffset,
+              yp - pyVec * markerOffset,
+              xp + pxVec * markerOffset,
+              yp + pyVec * markerOffset,
+            ];
+            expandBounds(x1, y1);
+            expandBounds(x2, y2);
+            drawTargets.forEach((t) => t.page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: ds.minuteLineWidth, color: colors.minute }));
+
+            const minuteLabel = formatElapsedMinutesLabel(m.minute, useHourFormat);
+            const labelOffset = markerOffset * MINUTE_LABEL_OFFSET_MULTIPLIER;
+            const baseX = xp + pxVec * labelOffset;
+            const baseY = yp + pyVec * labelOffset;
+            const angleRad = Math.atan2(dy, dx);
+            const angleDeg = angleRad * 180 / Math.PI - 90;
+            const textAngleRad = angleDeg * Math.PI / 180;
+            const textWidth = overlayFontBold.widthOfTextAtSize(minuteLabel, ds.minuteFontSize);
+            const textHeight = ds.minuteFontSize;
+            const fallbackAngleRad = Math.atan2(pyVec, pxVec) + Math.PI / 2;
+            const adjusted = adjustLabelPosition(
+              baseX,
+              baseY,
+              pxVec,
+              pyVec,
+              textWidth,
+              textHeight,
+              textAngleRad,
+              placedLabelBoxes,
+              { fallbackAngleRad }
+            );
+            registerLabelBox(adjusted.box);
+
+            drawTargets.forEach((t) => {
+              t.page.drawText(minuteLabel, {
+                x: adjusted.x,
+                y: adjusted.y,
+                size: ds.minuteFontSize,
+                font: t.fontBold,
+                color: colors.minute,
+                rotate: PDFLib.degrees(angleDeg),
+              });
+            });
+          });
+          
+          for (let i = 0; i < route.legs.length; i++) {
+            const start = projected[i].pdf;
+            const end = projected[i + 1].pdf;
+            const [dx, dy] = [end[0] - start[0], end[1] - start[1]];
+            const segLength = Math.hypot(dx, dy);
+            if (segLength === 0) {
+              continue;
+            }
+            const [ux, uy] = [dx / segLength, dy / segLength];
+            const [pxVec, pyVec] = [-uy, ux];
+            const midX = (start[0] + end[0]) / 2;
+            const midY = (start[1] + end[1]) / 2;
+            const anchorX = midX + pxVec * ds.headingOffset;
+            const anchorY = midY + pyVec * ds.headingOffset;
+            const text = `${legsSummary[i].bearingDeg}°`.padStart(4, '0');
+            const angleRad = Math.atan2(dy, dx);
+            const angleDeg = angleRad * 180 / Math.PI - 90;
+            const textAngleRad = angleDeg * Math.PI / 180;
+            const textWidth = overlayFontBold.widthOfTextAtSize(text, ds.headingFontSize);
+            const textHeight = ds.headingFontSize;
+            const fallbackAngleRad = Math.atan2(pyVec, pxVec) + Math.PI / 2;
+            const adjusted = adjustLabelPosition(
+              anchorX,
+              anchorY,
+              pxVec,
+              pyVec,
+              textWidth,
+              textHeight,
+              textAngleRad,
+              placedLabelBoxes,
+              { fallbackAngleRad }
+            );
+            registerLabelBox(adjusted.box);
+
+            drawTargets.forEach((t) => {
+              t.page.drawText(text, {
+                x: adjusted.x,
+                y: adjusted.y,
+                size: ds.headingFontSize,
+                font: t.fontBold,
+                color: colors.heading,
+                rotate: PDFLib.degrees(angleDeg),
+              });
+            });
+          }
+
+          const overlayOnlyBytes = await overlayDoc.save(); const markedBytes = await pdfDoc.save(); let croppedBytes = null;
+          if (Object.values(bounds).every(Number.isFinite)) {
+            const m = 10 * MM_TO_PT;
+            const [minX, minY, maxX, maxY] = [Math.max(0,bounds.minX-m), Math.max(0,bounds.minY-m), Math.min(pageWidth, bounds.maxX+m), Math.min(pageHeight, bounds.maxY+m)];
+            if (maxX > minX + 1 && maxY > minY + 1) {
+              const cropDoc = await PDFDocument.create();
+              const [embedded] = await cropDoc.embedPdf(markedBytes, [0]);
+              const cropPage = cropDoc.addPage([maxX-minX, maxY-minY]);
+              cropPage.drawPage(embedded, { x: -minX, y: -minY });
+              croppedBytes = await cropDoc.save();
+              summaryCropped = { widthMm: (cropPage.getWidth()/MM_TO_PT).toFixed(1), heightMm: (cropPage.getHeight()/MM_TO_PT).toFixed(1) };
+            }
+          }
+          setDownloadUrl('pdf', URL.createObjectURL(new Blob([markedBytes], { type: 'application/pdf' })), 'route_marked.pdf', downloadPdfLink);
+          setDownloadUrl('overlay', URL.createObjectURL(new Blob([overlayOnlyBytes], { type: 'application/pdf' })), 'route_overlay.pdf', downloadOverlayLink);
+          downloadOverlayLink.style.display = 'inline-flex';
+          if (croppedBytes) {
+            setDownloadUrl('cropped', URL.createObjectURL(new Blob([croppedBytes], { type: 'application/pdf' })), 'route_cropped.pdf', downloadCroppedLink);
+            downloadCroppedLink.style.display = 'inline-flex';
+            renderCroppedPreview(croppedBytes);
+          }
+        } else {
+          await ensureOsmMap(); if (!osmMap) { throw new Error('Interactive map unavailable.'); }
+          osmLayers.forEach(l => l.remove()); osmLayers = [];
+          const latLngs = points.map(([, lat, lon]) => [lat, lon]); if (latLngs.length === 0) { throw new Error('No waypoints.'); }
+          const routeLayer = L.polyline(latLngs, { color: '#D21F26', weight: 3.5, opacity: 0.85 }).addTo(osmMap); osmLayers.push(routeLayer);
+          points.forEach(([name, lat, lon]) => {
+            osmLayers.push(L.circleMarker([lat, lon], { radius: 6, color: '#D21F26', fillColor: '#FFFFFF', fillOpacity: 0.9, weight: 2 }).addTo(osmMap));
+            const timeMinutes = waypointTimes.get(name);
+            const timeLabel = typeof timeMinutes === 'number' ? formatWaypointTimeLabel(timeMinutes) : '';
+            const labelHtml = `<div class="osm-label"><span>${escapeHtml(name)}</span>${timeLabel ? `<span class="osm-label-time">${escapeHtml(timeLabel)}</span>` : ''}</div>`;
+            osmLayers.push(L.marker([lat, lon], { icon: L.divIcon({ className: 'leaflet-marker-icon osm-label-icon', html: labelHtml }), interactive: false }).addTo(osmMap));
+          });
+          minuteMarkersRaw.forEach(m => {
+            const label = formatElapsedMinutesLabel(m.minute, useHourFormat);
+            osmLayers.push(L.circleMarker([m.lat, m.lon], { radius: 4, color: '#153E73', fillColor: '#153E73', fillOpacity: 0.85, weight: 1 }).addTo(osmMap));
+            osmLayers.push(L.marker([m.lat, m.lon], { icon: L.divIcon({ className: 'leaflet-marker-icon osm-minute-label-icon', html: `<div class="osm-minute-label">${escapeHtml(label)}</div>` }), interactive: false }).addTo(osmMap));
+          });
+          latLngs.length === 1 ? osmMap.setView(latLngs[0], 11) : osmMap.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+          downloadPdfLink.textContent = 'Print Map to PDF'; downloadPdfLink.removeAttribute('download'); downloadPdfLink.href = '#'; downloadPdfLink.onclick = (e) => { e.preventDefault(); window.print(); };
+        }
+
+        const summary = {
+          speedLabel: speed.label,
+          totalDistanceKm: route.totalDistance / 1000,
+          map: { key: selectedMapKey, label: mapConfig.label, file: mapFilename || null },
+          legs: legsSummary,
+          waypointTimes: Object.fromEntries(Array.from(waypointTimes.entries()).map(([name, minutes]) => [name, formatWaypointTimeLabel(minutes)])),
+          minuteMarkers: summaryMinuteMarkersOutput,
+          minuteInterval,
+          takeoffToSp,
+          totalMinutes: routeDurationMinutes,
+          cropped: summaryCropped,
+        };
+
+        setDownloadUrl('summary', URL.createObjectURL(new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' })), 'route_summary.json', downloadSummaryLink);
+        downloadSummaryLink.style.display = 'inline-flex';
+
+        if (outputsSection) {
+          outputsSection.hidden = false;
+        }
+
+        legsTable.innerHTML = legsSummary.map(leg => `<tr><td>${leg.id}</td><td>${leg.distanceKm.toFixed(2)}</td><td>${leg.bearingDeg}</td></tr>`).join('');
+        waypointTable.innerHTML = Array.from(waypointTimes.entries()).map(([name, minutes]) => `<tr><td>${name}</td><td>${formatWaypointTimeLabel(minutes)}</td></tr>`).join('');
+        summaryText.textContent = `${summary.speedLabel} - ${summary.totalDistanceKm.toFixed(2)} km course - ${mapConfig.label}`;
+
+        if (summarySection) {
+          summarySection.hidden = false;
+        }
+        if (osmMapContainer) {
+          osmMapContainer.hidden = mapConfig.type === 'pdf';
+        }
+
+        if (resultsPlaceholder) {
+          if (!hasGeneratedOnce) {
+            resultsPlaceholder.remove();
+            hasGeneratedOnce = true;
+          } else {
+            resultsPlaceholder.hidden = true;
+          }
+        }
+        resultsContent.hidden = false;
+        syncResultsVisibility();
+        setStatus('Flight plan calculated successfully.', false);
+
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error: ${err.message || err}`, true);
+        resultsContent.hidden = true;
+        if (resultsPlaceholder && !hasGeneratedOnce) {
+          resultsPlaceholder.hidden = false;
+        }
+        syncResultsVisibility();
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.classList.remove('is-loading');
+        generateBtn.innerHTML = originalButtonHtml;
+      }
+    }
+
+    generateBtn.addEventListener('click', generate);
+    waypointLibraryToggle.addEventListener('click', toggleWaypointLibraryVisibility);
+
+    if (libraryControls) {
+      libraryControls.addEventListener('input', (e) => {
+        if (e.target.id === 'locationSearch') {
+          locationFilters.search = e.target.value.trim();
+        }
+        if (e.target.id === 'locationTypeFilter') {
+          locationFilters.type = e.target.value;
+        }
+        if (e.target.id === 'locationCountryFilter') {
+          locationFilters.country = e.target.value;
+        }
+        renderLocationList();
+      });
+    }
+    
+    addAllFilteredBtn.addEventListener('click', () => {
+        locationLibrary?.records.filter(matchesLocationFilters).forEach(loc => appendLocationToWaypoints(loc.name, loc.lat, loc.lon));
+    });
+
+    locationsList.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON' && e.target.dataset.name) {
+            const { name, lat, lon, id, type } = e.target.dataset;
+            const typeKey = (type || '').toLowerCase();
+            const useShort = !!id && (typeKey.includes('aerodrome') || typeKey.includes('heliport'));
+            const waypointName = useShort ? id.toUpperCase() : name;
+            appendLocationToWaypoints(waypointName, parseFloat(lat), parseFloat(lon));
+        }
+    });
+
+    mapPresetButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        handleMapPresetChange(btn.dataset.mapKey);
+      });
+    });
+
+    window.addEventListener('beforeunload', () => {
+      Object.values(downloadUrls).forEach((url) => { if (url) { URL.revokeObjectURL(url); } });
+    });
+
+    // Initial UI state setup
+    setStatus('');
+    handleMapPresetChange(selectedMapKey);
+
+  </script>
+</body>
+</html>
