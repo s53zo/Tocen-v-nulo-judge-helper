@@ -520,11 +520,27 @@
       color: var(--color-danger);
     }
 
+    .preview-image-link {
+      display: inline-block;
+      width: 100%;
+      border-radius: 6px;
+    }
+
+    .preview-image-link[aria-disabled="true"] {
+      pointer-events: none;
+    }
+
+    .preview-image-link:focus-visible {
+      outline: 3px solid rgba(46, 125, 50, 0.65);
+      outline-offset: 3px;
+    }
+
     .preview-image {
       width: 100%;
       border-radius: 6px;
       border: 1px solid var(--color-border);
       box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+      cursor: zoom-in;
     }
 
     @media (max-width: 1080px) {
@@ -626,14 +642,16 @@
                 <span class="preset-title">VFR chart Slovenija</span>
                 <span class="preset-meta">Sloveniacontrol.si 2025 VFR Chart</span>
               </button>
+              <!-- Legacy preset retained for quick reactivation
               <button type="button" class="preset-card" data-map-key="legacy">
                 <span class="preset-title">1:200k legacy chart</span>
                 <span class="preset-meta">Often used at precision flying
                 competitions</span>
               </button>
+              -->
               <button type="button" class="preset-card" data-map-key="p250">
                 <span class="preset-title">1:250k P25004B</span>
-                <span class="preset-meta">New competition chart calibration</span>
+                <span class="preset-meta">S5 competition chart</span>
               </button>
               <button type="button" class="preset-card" data-map-key="osm">
                 <span class="preset-title">OpenStreetMap</span>
@@ -716,8 +734,10 @@ FP,46.608093,16.234769</textarea>
             </div>
 
             <div class="results-group" id="croppedPreviewContainer" hidden>
-              <h2>Preview</h2>
-              <img id="croppedPreviewImage" class="preview-image" alt="Cropped map preview is being generated" />
+              <h2>Preview</h2>(ctrl/cmd + click to open in new tab)
+              <a id="croppedPreviewLink" class="preview-image-link" href="#" target="_blank" rel="noopener" aria-disabled="true" aria-label="Open cropped preview in a new tab" title="Open the cropped preview in a new tab">
+                <img id="croppedPreviewImage" class="preview-image" alt="Cropped map preview is being generated" />
+              </a>
               <p class="note" id="croppedPreviewMessage">JPEG preview generated from the cropped PDF.</p>
             </div>
 
@@ -780,9 +800,10 @@ FP,46.608093,16.234769</textarea>
         label: 'P25004B chart',
         type: 'pdf',
         fileName: 'P25004BR.pdf',
-        url: 'https://s53m.com/P25004BR.pdf',
+        url: 'https://s53zo.github.io/Tocen-v-nulo-judge-helper/web/P25004BR.pdf',
         baseWidth: 11890.0,
         baseHeight: 8410.0,
+        styleScale: 4.2,
         transform: 'tfw',
         tfw: {
           pixelSizeX: 25.0,
@@ -864,9 +885,58 @@ FP,46.608093,16.234769</textarea>
       cropped: null,
       summary: null,
     };
+
+    function openPreviewInNewTab(url, descriptor) {
+      if (!url) {
+        setStatus(`Generate the overlay before opening ${descriptor}.`);
+        return;
+      }
+      const newTab = window.open('', '_blank');
+      if (!newTab) {
+        setStatus(`Pop-up blocked: allow pop-ups to open ${descriptor} in a new tab.`);
+        return;
+      }
+      newTab.opener = null;
+      newTab.location = url;
+    }
+
+    function registerDownloadPreview(linkEl, key) {
+      if (!linkEl) {
+        return;
+      }
+      const descriptor = linkEl.textContent.trim() || key;
+      const openFromEvent = (event) => {
+        event.preventDefault();
+        openPreviewInNewTab(downloadUrls[key], descriptor);
+      };
+      linkEl.addEventListener('click', (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          openFromEvent(event);
+        }
+      });
+      linkEl.addEventListener('auxclick', (event) => {
+        if (event.button === 1) {
+          openFromEvent(event);
+        }
+      });
+      linkEl.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && (event.metaKey || event.ctrlKey)) {
+          openFromEvent(event);
+        }
+      });
+      linkEl.setAttribute('title', `${descriptor} — click to download, Cmd/Ctrl-click to open in a new tab`);
+    }
+
+    registerDownloadPreview(downloadPdfLink, 'pdf');
+    registerDownloadPreview(downloadOverlayLink, 'overlay');
+    registerDownloadPreview(downloadCroppedLink, 'cropped');
+    registerDownloadPreview(downloadSummaryLink, 'summary');
+
     const croppedPreviewContainer = document.getElementById('croppedPreviewContainer');
+    const croppedPreviewLink = document.getElementById('croppedPreviewLink');
     const croppedPreviewImage = document.getElementById('croppedPreviewImage');
     const croppedPreviewMessage = document.getElementById('croppedPreviewMessage');
+
     const resultsPlaceholder = document.getElementById('resultsPlaceholder');
     const resultsContent = document.getElementById('resultsContent');
     let hasGeneratedOnce = false;
@@ -983,6 +1053,10 @@ FP,46.608093,16.234769</textarea>
     function clearCroppedPreview() {
       croppedPreviewContainer.hidden = true;
       croppedPreviewImage.removeAttribute('src');
+      if (croppedPreviewLink) {
+        croppedPreviewLink.setAttribute('aria-disabled', 'true');
+        croppedPreviewLink.removeAttribute('href');
+      }
       croppedPreviewMessage.textContent = 'JPEG preview generated from the cropped PDF.';
       syncResultsVisibility();
     }
@@ -1178,7 +1252,12 @@ FP,46.608093,16.234769</textarea>
       canvas.height = viewport.height;
       const context = canvas.getContext('2d', { alpha: false });
       await page.render({ canvasContext: context, viewport }).promise;
-      croppedPreviewImage.src = canvas.toDataURL('image/jpeg', 0.9);
+      const previewUrl = canvas.toDataURL('image/jpeg', 0.9);
+      croppedPreviewImage.src = previewUrl;
+      if (croppedPreviewLink) {
+        croppedPreviewLink.href = previewUrl;
+        croppedPreviewLink.setAttribute('aria-disabled', 'false');
+      }
       croppedPreviewContainer.hidden = false;
     }
 
@@ -1955,7 +2034,8 @@ FP,46.608093,16.234769</textarea>
           const [page] = pdfDoc.getPages();
           const [pageWidth, pageHeight] = [page.getWidth(), page.getHeight()];
           const overlayPage = overlayDoc.addPage([pageWidth, pageHeight]);
-          const scaleAvg = (pageWidth / mapConfig.baseWidth + pageHeight / mapConfig.baseHeight) / 2;
+          const styleScale = Number.isFinite(mapConfig.styleScale) ? mapConfig.styleScale : 1;
+          const scaleAvg = ((pageWidth / mapConfig.baseWidth) + (pageHeight / mapConfig.baseHeight)) / 2 * styleScale;
           const projectToPdf = (lat, lon) => {
             const [bx, by] = projector.project(lat, lon);
             return previewToPdf(bx, by, pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
@@ -2341,10 +2421,14 @@ FP,46.608093,16.234769</textarea>
             renderCroppedPreview(croppedBytes);
           }
         } else {
+          if (osmMapContainer) {
+            osmMapContainer.hidden = false;
+          }
           await ensureOsmMap(); if (!osmMap) { throw new Error('Interactive map unavailable.'); }
           osmLayers.forEach(l => l.remove()); osmLayers = [];
           const latLngs = points.map(([, lat, lon]) => [lat, lon]); if (latLngs.length === 0) { throw new Error('No waypoints.'); }
           const routeLayer = L.polyline(latLngs, { color: '#D21F26', weight: 3.5, opacity: 0.85 }).addTo(osmMap); osmLayers.push(routeLayer);
+          const routeBounds = routeLayer.getBounds();
           points.forEach(([name, lat, lon]) => {
             osmLayers.push(L.circleMarker([lat, lon], { radius: 6, color: '#D21F26', fillColor: '#FFFFFF', fillOpacity: 0.9, weight: 2 }).addTo(osmMap));
             const timeMinutes = waypointTimes.get(name);
@@ -2357,7 +2441,31 @@ FP,46.608093,16.234769</textarea>
             osmLayers.push(L.circleMarker([m.lat, m.lon], { radius: 4, color: '#153E73', fillColor: '#153E73', fillOpacity: 0.85, weight: 1 }).addTo(osmMap));
             osmLayers.push(L.marker([m.lat, m.lon], { icon: L.divIcon({ className: 'leaflet-marker-icon osm-minute-label-icon', html: `<div class="osm-minute-label">${escapeHtml(label)}</div>` }), interactive: false }).addTo(osmMap));
           });
-          latLngs.length === 1 ? osmMap.setView(latLngs[0], 11) : osmMap.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+          const refreshOsmViewport = () => {
+            if (!osmMap) { return; }
+            if (latLngs.length === 1) {
+              osmMap.setView(latLngs[0], 11);
+              return;
+            }
+            if (!routeBounds || typeof routeBounds.isValid !== 'function' || routeBounds.isValid()) {
+              osmMap.fitBounds(routeBounds, { padding: [20, 20] });
+            } else if (latLngs.length > 0) {
+              osmMap.setView(latLngs[0], 11);
+            }
+          };
+          refreshOsmViewport();
+          const scheduleViewportRefresh = (fn) => {
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(fn);
+            } else {
+              setTimeout(fn, 16);
+            }
+          };
+          scheduleViewportRefresh(() => {
+            if (!osmMap) { return; }
+            osmMap.invalidateSize();
+            refreshOsmViewport();
+          });
           downloadPdfLink.textContent = 'Print Map to PDF'; downloadPdfLink.removeAttribute('download'); downloadPdfLink.href = '#'; downloadPdfLink.onclick = (e) => { e.preventDefault(); window.print(); };
         }
 
