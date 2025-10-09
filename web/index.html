@@ -944,6 +944,8 @@ FP,46.608093,16.234769</textarea>
     const KNOT_TO_MPS = 0.514444;
     const MPH_TO_MPS = 0.44704;
     const KMH_TO_MPS = 0.277778;
+    const MAX_PREVIEW_EDGE_PX = 4096;
+    const MAX_PREVIEW_PIXELS = 16000000;
     const EARTH_RADIUS_M = 6371000.0;
     const LABEL_COLLISION_MARGIN = 3.0;
     const LABEL_DISTANCE_STEP = 5.0;
@@ -1355,7 +1357,19 @@ FP,46.608093,16.234769</textarea>
       const pdfjsLib = await ensurePdfJs();
       const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
       const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 1.6 });
+      const rawViewport = page.getViewport({ scale: 1 });
+      const scaleCandidates = [1.6];
+      // Limit preview canvas to stay within safe browser dimensions.
+      const longestEdge = Math.max(rawViewport.width, rawViewport.height);
+      if (Number.isFinite(longestEdge) && longestEdge > 0) {
+        scaleCandidates.push(MAX_PREVIEW_EDGE_PX / longestEdge);
+      }
+      const totalPixels = rawViewport.width * rawViewport.height;
+      if (Number.isFinite(totalPixels) && totalPixels > 0) {
+        scaleCandidates.push(Math.sqrt(MAX_PREVIEW_PIXELS / totalPixels));
+      }
+      const scale = Math.max(Math.min(...scaleCandidates.filter((value) => Number.isFinite(value) && value > 0)), 0.05);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -1366,6 +1380,12 @@ FP,46.608093,16.234769</textarea>
       if (croppedPreviewLink) {
         croppedPreviewLink.href = previewUrl;
         croppedPreviewLink.setAttribute('aria-disabled', 'false');
+      }
+      if (croppedPreviewMessage) {
+        const downscaled = scale < 1.6 - 1e-3;
+        croppedPreviewMessage.textContent = downscaled
+          ? 'Preview downscaled for browser limits; download the cropped PDF for full detail.'
+          : 'JPEG preview generated from the cropped PDF.';
       }
       croppedPreviewContainer.hidden = false;
     }
