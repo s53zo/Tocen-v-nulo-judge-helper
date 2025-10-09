@@ -631,6 +631,10 @@
                 <span class="preset-meta">Often used at precision flying
                 competitions</span>
               </button>
+              <button type="button" class="preset-card" data-map-key="p250">
+                <span class="preset-title">1:250k P25004B</span>
+                <span class="preset-meta">New competition chart calibration</span>
+              </button>
               <button type="button" class="preset-card" data-map-key="osm">
                 <span class="preset-title">OpenStreetMap</span>
                 <span class="preset-meta">Interactive OSM map</span>
@@ -656,7 +660,7 @@
 
           <div class="control-group">
             <h2>3. Waypoints</h2>
-            <label for="waypoints">Route (name,lat,lon per line)</label>
+            <label for="waypoints">Route (name,lat,lon) or <br>D96/TM (name,easting,northing) per line</label>
             <div class="waypoint-actions">
               <button type="button" id="toggleWaypointLibrary" class="btn
               btn-secondary">Waypoint Database</button>
@@ -772,6 +776,29 @@ FP,46.608093,16.234769</textarea>
           ['TP5', 46.83695523, 16.30844783, 768.0, 118.0]
         ]
       },
+      p250: {
+        label: 'P25004B chart',
+        type: 'pdf',
+        fileName: 'P25004BR.pdf',
+        url: 'P25004BR.pdf',
+        baseWidth: 11890.0,
+        baseHeight: 8410.0,
+        transform: 'tfw',
+        tfw: {
+          pixelSizeX: 25.0,
+          rotationY: 0.0,
+          rotationX: 0.0,
+          pixelSizeY: -25.0,
+          originX: 341822.5,
+          originY: 216030.0,
+          width: 11890,
+          height: 8410,
+          scaleX: 1.001316402326914,
+          scaleY: 0.998973280855398,
+          offsetX: -1.76620066279429,
+          offsetY: 20.54570609428447,
+        }
+      },
       osm: {
         label: 'OpenStreetMap',
         type: 'osm'
@@ -847,10 +874,11 @@ FP,46.608093,16.234769</textarea>
     const mapStatus = document.getElementById('mapStatus');
     const osmMapContainer = document.getElementById('osmMapContainer');
     const osmMapEl = document.getElementById('osmMap');
-    const PDFJS_PRIMARY_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82';
-    const PDFJS_FALLBACK_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+    const PDFJS_PRIMARY_BASE = 'https://unpkg.com/pdfjs-dist@4.6.82/build';
+    const PDFJS_FALLBACK_BASE = 'https://unpkg.com/pdfjs-dist@3.11.174/build';
     let pdfjsPromise = null;
     let pdfjsBaseUrl = PDFJS_PRIMARY_BASE;
+    const loadedScriptPromises = new Map();
     const DEFAULT_MINUTE_INTERVAL = 1;
     const DEFAULT_TAKEOFF_BUFFER = DEFAULT_TAKEOFF_TO_SP_MIN;
     const LOCATION_FILE = 'locations.txt';
@@ -860,6 +888,15 @@ FP,46.608093,16.234769</textarea>
     let osmLayers = [];
     let osmTileLayer = null;
     const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const D96_TM = {
+      a: 6378137.0,
+      invF: 298.257222101,
+      k0: 0.9999,
+      lon0Rad: 15 * Math.PI / 180,
+      falseEasting: 500000.0,
+      falseNorthing: -5000000.0,
+    };
 
     const PDF_CHAR_REPLACEMENTS = new Map([
       ['š', 's'],
@@ -1067,33 +1104,38 @@ FP,46.608093,16.234769</textarea>
     }
 
     function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const existing = Array.from(document.scripts).find((script) => script.src === src);
+      if (loadedScriptPromises.has(src)) {
+        return loadedScriptPromises.get(src);
+      }
+      const promise = (async () => {
+        const existing = Array.from(document.scripts).find(
+          (script) => script.getAttribute('data-inline-src') === src || script.src === src,
+        );
         if (existing && existing.hasAttribute('data-loaded')) {
-          resolve();
           return;
         }
-        if (existing && !existing.hasAttribute('data-loading')) {
-          existing.setAttribute('data-loading', 'true');
-          existing.addEventListener('load', () => {
-            existing.setAttribute('data-loaded', 'true');
-            resolve();
-          }, { once: true });
-          existing.addEventListener('error', () => reject(new Error(`Failed to load script: ${src}`)), { once: true });
-          return;
+        try {
+          const response = await fetch(src, { mode: 'cors' });
+          if (!response.ok) {
+            throw new Error(`Failed to fetch script: ${src} (status ${response.status})`);
+          }
+          const code = await response.text();
+          const target = existing || document.createElement('script');
+          target.type = 'text/javascript';
+          target.textContent = code;
+          target.setAttribute('data-inline-src', src);
+          target.setAttribute('data-loaded', 'true');
+          if (!existing) {
+            document.head.appendChild(target);
+          }
+        } catch (err) {
+          throw err;
         }
-        const script = existing || document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.setAttribute('data-loading', 'true');
-        script.addEventListener('load', () => {
-          script.setAttribute('data-loaded', 'true');
-          resolve();
-        }, { once: true });
-        script.addEventListener('error', () => reject(new Error(`Failed to load script: ${src}`)), { once: true });
-        if (!existing) {
-          document.head.appendChild(script);
-        }
+      })();
+      loadedScriptPromises.set(src, promise);
+      return promise.catch((err) => {
+        loadedScriptPromises.delete(src);
+        throw err;
       });
     }
 
@@ -1105,12 +1147,10 @@ FP,46.608093,16.234769</textarea>
         pdfjsPromise = (async () => {
           try {
             await loadScript(`${PDFJS_PRIMARY_BASE}/pdf.min.js`);
-            await loadScript(`${PDFJS_PRIMARY_BASE}/pdf.worker.min.js`);
             pdfjsBaseUrl = PDFJS_PRIMARY_BASE;
           } catch (primaryErr) {
             console.warn('Primary PDF.js load failed, falling back', primaryErr);
             await loadScript(`${PDFJS_FALLBACK_BASE}/pdf.min.js`);
-            await loadScript(`${PDFJS_FALLBACK_BASE}/pdf.worker.min.js`);
             pdfjsBaseUrl = PDFJS_FALLBACK_BASE;
           }
           if (!window.pdfjsLib) {
@@ -1192,16 +1232,162 @@ FP,46.608093,16.234769</textarea>
       return rounded;
     }
 
+    function parseCoordinateToken(token) {
+      if (typeof token !== 'string') {
+        return Number.NaN;
+      }
+      const compact = token.trim().replace(/[A-Za-z:=]/g, '').replace(/\s+/g, '').replace(',', '.');
+      if (!compact) {
+        return Number.NaN;
+      }
+      const value = Number.parseFloat(compact);
+      if (Number.isFinite(value)) {
+        return value;
+      }
+      const match = compact.match(/[-+]?\d+(?:[.,]\d+)?/);
+      return match ? Number.parseFloat(match[0].replace(',', '.')) : Number.NaN;
+    }
+
+    function maybeLatLon(lat, lon) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return null;
+      }
+      return { lat, lon };
+    }
+
+    function isLikelyD96Pair(easting, northing) {
+      if (!Number.isFinite(easting) || !Number.isFinite(northing)) {
+        return false;
+      }
+      if (Math.abs(easting) < 1000 || Math.abs(northing) < 1000) {
+        return false;
+      }
+      return easting >= 200000 && easting <= 800000 && northing >= -600000 && northing <= 400000;
+    }
+
+    function convertLatLonToD96Tm(lat, lon) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      const latRad = lat * Math.PI / 180;
+      const lonRad = lon * Math.PI / 180;
+      const f = 1 / D96_TM.invF;
+      const e2 = 2 * f - f * f;
+      const ePrime2 = e2 / (1 - e2);
+      let deltaLon = lonRad - D96_TM.lon0Rad;
+      while (deltaLon > Math.PI) { deltaLon -= 2 * Math.PI; }
+      while (deltaLon < -Math.PI) { deltaLon += 2 * Math.PI; }
+      const sinLat = Math.sin(latRad);
+      const cosLat = Math.cos(latRad);
+      const tanLat = Math.tan(latRad);
+      const n = D96_TM.a / Math.sqrt(1 - e2 * sinLat * sinLat);
+      const t = tanLat * tanLat;
+      const c = ePrime2 * cosLat * cosLat;
+      const a = deltaLon * cosLat;
+      const a2 = a * a;
+      const a3 = a2 * a;
+      const a4 = a2 * a2;
+      const a5 = a4 * a;
+      const a6 = a4 * a2;
+      const m = D96_TM.a * (
+        (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * Math.pow(e2, 3) / 256) * latRad
+        - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * Math.pow(e2, 3) / 1024) * Math.sin(2 * latRad)
+        + (15 * e2 * e2 / 256 + 45 * Math.pow(e2, 3) / 1024) * Math.sin(4 * latRad)
+        - (35 * Math.pow(e2, 3) / 3072) * Math.sin(6 * latRad)
+      );
+      const easting = D96_TM.falseEasting + D96_TM.k0 * n * (
+        a + (1 - t + c) * a3 / 6 + (5 - 18 * t + t * t + 72 * c - 58 * ePrime2) * a5 / 120
+      );
+      const northing = D96_TM.falseNorthing + D96_TM.k0 * (
+        m + n * tanLat * (a2 / 2 + (5 - t + 9 * c + 4 * c * c) * a4 / 24 + (61 - 58 * t + t * t + 600 * c - 330 * ePrime2) * a6 / 720)
+      );
+      return { easting, northing };
+    }
+
+    function convertD96TmToLatLon(easting, northing) {
+      if (!Number.isFinite(easting) || !Number.isFinite(northing)) {
+        return null;
+      }
+      const f = 1 / D96_TM.invF;
+      const e2 = 2 * f - f * f;
+      const ePrime2 = e2 / (1 - e2);
+      const x = easting - D96_TM.falseEasting;
+      const y = northing - D96_TM.falseNorthing;
+      const m = y / D96_TM.k0;
+      const mu = m / (D96_TM.a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * Math.pow(e2, 3) / 256));
+      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+      const e1Sq = e1 * e1;
+      const e1Cu = e1Sq * e1;
+      const e1Qu = e1Sq * e1Sq;
+      const sin2Mu = Math.sin(2 * mu);
+      const sin4Mu = Math.sin(4 * mu);
+      const sin6Mu = Math.sin(6 * mu);
+      const sin8Mu = Math.sin(8 * mu);
+      const phi1 = mu
+        + (3 * e1 / 2 - 27 * e1Cu / 32) * sin2Mu
+        + (21 * e1Sq / 16 - 55 * e1Qu / 32) * sin4Mu
+        + (151 * e1Cu / 96) * sin6Mu
+        + (1097 * e1Qu / 512) * sin8Mu;
+      const sinPhi1 = Math.sin(phi1);
+      const cosPhi1 = Math.cos(phi1);
+      const tanPhi1 = Math.tan(phi1);
+      const c1 = ePrime2 * cosPhi1 * cosPhi1;
+      const t1 = tanPhi1 * tanPhi1;
+      const n1 = D96_TM.a / Math.sqrt(1 - e2 * sinPhi1 * sinPhi1);
+      const r1 = D96_TM.a * (1 - e2) / Math.pow(1 - e2 * sinPhi1 * sinPhi1, 1.5);
+      const d = x / (n1 * D96_TM.k0);
+      const d2 = d * d;
+      const d4 = d2 * d2;
+      const d6 = d4 * d2;
+      const lat = phi1 - (n1 * tanPhi1 / r1) * (d2 / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * ePrime2) * d4 / 24 + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * ePrime2 - 3 * c1 * c1) * d6 / 720);
+      const lon = D96_TM.lon0Rad + (d - (1 + 2 * t1 + c1) * d2 * d / 6 + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * ePrime2 + 24 * t1 * t1) * d4 * d / 120) / cosPhi1;
+      return { lat: lat * 180 / Math.PI, lon: lon * 180 / Math.PI };
+    }
+
+    function tryInterpretAsD96(first, second) {
+      if (isLikelyD96Pair(first, second)) {
+        const converted = convertD96TmToLatLon(first, second);
+        if (converted && maybeLatLon(converted.lat, converted.lon)) {
+          return converted;
+        }
+      }
+      if (isLikelyD96Pair(second, first)) {
+        const converted = convertD96TmToLatLon(second, first);
+        if (converted && maybeLatLon(converted.lat, converted.lon)) {
+          return converted;
+        }
+      }
+      return null;
+    }
+
     function parseWaypoints(raw) {
-      const points = raw.split(/\r?\n/).map(raw => raw.trim()).filter(line => line && !line.startsWith('#')).map(line => {
-        const parts = line.split(',').map(part => part.trim());
-        if (parts.length !== 3) { throw new Error(`Invalid waypoint line: ${line}`); }
-        const [name, latStr, lonStr] = parts;
-        const lat = Number.parseFloat(latStr); const lon = Number.parseFloat(lonStr);
-        if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) { throw new Error(`Invalid waypoint line: ${line}`); }
-        return [name, lat, lon];
-      });
-      if (points.length < 2) { throw new Error('At least two waypoints are required'); }
+      const points = raw
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(line => {
+          const parts = line.split(',').map(part => part.trim());
+          if (parts.length !== 3) {
+            throw new Error(`Invalid waypoint line: ${line}`);
+          }
+          const [name, firstCoord, secondCoord] = parts;
+          if (!name) {
+            throw new Error(`Invalid waypoint line: ${line}`);
+          }
+          const first = parseCoordinateToken(firstCoord);
+          const second = parseCoordinateToken(secondCoord);
+          const latLon = maybeLatLon(first, second) || tryInterpretAsD96(first, second);
+          if (!latLon) {
+            throw new Error(`Invalid waypoint line: ${line}`);
+          }
+          return [name, Number(latLon.lat.toFixed(6)), Number(latLon.lon.toFixed(6))];
+        });
+      if (points.length < 2) {
+        throw new Error('At least two waypoints are required');
+      }
       return points;
     }
 
@@ -1337,6 +1523,225 @@ FP,46.608093,16.234769</textarea>
       const [ax, bx, cx] = [0, 1, 2].map(c => det(rep(c, xT)) / detA);
       const [ay, by, cy] = [0, 1, 2].map(c => det(rep(c, yT)) / detA);
       return { project(lat, lon) { return [ax*lon+bx*lat+cx, ay*lon+by*lat+cy]; } };
+    }
+
+    function solveBilinear(cp) {
+      if (!cp || cp.length < 4) { throw new Error('Bilinear transform needs at least four control points.'); }
+      const latValues = Array.from(new Set(cp.map(p => p[1]))).sort((a, b) => a - b);
+      const lonValues = Array.from(new Set(cp.map(p => p[2]))).sort((a, b) => a - b);
+      if (latValues.length < 2 || lonValues.length < 2) { throw new Error('Bilinear transform requires two distinct latitudes and longitudes.'); }
+      const [latMin, latMax] = [latValues[0], latValues[latValues.length - 1]];
+      const [lonMin, lonMax] = [lonValues[0], lonValues[lonValues.length - 1]];
+      const latSpan = latMax - latMin;
+      const lonSpan = lonMax - lonMin;
+      if (Math.abs(latSpan) < 1e-9 || Math.abs(lonSpan) < 1e-9) { throw new Error('Bilinear transform spans must be non-zero.'); }
+
+      const findPoint = (targetLat, targetLon) => {
+        const match = cp.find(([, lat, lon]) => Math.abs(lat - targetLat) < 1e-6 && Math.abs(lon - targetLon) < 1e-6);
+        if (!match) { throw new Error('Missing corner control point for bilinear transform.'); }
+        return [match[3], match[4]];
+      };
+
+      const [xSW, ySW] = findPoint(latMin, lonMin);
+      const [xSE, ySE] = findPoint(latMin, lonMax);
+      const [xNW, yNW] = findPoint(latMax, lonMin);
+      const [xNE, yNE] = findPoint(latMax, lonMax);
+
+      const coeff = (sw, se, nw, ne) => {
+        const d = sw;
+        const a = se - sw;
+        const b = nw - sw;
+        const c = ne - nw - se + sw;
+        return [d, a, b, c];
+      };
+
+      const [dx, ax, bx, cx] = coeff(xSW, xSE, xNW, xNE);
+      const [dy, ay, by, cy] = coeff(ySW, ySE, yNW, yNE);
+
+      return {
+        project(lat, lon) {
+          const u = (lon - lonMin) / lonSpan;
+          const v = (lat - latMin) / latSpan;
+          const x = dx + ax * u + bx * v + cx * u * v;
+          const y = dy + ay * u + by * v + cy * u * v;
+          return [x, y];
+        },
+      };
+    }
+
+    function solveLinearSystem(matrix, vector) {
+      const n = vector.length;
+      const A = matrix.map((row) => row.slice());
+      const b = vector.slice();
+      for (let i = 0; i < n; i++) {
+        let pivot = i;
+        let pivotAbs = Math.abs(A[i][i]);
+        for (let r = i + 1; r < n; r++) {
+          const absVal = Math.abs(A[r][i]);
+          if (absVal > pivotAbs) {
+            pivotAbs = absVal;
+            pivot = r;
+          }
+        }
+        if (pivotAbs < 1e-12) { throw new Error('Singular matrix while solving transform coefficients.'); }
+        if (pivot !== i) {
+          [A[i], A[pivot]] = [A[pivot], A[i]];
+          [b[i], b[pivot]] = [b[pivot], b[i]];
+        }
+        const pivotVal = A[i][i];
+        for (let j = i; j < n; j++) { A[i][j] /= pivotVal; }
+        b[i] /= pivotVal;
+        for (let r = 0; r < n; r++) {
+          if (r === i) { continue; }
+          const factor = A[r][i];
+          if (Math.abs(factor) < 1e-12) { continue; }
+          for (let j = i; j < n; j++) { A[r][j] -= factor * A[i][j]; }
+          b[r] -= factor * b[i];
+        }
+      }
+      return b;
+    }
+
+    function solveNormalEquations(rows, targets) {
+      if (!rows.length) { throw new Error('Empty row set for normal equations.'); }
+      const cols = rows[0].length;
+      const ata = Array.from({ length: cols }, () => Array(cols).fill(0));
+      const atb = Array(cols).fill(0);
+      rows.forEach((row, idx) => {
+        const target = targets[idx];
+        for (let i = 0; i < cols; i++) {
+          atb[i] += row[i] * target;
+          const ri = row[i];
+          for (let j = 0; j < cols; j++) {
+            ata[i][j] += ri * row[j];
+          }
+        }
+      });
+      return solveLinearSystem(ata, atb);
+    }
+
+    function solveQuadratic(cp) {
+      if (!cp || cp.length < 6) { throw new Error('Quadratic transform needs at least six control points.'); }
+      const design = cp.map(([, lat, lon]) => [1, lon, lat, lon * lat, lon * lon, lat * lat]);
+      const solveCoeffs = (targets) => solveNormalEquations(design, targets);
+      const coeffsX = solveCoeffs(cp.map((p) => p[3]));
+      const coeffsY = solveCoeffs(cp.map((p) => p[4]));
+      return {
+        project(lat, lon) {
+          const basis = [1, lon, lat, lon * lat, lon * lon, lat * lat];
+          const x = coeffsX.reduce((sum, c, idx) => sum + c * basis[idx], 0);
+          const y = coeffsY.reduce((sum, c, idx) => sum + c * basis[idx], 0);
+          return [x, y];
+        },
+      };
+    }
+
+    function solvePolynomial1D(values, targets, maxDegree) {
+      if (maxDegree < 1) { throw new Error('Polynomial degree must be at least 1.'); }
+      const origin = values.reduce((sum, val) => sum + val, 0) / values.length;
+      const uniqueCount = new Set(values.map((val) => val.toFixed(9))).size;
+      let degree = Math.min(maxDegree, uniqueCount - 1);
+      if (degree < 1) { throw new Error('Insufficient distinct values for polynomial fit.'); }
+      while (degree >= 1) {
+        const rows = values.map((val) => {
+          const delta = val - origin;
+          const row = [1];
+          let acc = 1;
+          for (let i = 0; i < degree; i++) {
+            acc *= delta;
+            row.push(acc);
+          }
+          return row;
+        });
+        try {
+          const coeffs = solveNormalEquations(rows, targets);
+          return { origin, coeffs };
+        } catch (err) {
+          if (degree === 1) { throw err; }
+          degree -= 1;
+        }
+      }
+      throw new Error('Unable to solve polynomial fit.');
+    }
+
+    function evaluatePolynomial(coeffs, delta) {
+      return coeffs.reduceRight((acc, coeff) => acc * delta + coeff, 0);
+    }
+
+    function solveSeparable(cp) {
+      if (!cp || cp.length < 4) { throw new Error('Separable transform needs at least four control points.'); }
+      const lons = cp.map((p) => p[2]);
+      const xs = cp.map((p) => p[3]);
+      const lats = cp.map((p) => p[1]);
+      const ys = cp.map((p) => p[4]);
+      const { origin: lonOrigin, coeffs: coeffsX } = solvePolynomial1D(lons, xs, 3);
+      const { origin: latOrigin, coeffs: coeffsY } = solvePolynomial1D(lats, ys, 3);
+      return {
+        project(lat, lon) {
+          const dx = lon - lonOrigin;
+          const dy = lat - latOrigin;
+          const x = evaluatePolynomial(coeffsX, dx);
+          const y = evaluatePolynomial(coeffsY, dy);
+          return [x, y];
+        },
+      };
+    }
+
+    function buildTfwProjector(mapConfig) {
+      const tfw = mapConfig.tfw;
+      if (!tfw) { throw new Error('TFW parameters are missing.'); }
+      const a = tfw.pixelSizeX;
+      const b = tfw.rotationX;
+      const d = tfw.rotationY;
+      const e = tfw.pixelSizeY;
+      const c = tfw.originX;
+      const originY = tfw.originY;
+      const scaleX = Number.isFinite(tfw.scaleX) ? tfw.scaleX : 1;
+      const scaleY = Number.isFinite(tfw.scaleY) ? tfw.scaleY : 1;
+      const offsetX = Number.isFinite(tfw.offsetX) ? tfw.offsetX : 0;
+      const offsetY = Number.isFinite(tfw.offsetY) ? tfw.offsetY : 0;
+      if (![a, b, d, e, c, originY, scaleX, scaleY, offsetX, offsetY].every((val) => Number.isFinite(val))) {
+        throw new Error('Invalid TFW parameters.');
+      }
+      const det = a * e - b * d;
+      if (Math.abs(det) < 1e-9) {
+        throw new Error('TFW transform is not invertible.');
+      }
+      return {
+        project(lat, lon) {
+          const tm = convertLatLonToD96Tm(lat, lon);
+          if (!tm) {
+            throw new Error('Lat/Lon could not be projected into D96/TM.');
+          }
+          const dx = tm.easting - c;
+          const dy = tm.northing - originY;
+          const col = (e * dx - b * dy) / det;
+          const row = (-d * dx + a * dy) / det;
+          const adjCol = scaleX * col + offsetX;
+          const adjRow = scaleY * row + offsetY;
+          return [adjCol, adjRow];
+        },
+      };
+    }
+
+    function buildProjector(mapConfig) {
+      const transform = (mapConfig.transform || (mapConfig.tfw ? 'tfw' : 'affine')).toLowerCase();
+      if (transform === 'tfw') {
+        return buildTfwProjector(mapConfig);
+      }
+      if (transform === 'separable') {
+        return solveSeparable(mapConfig.controlPoints);
+      }
+      if (transform === 'quadratic') {
+        return solveQuadratic(mapConfig.controlPoints);
+      }
+      if (transform === 'bilinear') {
+        return solveBilinear(mapConfig.controlPoints);
+      }
+      if (transform !== 'affine') {
+        throw new Error(`Unsupported map transform: ${mapConfig.transform}`);
+      }
+      return solveAffine(mapConfig.controlPoints);
     }
 
     function previewToPdf(x, y, pw, ph, bw, bh) { return [x / bw * pw, ph - (y / bh * ph)]; }
@@ -1543,7 +1948,7 @@ FP,46.608093,16.234769</textarea>
           if (!mapBytes) { throw new Error('Map PDF unavailable.'); }
           updateMapStatus(`Using ${mapConfig.label}`);
           
-          const affine = solveAffine(mapConfig.controlPoints);
+          const projector = buildProjector(mapConfig);
           const { PDFDocument, rgb, StandardFonts } = PDFLib;
           const pdfDoc = await PDFDocument.load(mapBytes);
           const overlayDoc = await PDFDocument.create();
@@ -1551,6 +1956,10 @@ FP,46.608093,16.234769</textarea>
           const [pageWidth, pageHeight] = [page.getWidth(), page.getHeight()];
           const overlayPage = overlayDoc.addPage([pageWidth, pageHeight]);
           const scaleAvg = (pageWidth / mapConfig.baseWidth + pageHeight / mapConfig.baseHeight) / 2;
+          const projectToPdf = (lat, lon) => {
+            const [bx, by] = projector.project(lat, lon);
+            return previewToPdf(bx, by, pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
+          };
           
           const ds = {
               routeLineWidth: Math.max(0.4, ROUTE_WIDTH_SCALE * scaleAvg),
@@ -1585,7 +1994,7 @@ FP,46.608093,16.234769</textarea>
             expandBounds(maxX, maxY);
           };
 
-          const projected = points.map(([name, lat, lon]) => ({ name, pdf: previewToPdf(...affine.project(lat, lon), pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight) }));
+          const projected = points.map(([name, lat, lon]) => ({ name, pdf: projectToPdf(lat, lon) }));
           const pointLookup = new Map(projected.map((p) => [p.name, p.pdf]));
 
           for (let i = 0; i < projected.length - 1; i++) {
@@ -1814,7 +2223,7 @@ FP,46.608093,16.234769</textarea>
             }
             const [ux, uy] = [dx / segLength, dy / segLength];
             const [pxVec, pyVec] = [-uy, ux];
-            const [xp, yp] = previewToPdf(...affine.project(m.lat, m.lon), pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
+            const [xp, yp] = projectToPdf(m.lat, m.lon);
             if (Math.hypot(xp - legStart[0], yp - legStart[1]) < ds.tpRadius || Math.hypot(xp - legEnd[0], yp - legEnd[1]) < ds.tpRadius) {
               return;
             }
