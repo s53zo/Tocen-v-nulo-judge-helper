@@ -135,11 +135,63 @@
       padding-bottom: 0.5rem;
     }
 
+    .control-group.collapsible {
+      padding-bottom: 0.25rem;
+    }
+
+    .control-group.collapsible summary {
+      margin: 0;
+      padding: 0 0 0.5rem;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .control-group.collapsible summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .control-group.collapsible summary::after {
+      content: '+';
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--color-text-muted);
+    }
+
+    .control-group.collapsible[open] summary::after {
+      content: '-';
+    }
+
+    .control-group.collapsible summary:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    .control-group.collapsible .collapsible-content {
+      margin-top: 1.25rem;
+      display: grid;
+      gap: 1.25rem;
+    }
+
     .map-preset-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 0.75rem;
       margin-top: 0.5rem;
+    }
+
+    @media (min-width: 960px) {
+      .map-preset-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
     }
 
     .preset-card {
@@ -166,7 +218,7 @@
     }
 
     .preset-card .preset-meta {
-      font-size: 0.8rem;
+      font-size: 0.56rem;
       color: var(--color-text-muted);
       line-height: 1.35;
     }
@@ -237,9 +289,21 @@
       gap: 1rem;
     }
 
+    .input-row-compact {
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+    }
+
     @media (min-width: 640px) {
       .input-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 720px) {
+      .input-row-compact {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
@@ -662,9 +726,11 @@
 
           <div class="control-group">
             <h2>2. Timing &amp; Markers</h2>
-            <label for="speed">Groundspeed (e.g. 75kt or 85mph)</label>
-            <input id="speed" type="text" value="75kt" autocomplete="off">
-            <div class="input-row" style="margin-top: 1rem;">
+            <div class="input-row input-row-compact">
+              <div>
+                <label for="speed">Groundspeed (kt/mph/kmh)</label>
+                <input id="speed" type="text" value="75kt" autocomplete="off" placeholder="e.g. 75kt, 85mph, 140kmh">
+              </div>
               <div>
                 <label for="minuteInterval">Minute Marker Interval</label>
                 <input id="minuteInterval" type="number" min="1" step="1" value="1" autocomplete="off">
@@ -674,10 +740,46 @@
                 <input id="takeoffBuffer" type="number" min="0.1" step="0.1" value="4" autocomplete="off">
               </div>
             </div>
+            <p class="note">Adjust markers without scrolling; units auto-convert for speed inputs (kt, mph, km/h).</p>
           </div>
 
+          <details class="control-group collapsible" id="overlayStylingPanel">
+            <summary>3. Overlay Styling</summary>
+            <div class="collapsible-content">
+              <div class="input-row input-row-compact">
+                <div>
+                  <label for="styleRouteWidth">Route Line Width (pt)</label>
+                  <input id="styleRouteWidth" type="number" min="0.1" step="0.1" value="2.5" autocomplete="off">
+                </div>
+                <div>
+                  <label for="styleWaypointFont">Waypoint Label Font (pt)</label>
+                  <input id="styleWaypointFont" type="number" min="1" step="0.5" value="12" autocomplete="off">
+                </div>
+                <div>
+                  <label for="styleHeadingFont">Heading Font (pt)</label>
+                  <input id="styleHeadingFont" type="number" min="1" step="0.5" value="18" autocomplete="off">
+                </div>
+              </div>
+              <div class="input-row input-row-compact">
+                <div>
+                  <label for="styleMinuteLabelFont">Minute Label Font (pt)</label>
+                  <input id="styleMinuteLabelFont" type="number" min="1" step="0.5" value="10" autocomplete="off">
+                </div>
+                <div>
+                  <label for="styleMinuteMarkerSize">Minute Marker Half-Size (pt)</label>
+                  <input id="styleMinuteMarkerSize" type="number" min="0.1" step="0.1" value="7" autocomplete="off">
+                </div>
+                <div>
+                  <label for="styleMinuteLineWidth">Minute Marker Line Width (pt)</label>
+                  <input id="styleMinuteLineWidth" type="number" min="0.1" step="0.1" value="1.2" autocomplete="off">
+                </div>
+              </div>
+              <p class="note">Values are base sizes on the VFR chart; they auto-scale for other presets.</p>
+            </div>
+          </details>
+
           <div class="control-group">
-            <h2>3. Waypoints</h2>
+            <h2>4. Waypoints</h2>
             <label for="waypoints">Route (name,lat,lon) or <br>D96/TM (name,easting,northing) per line</label>
             <div class="waypoint-actions">
               <button type="button" id="toggleWaypointLibrary" class="btn
@@ -841,6 +943,7 @@ FP,46.608093,16.234769</textarea>
     const MM_TO_PT = 72 / 25.4;
     const KNOT_TO_MPS = 0.514444;
     const MPH_TO_MPS = 0.44704;
+    const KMH_TO_MPS = 0.277778;
     const EARTH_RADIUS_M = 6371000.0;
     const LABEL_COLLISION_MARGIN = 3.0;
     const LABEL_DISTANCE_STEP = 5.0;
@@ -863,6 +966,12 @@ FP,46.608093,16.234769</textarea>
     const summaryText = document.getElementById('summaryText');
     const minuteIntervalInput = document.getElementById('minuteInterval');
     const takeoffBufferInput = document.getElementById('takeoffBuffer');
+    const styleRouteWidthInput = document.getElementById('styleRouteWidth');
+    const styleWaypointFontInput = document.getElementById('styleWaypointFont');
+    const styleHeadingFontInput = document.getElementById('styleHeadingFont');
+    const styleMinuteLabelFontInput = document.getElementById('styleMinuteLabelFont');
+    const styleMinuteMarkerSizeInput = document.getElementById('styleMinuteMarkerSize');
+    const styleMinuteLineWidthInput = document.getElementById('styleMinuteLineWidth');
     const waypointTextarea = document.getElementById('waypoints');
     const waypointLibrary = document.getElementById('waypointLibrary');
     const waypointLibraryToggle = document.getElementById('toggleWaypointLibrary');
@@ -1287,13 +1396,21 @@ FP,46.608093,16.234769</textarea>
       } else if (token.endsWith('mph')) {
         unit = 'mph';
         numeric = token.slice(0, -3);
+      } else if (token.endsWith('km/h')) {
+        unit = 'kmh';
+        numeric = token.slice(0, -4);
+      } else if (token.endsWith('kmh') || token.endsWith('kph')) {
+        unit = 'kmh';
+        numeric = token.slice(0, -3);
       }
       const value = Number.parseFloat(numeric || '75');
       if (!Number.isFinite(value) || value <= 0) {
         throw new Error('Invalid speed value');
       }
-      const mps = value * (unit === 'kt' ? KNOT_TO_MPS : MPH_TO_MPS);
-      return { value, unit, mps, label: `${value.toFixed(1)} ${unit}` };
+      const mps = value * (unit === 'kt' ? KNOT_TO_MPS : unit === 'mph' ? MPH_TO_MPS : KMH_TO_MPS);
+      const formattedValue = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+      const unitLabel = unit === 'kmh' ? 'km/h' : unit;
+      return { value, unit, mps, label: `${formattedValue} ${unitLabel}` };
     }
 
     function parseNumericInput(input, fallback) {
@@ -1309,6 +1426,17 @@ FP,46.608093,16.234769</textarea>
       const rounded = Math.round(value * 100) / 100;
       input.value = rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded);
       return rounded;
+    }
+
+    function getOverlayStyleConfig() {
+      return {
+        routeWidth: parseNumericInput(styleRouteWidthInput, ROUTE_WIDTH_SCALE),
+        waypointFont: parseNumericInput(styleWaypointFontInput, TP_FONT_SCALE),
+        headingFont: parseNumericInput(styleHeadingFontInput, HEADING_FONT_SCALE),
+        minuteLabelFont: parseNumericInput(styleMinuteLabelFontInput, MINUTE_LABEL_FONT_SCALE),
+        minuteMarkerHalf: parseNumericInput(styleMinuteMarkerSizeInput, MINUTE_TICK_HALF_SCALE),
+        minuteLineWidth: parseNumericInput(styleMinuteLineWidthInput, MINUTE_LINE_WIDTH_SCALE),
+      };
     }
 
     function parseCoordinateToken(token) {
@@ -2041,14 +2169,15 @@ FP,46.608093,16.234769</textarea>
             return previewToPdf(bx, by, pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
           };
           
+          const styleConfig = getOverlayStyleConfig();
           const ds = {
-              routeLineWidth: Math.max(0.4, ROUTE_WIDTH_SCALE * scaleAvg),
+              routeLineWidth: Math.max(0.4, styleConfig.routeWidth * scaleAvg),
               tpRadius: TP_RADIUS_SCALE * scaleAvg,
-              tpFontSize: Math.max(4, TP_FONT_SCALE * scaleAvg),
-              minuteCrossHalf: MINUTE_TICK_HALF_SCALE * scaleAvg,
-              minuteLineWidth: Math.max(0.4, MINUTE_LINE_WIDTH_SCALE * scaleAvg),
-              minuteFontSize: Math.max(3, MINUTE_LABEL_FONT_SCALE * scaleAvg),
-              headingFontSize: Math.max(4, HEADING_FONT_SCALE * scaleAvg),
+              tpFontSize: Math.max(4, styleConfig.waypointFont * scaleAvg),
+              minuteCrossHalf: styleConfig.minuteMarkerHalf * scaleAvg,
+              minuteLineWidth: Math.max(0.4, styleConfig.minuteLineWidth * scaleAvg),
+              minuteFontSize: Math.max(3, styleConfig.minuteLabelFont * scaleAvg),
+              headingFontSize: Math.max(4, styleConfig.headingFont * scaleAvg),
               headingOffset: HEADING_OFFSET_SCALE * scaleAvg,
           };
           
