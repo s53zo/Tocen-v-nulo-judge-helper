@@ -53736,7 +53736,7 @@ function lL(e, t, n, r) {
 			},
 			{
 				rule: "A2.4.1-A2.4.7",
-				message: "Check observation tasks: at most 12 route photos, at most 15 tasks, required photo/sign placement, and no task within 1 NM of a control point."
+				message: "Check observation tasks: at most 12 route photos, at most 15 tasks, required photo/sign placement, and no task in the 1 NM segment after a control point."
 			},
 			{
 				rule: "A2.6; A3.9",
