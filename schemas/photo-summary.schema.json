@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tocen-v-nulo.local/schemas/photo-summary.schema.json",
+  "title": "Precision Route Planner photo summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "counts", "photos", "findings"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "status": { "enum": ["ok", "against-rules", "manual-review"] },
+    "counts": {
+      "type": "object",
+      "required": ["photos", "enroutePhotos", "routeTasks", "violations", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "photos": { "type": "integer", "minimum": 0 },
+        "enroutePhotos": { "type": "integer", "minimum": 0 },
+        "routeTasks": { "type": "integer", "minimum": 0 },
+        "violations": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "photos": { "type": "array", "items": { "$ref": "#/$defs/photo" } },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+  },
+  "$defs": {
+    "sourcedValue": {
+      "type": "object",
+      "required": ["value", "source", "reliable"],
+      "properties": {
+        "value": {},
+        "source": { "enum": ["exif", "manual", "example-track", "missing"] },
+        "reliable": { "type": "boolean" },
+        "note": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["photoId", "code", "rule", "severity", "affected", "message", "measured", "permitted"],
+      "properties": {
+        "photoId": { "type": ["string", "null"] },
+        "code": { "type": "string" },
+        "rule": { "type": "string" },
+        "severity": { "enum": ["pass", "warning", "violation"] },
+        "affected": { "type": "string" },
+        "message": { "type": "string" },
+        "measured": { "type": "string" },
+        "permitted": { "type": "string" }
+      }
+    },
+    "photo": {
+      "type": "object",
+      "required": ["id", "order", "identifier", "fileName", "fileSize", "contentHash", "classification", "cameraMetadata", "originalMetadata", "taskPosition", "status", "findings"],
+      "properties": {
+        "id": { "type": "string" },
+        "order": { "type": "integer", "minimum": 1 },
+        "identifier": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "integer", "minimum": 0 },
+        "contentHash": { "type": "string" },
+        "classification": { "enum": ["enroute", "control-correct", "control-false", "sign-task", "reference"] },
+        "linkedWaypoint": { "type": ["string", "null"] },
+        "cameraMetadata": { "type": "object" },
+        "originalMetadata": { "type": "object" },
+        "taskPosition": {
+          "type": "object",
+          "required": ["latitude", "longitude"],
+          "properties": {
+            "latitude": { "$ref": "#/$defs/sourcedValue" },
+            "longitude": { "$ref": "#/$defs/sourcedValue" }
+          }
+        },
+        "cameraAnalysis": { "type": ["object", "null"] },
+        "taskAnalysis": { "type": ["object", "null"] },
+        "status": { "enum": ["ok", "against-rules", "manual-review"] },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+      }
+    }
+  }
+}

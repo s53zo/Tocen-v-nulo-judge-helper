@@ -9,6 +9,7 @@ export const PHOTO_CLASSIFICATIONS = [
 export type PhotoClassification = (typeof PHOTO_CLASSIFICATIONS)[number];
 export type MetadataSource = 'exif' | 'manual' | 'example-track' | 'missing';
 export type FindingSeverity = 'pass' | 'warning' | 'violation';
+export type HeadingReference = 'true' | 'magnetic' | 'unknown';
 
 export interface SourcedValue<T> {
   value: T | null;
@@ -23,6 +24,7 @@ export interface PhotoMetadata {
   gpsAltitudeMslM: SourcedValue<number>;
   altitudeAglFt: SourcedValue<number>;
   headingDeg: SourcedValue<number>;
+  headingReference: SourcedValue<HeadingReference>;
   focalLengthMm: SourcedValue<number>;
   focalLength35Mm: SourcedValue<number>;
   captureTime: SourcedValue<string>;
@@ -52,9 +54,12 @@ export interface PhotoRouteAnalysis {
   distanceAfterPreviousControlPointM: number;
   legBearingDeg: number;
   headingDifferenceDeg: number | null;
+  ambiguousLegIndices: number[];
+  manuallySelectedLeg: boolean;
 }
 
 export interface PhotoFinding {
+  photoId: string | null;
   code: string;
   rule: string;
   severity: FindingSeverity;
@@ -78,13 +83,17 @@ export interface PhotoRecord {
   classification: PhotoClassification;
   identifier: string;
   linkedWaypoint: string | null;
-  subjectLatitude: number | null;
-  subjectLongitude: number | null;
+  taskLatitude: SourcedValue<number>;
+  taskLongitude: SourcedValue<number>;
+  manualLegIndex: number | null;
   order: number;
   importError: string | null;
   analysis: PhotoRouteAnalysis | null;
+  taskAnalysis: PhotoRouteAnalysis | null;
   findings: PhotoFinding[];
   isExample: boolean;
+  fieldErrors?: Record<string, string>;
+  fieldDrafts?: Record<string, string>;
 }
 
 export interface PhotoComplianceSummary {

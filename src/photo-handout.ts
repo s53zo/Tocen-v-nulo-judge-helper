@@ -9,6 +9,7 @@ export interface HandoutPhoto {
 
 export interface HandoutOptions {
   splitWaypoint: string;
+  splitAfterM: number | null;
   includeSummary: boolean;
 }
 
@@ -20,12 +21,10 @@ function safeText(value: string): string {
   ).join('');
 }
 
-function splitIndex(photo: PhotoRecord, split: string): number {
-  const match = photo.analysis?.legId.match(/-(?:TP)?(\d+|FP)$/i);
-  const splitMatch = split.match(/TP(\d+)/i);
-  if (!match || !splitMatch) return 0;
-  const destination = match[1].toUpperCase() === 'FP' ? Number.POSITIVE_INFINITY : Number(match[1]);
-  return destination > Number(splitMatch[1]) ? 1 : 0;
+function splitIndex(photo: PhotoRecord, splitAfterM: number | null): number {
+  if (splitAfterM === null) return 0;
+  const position = photo.taskAnalysis?.alongRouteM ?? photo.analysis?.alongRouteM;
+  return position !== undefined && position > splitAfterM ? 1 : 0;
 }
 
 function drawWrapped(
@@ -36,20 +35,30 @@ function drawWrapped(
   y: number,
   maxWidth: number,
   size: number,
-  color = rgb(0.12, 0.15, 0.18)
-) {
+  color = rgb(0.12, 0.15, 0.18),
+  maximumLines = Number.POSITIVE_INFINITY
+): number {
   const words = safeText(text).split(/\s+/);
   let line = '';
   let row = 0;
   for (const word of words) {
     const candidate = line ? `${line} ${word}` : word;
     if (font.widthOfTextAtSize(candidate, size) > maxWidth && line) {
+      if (row >= maximumLines - 1) {
+        let truncated = `${line}…`;
+        while (truncated.length > 1 && font.widthOfTextAtSize(truncated, size) > maxWidth) {
+          truncated = `${truncated.slice(0, -2)}…`;
+        }
+        page.drawText(truncated, { x, y: y - row * (size + 2), font, size, color });
+        return row + 1;
+      }
       page.drawText(line, { x, y: y - row * (size + 2), font, size, color });
       row += 1;
       line = word;
     } else line = candidate;
   }
   if (line) page.drawText(line, { x, y: y - row * (size + 2), font, size, color });
+  return line ? row + 1 : row;
 }
 
 export async function buildPhotoHandout(
@@ -64,11 +73,11 @@ export async function buildPhotoHandout(
   const sections = [
     {
       title: `Photos before ${options.splitWaypoint}`,
-      items: photos.filter(({ record }) => splitIndex(record, options.splitWaypoint) === 0),
+      items: photos.filter(({ record }) => splitIndex(record, options.splitAfterM) === 0),
     },
     {
       title: `Photos after ${options.splitWaypoint}`,
-      items: photos.filter(({ record }) => splitIndex(record, options.splitWaypoint) === 1),
+      items: photos.filter(({ record }) => splitIndex(record, options.splitAfterM) === 1),
     },
   ].filter((section) => section.items.length > 0);
   const margin = 20;
@@ -132,7 +141,9 @@ export async function buildPhotoHandout(
           margin,
           y - 13,
           A4[0] - margin * 2,
-          8
+          8,
+          rgb(0.12, 0.15, 0.18),
+          2
         );
       }
       page.drawText(`Page ${document.getPageCount()}`, {
@@ -145,31 +156,40 @@ export async function buildPhotoHandout(
     }
   }
   if (options.includeSummary) {
-    const page = document.addPage(A4);
-    page.drawText('Photo compliance summary', {
-      x: margin,
-      y: A4[1] - 42,
-      size: 18,
-      font,
-      color: rgb(0.08, 0.26, 0.2),
-    });
-    page.drawText(
-      `${compliance.status.toUpperCase()} · ${photos.length} photos · ${compliance.violationCount} violations · ${compliance.warningCount} manual checks`,
-      { x: margin, y: A4[1] - 68, size: 10, font }
-    );
+    const addSummaryPage = () => {
+      const page = document.addPage(A4);
+      page.drawText('Photo compliance summary', {
+        x: margin,
+        y: A4[1] - 42,
+        size: 18,
+        font,
+        color: rgb(0.08, 0.26, 0.2),
+      });
+      page.drawText(
+        `${compliance.status.toUpperCase()} · ${photos.length} photos · ${compliance.violationCount} violations · ${compliance.warningCount} manual checks`,
+        { x: margin, y: A4[1] - 68, size: 10, font }
+      );
+      return page;
+    };
+    let page = addSummaryPage();
     let y = A4[1] - 94;
     for (const finding of compliance.findings.filter((item) => item.severity !== 'pass')) {
-      drawWrapped(
+      if (y < 58) {
+        page = addSummaryPage();
+        y = A4[1] - 94;
+      }
+      const lines = drawWrapped(
         page,
         font,
         `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.`,
         margin,
         y,
         A4[0] - margin * 2,
-        8
+        8,
+        rgb(0.12, 0.15, 0.18),
+        3
       );
-      y -= 30;
-      if (y < 30) break;
+      y -= Math.max(30, lines * 11 + 8);
     }
   }
   if (document.getPageCount() === 0) {

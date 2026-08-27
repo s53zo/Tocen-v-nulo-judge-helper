@@ -41,6 +41,25 @@ const DEFAULT_MAXIMUM_BYTES = 3_000_000;
 const DEFAULT_MAXIMUM_EDGE = 1800;
 const DEFAULT_MAXIMUM_PIXELS = 3_000_000;
 
+export function waitForAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      }
+    );
+  });
+}
+
 function validateCrop(pageWidth: number, pageHeight: number, crop: PdfCropBounds): void {
   const values = [pageWidth, pageHeight, crop.minX, crop.minY, crop.maxX, crop.maxY];
   if (!values.every(Number.isFinite)) throw new Error('Preview geometry must be finite.');
@@ -81,14 +100,17 @@ export function computePreviewGeometry(
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, signal?: AbortSignal): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('Could not encode the map preview.'))),
-      'image/jpeg',
-      0.86
-    );
-  });
+  return waitForAbortSignal(
+    new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('Could not encode the map preview.'))),
+        'image/jpeg',
+        0.86
+      );
+    }),
+    signal
+  );
 }
 
 async function loadImage(
@@ -109,7 +131,7 @@ async function loadImage(
     const image = new Image();
     image.decoding = 'async';
     image.src = objectUrl;
-    await image.decode();
+    await waitForAbortSignal(image.decode(), signal);
     return image;
   } finally {
     URL.revokeObjectURL(objectUrl);

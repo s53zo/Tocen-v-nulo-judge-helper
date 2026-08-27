@@ -6,7 +6,7 @@
   --color-panel-bg: #ffffff;
   --color-header-bg: #1a1a1a;
   --color-text: #212529;
-  --color-text-muted: #6c757d;
+  --color-text-muted: #545c63;
   --color-border: #d8d8d8;
   --color-border-strong: #b7b7b7;
   --color-accent: #2e7d32;
@@ -22,6 +22,10 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+[hidden][hidden] {
+  display: none;
 }
 
 body {
@@ -95,6 +99,7 @@ main {
 
 .control-panel,
 .results-panel {
+  min-width: 0;
   background: var(--color-panel-bg);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--border-radius);
@@ -324,6 +329,55 @@ textarea {
   background: rgba(21, 94, 117, 0.08);
   border: 1px solid rgba(21, 94, 117, 0.15);
   white-space: pre-wrap;
+}
+
+.generation-actions {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.artifact-statuses {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.artifact-statuses li {
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.35rem;
+  background: #eef1f2;
+}
+
+.artifact-statuses li[data-state="ok"] {
+  background: #e1f4e8;
+  color: #155d34;
+}
+.artifact-statuses li[data-state="failed"] {
+  background: #fde7e7;
+  color: #8d1717;
+}
+.artifact-statuses li[data-state="manual-review"] {
+  background: #fff2d4;
+  color: #744d00;
+}
+.artifact-statuses li[data-state="processing"] {
+  background: #e5eef8;
+  color: #174d7a;
+}
+
+.osm-consent {
+  display: block;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #d69d2a;
+  border-radius: 0.45rem;
+  background: #fff6dd;
+  color: #654500;
 }
 
 .status:empty {
@@ -577,6 +631,13 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+}
+
+.results-group table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 th,
@@ -884,7 +945,7 @@ th:not(:first-child) {
 
 @media (max-width: 1080px) {
   .desk-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .control-panel {

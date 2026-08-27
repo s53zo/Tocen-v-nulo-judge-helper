@@ -46,4 +46,38 @@ describe('photo route analysis', () => {
       distanceBetweenSubjects({ latitude: 0, longitude: 0 }, { latitude: 0, longitude: 0.01666 })
     ).toBeCloseTo(1852, -1);
   });
+
+  it('detects a shared turn vertex and conservatively chooses the outgoing leg', () => {
+    const result = analyzePhotoPosition(0, 0.1, null, route, points);
+    expect(result.ambiguousLegIndices).toEqual([0, 1]);
+    expect(result.legIndex).toBe(1);
+    expect(result.previousControlPoint).toBe('TP1');
+    expect(result.distanceAfterPreviousControlPointM).toBeCloseTo(0, 6);
+  });
+
+  it('honors an explicit manual leg selection at an ambiguous crossing', () => {
+    const crossing: Waypoint[] = [
+      ['SP', -0.1, -0.1],
+      ['TP1', 0.1, 0.1],
+      ['TP2', -0.1, 0.1],
+      ['FP', 0.1, -0.1],
+    ];
+    const result = analyzePhotoPosition(0, 0, null, buildRoute(crossing), crossing, 2);
+    expect(result.legIndex).toBe(2);
+    expect(result.manuallySelectedLeg).toBe(true);
+    expect(result.ambiguousLegIndices).toContain(0);
+    expect(result.ambiguousLegIndices).toContain(2);
+  });
+
+  it('reports ambiguity between closely parallel legs', () => {
+    const parallel: Waypoint[] = [
+      ['SP', 0, 0],
+      ['TP1', 0, 0.1],
+      ['TP2', 0.00001, 0.1],
+      ['FP', 0.00001, 0],
+    ];
+    const result = analyzePhotoPosition(0.000005, 0.05, null, buildRoute(parallel), parallel);
+    expect(result.ambiguousLegIndices).toContain(0);
+    expect(result.ambiguousLegIndices).toContain(2);
+  });
 });

@@ -1,8 +1,5 @@
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import fontkit from '@pdf-lib/fontkit';
+import type { LatLngExpression } from 'leaflet';
 import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
-import { degrees, PDFDocument, rgb } from 'pdf-lib';
 import { chooseTrueScaleCropPage } from './crop';
 import { parseCsv } from './csv';
 import { decodeDataUrl } from './data-url';
@@ -18,9 +15,8 @@ import {
   roundedBearing,
 } from './domain';
 import rawMapPresets from './map-presets.json';
-import { renderBoundedMapPreview } from './map-preview';
+import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
 import { loadMapPresets } from './maps';
-import { buildPhotoHandout } from './photo-handout';
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PhotoWorkflow } from './photo-workflow';
@@ -30,7 +26,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -58,7 +54,13 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 
 const statusEl = requiredElement<HTMLElement>('status');
 const generateBtn = requiredElement<HTMLButtonElement>('generate');
+const cancelGenerationBtn = requiredElement<HTMLButtonElement>('cancelGeneration');
+const controlPanel = document.querySelector<HTMLElement>('.control-panel');
+if (!controlPanel) throw new Error('Required control panel is missing.');
+const artifactStatuses = requiredElement<HTMLElement>('artifactStatuses');
 const mapPresetGrid = requiredElement<HTMLElement>('mapPresetGrid');
+const osmConsentRow = requiredElement<HTMLElement>('osmConsentRow');
+const osmThirdPartyConsent = requiredElement<HTMLInputElement>('osmThirdPartyConsent');
 const mapPresetButtons = Array.from(mapPresetGrid.querySelectorAll<HTMLButtonElement>('[data-map-key]'));
 const outputsSection = requiredElement<HTMLElement>('outputs');
 const summarySection = requiredElement<HTMLElement>('summary');
@@ -109,6 +111,50 @@ const downloadUrls = {
 };
 let previewObjectUrl = null;
 let croppedPreviewController: AbortController | null = null;
+let generationController: AbortController | null = null;
+const disabledControlState = new Map<
+  HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement,
+  boolean
+>();
+
+type ArtifactState = 'not-started' | 'processing' | 'ok' | 'manual-review' | 'failed' | 'cancelled';
+
+function setArtifactState(artifact: string, state: ArtifactState, detail: string): void {
+  const item = artifactStatuses.querySelector<HTMLElement>(`[data-artifact="${artifact}"]`);
+  if (!item) return;
+  item.dataset.state = state;
+  const label = artifact === 'data' ? 'CSV/JSON' : artifact[0].toUpperCase() + artifact.slice(1);
+  item.textContent = `${label}: ${detail}`;
+}
+
+function resetArtifactStates(): void {
+  for (const artifact of ['map', 'overlay', 'crop', 'preview', 'data', 'handout']) {
+    setArtifactState(artifact, 'not-started', 'not started');
+  }
+}
+
+function setGenerationBusy(busy: boolean): void {
+  const controls = controlPanel.querySelectorAll<
+    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
+  >('input,textarea,select,button');
+  if (busy) {
+    disabledControlState.clear();
+    controls.forEach((control) => {
+      disabledControlState.set(control, control.disabled);
+      control.disabled = true;
+    });
+  } else {
+    disabledControlState.forEach((wasDisabled, control) => {
+      if (control.isConnected) control.disabled = wasDisabled;
+    });
+    disabledControlState.clear();
+  }
+  cancelGenerationBtn.hidden = !busy;
+  cancelGenerationBtn.disabled = !busy;
+  statusEl.setAttribute('aria-busy', String(busy));
+  controlPanel.setAttribute('aria-busy', String(busy));
+  photoWorkflow.setExternalBusy(busy);
+}
 
 function openPreviewInNewTab(url, descriptor) {
   if (!url) {
@@ -180,6 +226,7 @@ let locationLibrary = null;
 const locationFilters = { search: '', type: 'all', country: 'all' };
 let osmMap = null;
 let osmLayers = [];
+let L: typeof import('leaflet') | null = null;
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const D96_TM = {
@@ -226,13 +273,13 @@ function createPdfObjectUrl(bytes: Uint8Array): string {
   return URL.createObjectURL(new Blob([copy.buffer], { type: 'application/pdf' }));
 }
 
-async function loadAssetBytes(url: string, label: string): Promise<Uint8Array> {
+async function loadAssetBytes(url: string, label: string, signal?: AbortSignal): Promise<Uint8Array> {
   if (url.startsWith('data:')) {
     return decodeDataUrl(url).bytes;
   }
   let response: Response;
   try {
-    response = await fetch(url);
+    response = await fetch(url, { signal });
   } catch (error) {
     throw new Error(`Could not load ${label}. Check the connection and reload the page.`, { cause: error });
   }
@@ -289,7 +336,43 @@ function setStatus(message, tone = message.startsWith('Error:') ? 'error' : 'neu
   statusEl.classList.toggle('is-warning', tone === 'warning');
 }
 
+function effectiveTaskCoordinates(photo, points): [number, number] | null {
+  if (
+    photo.taskLatitude.reliable &&
+    photo.taskLongitude.reliable &&
+    photo.taskLatitude.value !== null &&
+    photo.taskLongitude.value !== null
+  ) {
+    return [photo.taskLatitude.value, photo.taskLongitude.value];
+  }
+  if (!photo.linkedWaypoint) return null;
+  const linked = points.find(
+    ([name]) => name.trim().toUpperCase() === photo.linkedWaypoint.trim().toUpperCase()
+  );
+  return linked ? [linked[1], linked[2]] : null;
+}
+
+function textNodeElement(text: string): HTMLElement {
+  const element = document.createElement('span');
+  element.textContent = text;
+  return element;
+}
+
 const photoWorkflow = new PhotoWorkflow(setStatus);
+let waypointAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
+waypointTextarea.addEventListener('input', () => {
+  if (waypointAnalysisTimer !== null) clearTimeout(waypointAnalysisTimer);
+  waypointAnalysisTimer = setTimeout(() => {
+    waypointAnalysisTimer = null;
+    if (generationController || photoWorkflow.isBusy) return;
+    try {
+      photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));
+      setStatus('Route changed: photo analysis refreshed. Generate again to rebuild outputs.');
+    } catch {
+      setStatus('Route changed: photo analysis is waiting for a valid route.', 'warning');
+    }
+  }, 300);
+});
 
 function renderRuleList(
   target: HTMLUListElement,
@@ -329,6 +412,7 @@ function clearCroppedPreview() {
   croppedPreviewController = null;
   croppedPreviewContainer.hidden = true;
   croppedPreviewImage.removeAttribute('src');
+  croppedPreviewImage.hidden = true;
   if (previewObjectUrl) {
     URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = null;
@@ -384,6 +468,8 @@ async function ensureOsmMap() {
     return null;
   }
   if (!osmMap) {
+    L ??= await import('leaflet');
+    await import('leaflet/dist/leaflet.css');
     osmMap = L.map(osmMapEl, { center: [46.05, 14.5], zoom: 7, preferCanvas: true });
     L.tileLayer(OSM_TILE_URL, {
       maxZoom: 19,
@@ -405,17 +491,20 @@ function updateMapInputsVisibility() {
   if (osmMapContainer) {
     osmMapContainer.hidden = isPdf;
   }
+  osmConsentRow.hidden = isPdf;
   if (!isPdf) {
-    updateMapStatus('Interactive OpenStreetMap view active.');
-    ensureOsmMap().catch((err) => {
-      console.warn('Leaflet map unavailable', err);
-    });
+    updateMapStatus(
+      osmThirdPartyConsent.checked
+        ? 'Interactive OpenStreetMap view active; third-party tiles receive the displayed route area.'
+        : 'OpenStreetMap requires consent to third-party tile requests. Choose a bundled map for local-only processing.',
+      !osmThirdPartyConsent.checked
+    );
   } else {
     updateMapStatus(`Using preset map: ${preset.label}`);
   }
 }
 
-async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean } = {}) {
+async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean; signal?: AbortSignal } = {}) {
   const preset = getPreset(mapKey);
   if (!preset) {
     throw new Error(`Unknown map preset: ${mapKey}`);
@@ -435,7 +524,7 @@ async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean } = {
   if (mapKey === selectedMapKey) {
     updateMapStatus(`Loading preset map: ${preset.label}...`);
   }
-  const response = await fetch(encodeURI(preset.url));
+  const response = await fetch(encodeURI(preset.url), { signal: options.signal });
   if (!response.ok) {
     throw new Error(`Failed to load preset PDF (${response.status} ${response.statusText})`);
   }
@@ -469,6 +558,8 @@ async function renderCroppedPreview(options) {
   croppedPreviewContainer.hidden = false;
   croppedPreviewMessage.classList.remove('danger-text');
   croppedPreviewMessage.textContent = 'Rendering cropped map preview...';
+  croppedPreviewImage.hidden = true;
+  setArtifactState('preview', 'processing', 'rendering bounded preview');
   const timeout = setTimeout(
     () => controller.abort(`Preview exceeded ${PREVIEW_STEP_TIMEOUT_MS / 1000} seconds.`),
     PREVIEW_STEP_TIMEOUT_MS
@@ -483,20 +574,29 @@ async function renderCroppedPreview(options) {
     previewObjectUrl = URL.createObjectURL(blob);
     const previewUrl = previewObjectUrl;
     croppedPreviewImage.src = previewUrl;
+    await waitForAbortSignal(croppedPreviewImage.decode(), controller.signal);
+    croppedPreviewImage.hidden = false;
     croppedPreviewImage.alt = 'Preview of the cropped true-scale route map';
     croppedPreviewLink.href = previewUrl;
     croppedPreviewLink.setAttribute('aria-disabled', 'false');
     croppedPreviewMessage.textContent =
       'Bounded preview generated from the calibrated low-resolution map. Download the cropped PDF for print detail.';
+    setArtifactState('preview', 'ok', 'ready');
     return true;
   } catch (error) {
     console.error('Could not render cropped map preview', error);
     if (croppedPreviewController !== controller) return false;
     croppedPreviewImage.removeAttribute('src');
+    croppedPreviewImage.hidden = true;
     croppedPreviewLink.removeAttribute('href');
     croppedPreviewLink.setAttribute('aria-disabled', 'true');
     croppedPreviewMessage.classList.add('danger-text');
     croppedPreviewMessage.textContent = `Preview could not be rendered: ${error instanceof Error ? error.message : String(error)}. The cropped PDF is still available.`;
+    setArtifactState(
+      'preview',
+      controller.signal.aborted ? 'cancelled' : 'failed',
+      controller.signal.aborted ? 'cancelled' : 'failed; cropped PDF remains available'
+    );
     return false;
   } finally {
     clearTimeout(timeout);
@@ -1078,11 +1178,26 @@ function adjustLabelPosition(
   return { x, y, box: rotatedBoundingBox(x, y, width, height, angleRad) };
 }
 async function generate() {
+  if (generationController) {
+    setStatus('Generation is already running. Cancel it before starting another run.', 'warning');
+    return;
+  }
+  if (photoWorkflow.isBusy) {
+    setStatus('Wait for the current photo import to finish before generating.', 'warning');
+    return;
+  }
+  const controller = new AbortController();
+  generationController = controller;
+  const runMapKey = selectedMapKey;
+  const artifactFailures: string[] = [];
   const originalButtonHtml = generateBtn.innerHTML;
   try {
-    generateBtn.disabled = true;
+    setGenerationBusy(true);
     generateBtn.classList.add('is-loading');
     setStatus('Processing...');
+    resetArtifactStates();
+    setArtifactState('map', 'processing', 'preparing route map');
+    setArtifactState('overlay', 'processing', 'preparing overlay');
     resultsContent.hidden = true;
     if (resultsPlaceholder && !hasGeneratedOnce) {
       resultsPlaceholder.hidden = false;
@@ -1114,9 +1229,9 @@ async function generate() {
     }
     syncResultsVisibility();
 
-    const mapConfig = getPreset();
+    const mapConfig = getPreset(runMapKey);
     if (!mapConfig) {
-      throw new Error(`Unknown map preset: ${selectedMapKey}`);
+      throw new Error(`Unknown map preset: ${runMapKey}`);
     }
 
     const speed = parseSpeed(speedInput.value);
@@ -1127,6 +1242,11 @@ async function generate() {
     const route = buildRoute(points);
     const compliance = evaluateRouteCompliance(route, points, speed, mapConfig.scaleDenominator);
     const photoCompliance = photoWorkflow.analyze(points);
+    const styleConfig = getOverlayStyleConfig();
+    const photoLayerOptions = { ...photoWorkflow.layerOptions };
+    const handoutOptions = { ...photoWorkflow.handoutOptions };
+    const generationPhotos = [...photoWorkflow.records];
+    controller.signal.throwIfAborted();
     const metersPerMinute = speed.metersPerSecond * 60;
     const waypointTimes = computeWaypointTimes(route, points, takeoffToSp, metersPerMinute);
     const legsSummary = route.legs.map((leg) => ({
@@ -1149,7 +1269,11 @@ async function generate() {
     const mapFilename = mapConfig.type === 'pdf' ? mapConfig.fileName : null;
 
     if (mapConfig.type === 'pdf') {
-      const mapBytes = await ensurePresetBuffer(selectedMapKey);
+      const [{ degrees, PDFDocument, rgb }, { default: fontkit }] = await Promise.all([
+        import('pdf-lib'),
+        import('@pdf-lib/fontkit'),
+      ]);
+      const mapBytes = await ensurePresetBuffer(runMapKey, { signal: controller.signal });
       if (!mapBytes) {
         throw new Error('Map PDF unavailable.');
       }
@@ -1171,7 +1295,6 @@ async function generate() {
         return previewToPdf(bx, by, pageWidth, pageHeight, mapConfig.baseWidth, mapConfig.baseHeight);
       };
 
-      const styleConfig = getOverlayStyleConfig();
       const ds = {
         routeLineWidth: Math.max(0.4, styleConfig.routeWidth * scaleAvg),
         tpRadius: TP_RADIUS_SCALE * scaleAvg,
@@ -1183,7 +1306,7 @@ async function generate() {
         headingOffset: HEADING_OFFSET_SCALE * scaleAvg,
       };
 
-      const fontBytes = await loadAssetBytes(notoSansBoldUrl, 'the PDF label font');
+      const fontBytes = await loadAssetBytes(notoSansBoldUrl, 'the PDF label font', controller.signal);
       const overlayFontBold = await overlayDoc.embedFont(fontBytes, { subset: true });
       const baseFontBold = await pdfDoc.embedFont(fontBytes, { subset: true });
       const drawTargets = [
@@ -1535,7 +1658,6 @@ async function generate() {
         });
       });
 
-      const photoLayerOptions = photoWorkflow.layerOptions;
       const photoColors = {
         enroute: rgb(0.45, 0.12, 0.66),
         'control-correct': rgb(0.05, 0.48, 0.25),
@@ -1609,23 +1731,28 @@ async function generate() {
           });
         }
       };
-      for (const photo of photoWorkflow.records) {
+      for (const photo of generationPhotos) {
         const latitude = photo.metadata.latitude.value;
         const longitude = photo.metadata.longitude.value;
-        if (latitude === null || longitude === null || !photo.analysis) continue;
-        const exact = projectToPdf(latitude, longitude);
-        const projectedPhoto = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
-        if (![...exact, ...projectedPhoto].every(Number.isFinite)) continue;
+        const cameraExact =
+          latitude === null || longitude === null ? null : projectToPdf(latitude, longitude);
+        const taskCoordinates = effectiveTaskCoordinates(photo, points);
+        const taskExact = taskCoordinates ? projectToPdf(taskCoordinates[0], taskCoordinates[1]) : null;
+        const projectedTask = photo.taskAnalysis
+          ? projectToPdf(photo.taskAnalysis.closestLatitude, photo.taskAnalysis.closestLongitude)
+          : null;
         const color = photoColors[photo.classification];
         const hasViolation = photo.findings.some((finding) => finding.severity === 'violation');
         if (
           photoLayerOptions.connectors &&
-          Math.hypot(exact[0] - projectedPhoto[0], exact[1] - projectedPhoto[1]) > 1
+          taskExact &&
+          projectedTask &&
+          Math.hypot(taskExact[0] - projectedTask[0], taskExact[1] - projectedTask[1]) > 1
         ) {
           drawTargets.forEach((target) => {
             target.page.drawLine({
-              start: { x: exact[0], y: exact[1] },
-              end: { x: projectedPhoto[0], y: projectedPhoto[1] },
+              start: { x: taskExact[0], y: taskExact[1] },
+              end: { x: projectedTask[0], y: projectedTask[1] },
               thickness: Math.max(0.6, scaleAvg),
               color,
               opacity: 0.65,
@@ -1633,11 +1760,11 @@ async function generate() {
             });
           });
         }
-        if (photoLayerOptions.exactDots) {
+        if (photoLayerOptions.exactDots && cameraExact) {
           drawTargets.forEach((target) => {
             target.page.drawCircle({
-              x: exact[0],
-              y: exact[1],
+              x: cameraExact[0],
+              y: cameraExact[1],
               size: Math.max(2.3, 3 * scaleAvg),
               color,
               borderColor: hasViolation ? rgb(0.8, 0.02, 0.02) : rgb(1, 1, 1),
@@ -1645,23 +1772,16 @@ async function generate() {
             });
           });
         }
-        if (photoLayerOptions.projectedMarkers) {
+        if (photoLayerOptions.projectedMarkers && taskExact) {
           drawTargets.forEach((target) => {
-            drawPhotoSymbol(
-              target,
-              projectedPhoto[0],
-              projectedPhoto[1],
-              photo.classification,
-              color,
-              hasViolation
-            );
+            drawPhotoSymbol(target, taskExact[0], taskExact[1], photo.classification, color, hasViolation);
           });
           const label = photo.identifier || '?';
           const fontSize = Math.max(5, 9 * scaleAvg);
           const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
           const adjusted = adjustLabelPosition(
-            projectedPhoto[0] + photoMarkerSize * 1.5,
-            projectedPhoto[1] + photoMarkerSize,
+            taskExact[0] + photoMarkerSize * 1.5,
+            taskExact[1] + photoMarkerSize,
             1,
             1,
             width,
@@ -1681,7 +1801,15 @@ async function generate() {
             });
           });
         }
-        if (photoLayerOptions.headingArrows && photo.metadata.headingDeg.value !== null) {
+        if (
+          photoLayerOptions.headingArrows &&
+          cameraExact &&
+          latitude !== null &&
+          longitude !== null &&
+          photo.metadata.headingDeg.value !== null &&
+          photo.metadata.headingReference.value === 'true' &&
+          photo.metadata.headingReference.reliable
+        ) {
           const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
           const distanceM = 300;
           const headingLat = latitude + ((distanceM * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
@@ -1692,7 +1820,7 @@ async function generate() {
           const endpoint = projectToPdf(headingLat, headingLon);
           drawTargets.forEach((target) => {
             target.page.drawLine({
-              start: { x: exact[0], y: exact[1] },
+              start: { x: cameraExact[0], y: cameraExact[1] },
               end: { x: endpoint[0], y: endpoint[1] },
               thickness: Math.max(0.8, 1.2 * scaleAvg),
               color,
@@ -1700,13 +1828,13 @@ async function generate() {
           });
         }
         if (photoLayerOptions.includeInCrop) {
-          [exact, projectedPhoto].forEach(([x, y]) => {
+          [cameraExact, taskExact, projectedTask].filter(Boolean).forEach(([x, y]) => {
             expandBounds(x - photoMarkerSize * 2, y - photoMarkerSize * 2);
             expandBounds(x + photoMarkerSize * 2, y + photoMarkerSize * 2);
           });
         }
       }
-      if (photoLayerOptions.legend && photoWorkflow.records.length > 0) {
+      if (photoLayerOptions.legend && generationPhotos.length > 0) {
         const legendItems = [
           ['enroute', 'En-route'],
           ['control-correct', 'Correct CP'],
@@ -1802,6 +1930,7 @@ async function generate() {
 
       const overlayOnlyBytes = await overlayDoc.save();
       const markedBytes = await pdfDoc.save();
+      controller.signal.throwIfAborted();
       let croppedBytes = null;
       let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
@@ -1840,9 +1969,10 @@ async function generate() {
             pageHeight,
             crop: { minX, minY, maxX, maxY },
             route: projected.map(({ name, pdf: [x, y] }) => ({ x, y, label: name })),
-            photos: photoWorkflow.records.flatMap((photo) => {
-              if (!photo.analysis) return [];
-              const [x, y] = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
+            photos: generationPhotos.flatMap((photo) => {
+              const task = effectiveTaskCoordinates(photo, points);
+              if (!task) return [];
+              const [x, y] = projectToPdf(task[0], task[1]);
               if (![x, y].every(Number.isFinite)) return [];
               return [
                 {
@@ -1865,6 +1995,7 @@ async function generate() {
         }
       }
       setDownloadUrl('pdf', createPdfObjectUrl(markedBytes), 'route_marked.pdf', downloadPdfLink);
+      setArtifactState('map', 'ok', 'marked PDF ready');
       setDownloadUrl(
         'overlay',
         createPdfObjectUrl(overlayOnlyBytes),
@@ -1872,12 +2003,20 @@ async function generate() {
         downloadOverlayLink
       );
       downloadOverlayLink.style.display = 'inline-flex';
+      setArtifactState('overlay', 'ok', 'overlay PDF ready');
       if (croppedBytes && previewOptions) {
         setDownloadUrl('cropped', createPdfObjectUrl(croppedBytes), 'route_cropped.pdf', downloadCroppedLink);
         downloadCroppedLink.style.display = 'inline-flex';
+        setArtifactState('crop', 'ok', 'true-scale PDF ready');
         void renderCroppedPreview(previewOptions);
+      } else {
+        setArtifactState('crop', 'manual-review', 'no valid crop bounds');
+        setArtifactState('preview', 'manual-review', 'not available without crop bounds');
       }
     } else {
+      if (!osmThirdPartyConsent.checked) {
+        throw new Error('Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.');
+      }
       if (osmMapContainer) {
         osmMapContainer.hidden = false;
       }
@@ -1889,7 +2028,7 @@ async function generate() {
         layer.remove();
       });
       osmLayers = [];
-      const latLngs: L.LatLngExpression[] = points.map(([, lat, lon]) => [lat, lon] as [number, number]);
+      const latLngs: LatLngExpression[] = points.map(([, lat, lon]) => [lat, lon] as [number, number]);
       if (latLngs.length === 0) {
         throw new Error('No waypoints.');
       }
@@ -1937,7 +2076,6 @@ async function generate() {
           }).addTo(osmMap)
         );
       });
-      const photoLayerOptions = photoWorkflow.layerOptions;
       const photoColors = {
         enroute: '#731fa8',
         'control-correct': '#087a40',
@@ -1945,51 +2083,54 @@ async function generate() {
         'sign-task': '#0d59b8',
         reference: '#5b6166',
       };
-      for (const photo of photoWorkflow.records) {
+      for (const photo of generationPhotos) {
         const latitude = photo.metadata.latitude.value;
         const longitude = photo.metadata.longitude.value;
-        if (latitude === null || longitude === null || !photo.analysis) continue;
-        const exact: [number, number] = [latitude, longitude];
-        const projectedPhoto: [number, number] = [
-          photo.analysis.closestLatitude,
-          photo.analysis.closestLongitude,
-        ];
+        const cameraExact: [number, number] | null =
+          latitude === null || longitude === null ? null : [latitude, longitude];
+        const taskExact = effectiveTaskCoordinates(photo, points);
+        const projectedTask: [number, number] | null = photo.taskAnalysis
+          ? [photo.taskAnalysis.closestLatitude, photo.taskAnalysis.closestLongitude]
+          : null;
         const color = photoColors[photo.classification];
         const hasViolation = photo.findings.some((finding) => finding.severity === 'violation');
-        if (photoLayerOptions.connectors) {
+        if (photoLayerOptions.connectors && taskExact && projectedTask) {
           osmLayers.push(
-            L.polyline([exact, projectedPhoto], { color, weight: 1.5, opacity: 0.7, dashArray: '4 4' }).addTo(
-              osmMap
-            )
+            L.polyline([taskExact, projectedTask], {
+              color,
+              weight: 1.5,
+              opacity: 0.7,
+              dashArray: '4 4',
+            }).addTo(osmMap)
           );
         }
-        if (photoLayerOptions.exactDots) {
+        if (photoLayerOptions.exactDots && cameraExact) {
           osmLayers.push(
-            L.circleMarker(exact, {
+            L.circleMarker(cameraExact, {
               radius: 4,
               color: hasViolation ? '#c90000' : '#fff',
               fillColor: color,
               fillOpacity: 1,
               weight: 2,
             })
-              .bindTooltip(`${photo.identifier}: exact photo position`)
+              .bindTooltip(textNodeElement(`${photo.identifier}: exact camera position`))
               .addTo(osmMap)
           );
         }
-        if (photoLayerOptions.projectedMarkers) {
+        if (photoLayerOptions.projectedMarkers && taskExact) {
           osmLayers.push(
-            L.circleMarker(projectedPhoto, {
+            L.circleMarker(taskExact, {
               radius: photo.classification === 'enroute' ? 7 : 9,
               color: hasViolation ? '#c90000' : color,
               fillColor: '#fff',
               fillOpacity: 0.9,
               weight: hasViolation ? 3 : 2,
             })
-              .bindTooltip(`${photo.identifier} · ${photo.classification}`)
+              .bindTooltip(textNodeElement(`${photo.identifier} · ${photo.classification} task position`))
               .addTo(osmMap)
           );
           osmLayers.push(
-            L.marker(projectedPhoto, {
+            L.marker(taskExact, {
               icon: L.divIcon({
                 className: 'leaflet-marker-icon osm-photo-label-icon',
                 html: `<div class="osm-photo-label" style="border-color:${color};color:${color}">${escapeHtml(photo.identifier || '?')}</div>`,
@@ -1998,7 +2139,15 @@ async function generate() {
             }).addTo(osmMap)
           );
         }
-        if (photoLayerOptions.headingArrows && photo.metadata.headingDeg.value !== null) {
+        if (
+          photoLayerOptions.headingArrows &&
+          cameraExact &&
+          latitude !== null &&
+          longitude !== null &&
+          photo.metadata.headingDeg.value !== null &&
+          photo.metadata.headingReference.value === 'true' &&
+          photo.metadata.headingReference.reliable
+        ) {
           const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
           const headingLat = latitude + ((300 * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
           const headingLon =
@@ -2006,10 +2155,11 @@ async function generate() {
             ((300 * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
               (180 / Math.PI);
           osmLayers.push(
-            L.polyline([exact, [headingLat, headingLon]], { color, weight: 2, opacity: 0.9 }).addTo(osmMap)
+            L.polyline([cameraExact, [headingLat, headingLon]], { color, weight: 2, opacity: 0.9 }).addTo(
+              osmMap
+            )
           );
         }
-        routeBounds.extend(exact);
       }
       const refreshOsmViewport = () => {
         if (!osmMap) {
@@ -2047,10 +2197,19 @@ async function generate() {
         e.preventDefault();
         window.print();
       };
+      setArtifactState('map', 'manual-review', 'interactive OSM print view');
+      setArtifactState('overlay', 'manual-review', 'included in interactive view');
+      setArtifactState('crop', 'manual-review', 'not available for OSM');
+      setArtifactState('preview', 'manual-review', 'interactive map is the preview');
     }
 
-    const analysisCsv = photoAnalysisCsv(photoWorkflow.records);
-    const overlayKeyCsv = photoOverlayKeyCsv(photoWorkflow.records);
+    if (outputsSection) outputsSection.hidden = false;
+    resultsContent.hidden = false;
+    syncResultsVisibility();
+    controller.signal.throwIfAborted();
+
+    const analysisCsv = photoAnalysisCsv(generationPhotos);
+    const overlayKeyCsv = photoOverlayKeyCsv(generationPhotos);
     setDownloadUrl(
       'photoAnalysis',
       URL.createObjectURL(new Blob([analysisCsv], { type: 'text/csv;charset=utf-8' })),
@@ -2065,34 +2224,51 @@ async function generate() {
     );
     downloadPhotoAnalysisLink.style.display = 'inline-flex';
     downloadPhotoKeyLink.style.display = 'inline-flex';
+    setArtifactState('data', 'ok', 'CSV files ready; summary pending');
 
-    setStatus(
-      `Preparing ${photoWorkflow.records.length} photo${photoWorkflow.records.length === 1 ? '' : 's'} for the handout...`
-    );
-    const handoutPhotos = [];
-    for (const record of photoWorkflow.records) {
-      handoutPhotos.push({
-        record,
-        jpeg: await preparePhotoJpeg(record.file, record.metadata.orientation.value ?? 1),
-      });
+    setArtifactState('handout', 'processing', 'preparing photos');
+    try {
+      setStatus(
+        `Preparing ${generationPhotos.length} photo${generationPhotos.length === 1 ? '' : 's'} for the handout...`
+      );
+      const handoutPhotos = [];
+      for (const record of generationPhotos) {
+        controller.signal.throwIfAborted();
+        handoutPhotos.push({
+          record,
+          jpeg: await preparePhotoJpeg(record.file, record.metadata.orientation.value ?? 1, 1600),
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      const handoutFontBytes = await loadAssetBytes(
+        notoSansBoldUrl,
+        'the photo handout font',
+        controller.signal
+      );
+      const { buildPhotoHandout } = await import('./photo-handout');
+      const handoutBytes = await buildPhotoHandout(
+        handoutPhotos,
+        photoCompliance,
+        handoutFontBytes,
+        handoutOptions
+      );
+      setDownloadUrl(
+        'photoHandout',
+        createPdfObjectUrl(handoutBytes),
+        'photo_handout.pdf',
+        downloadPhotoHandoutLink
+      );
+      downloadPhotoHandoutLink.style.display = 'inline-flex';
+      setArtifactState('handout', 'ok', 'PDF ready');
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      artifactFailures.push(`photo handout: ${message}`);
+      setArtifactState('handout', 'failed', message);
     }
-    const handoutFontBytes = await loadAssetBytes(notoSansBoldUrl, 'the photo handout font');
-    const handoutBytes = await buildPhotoHandout(
-      handoutPhotos,
-      photoCompliance,
-      handoutFontBytes,
-      photoWorkflow.handoutOptions
-    );
-    setDownloadUrl(
-      'photoHandout',
-      createPdfObjectUrl(handoutBytes),
-      'photo_handout.pdf',
-      downloadPhotoHandoutLink
-    );
-    downloadPhotoHandoutLink.style.display = 'inline-flex';
 
     const summary = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       appVersion: APP_VERSION,
       generatedAt: new Date().toISOString(),
       speedLabel: speed.label,
@@ -2100,7 +2276,7 @@ async function generate() {
       totalDistanceKm: route.totalDistance / 1000,
       totalDistanceNm: compliance.totalDistanceNm,
       map: {
-        key: selectedMapKey,
+        key: runMapKey,
         label: mapConfig.label,
         edition: mapConfig.edition,
         file: mapFilename || null,
@@ -2125,7 +2301,7 @@ async function generate() {
         checks: compliance.checks,
         manualChecks: compliance.manualChecks,
       },
-      photos: photoSummaryJson(photoWorkflow.records, photoCompliance),
+      photos: photoSummaryJson(generationPhotos, photoCompliance),
       warnings: mapConfig.requiresValidityReview
         ? [`Confirm that ${mapConfig.label} (${mapConfig.edition} edition) is current and event-approved.`]
         : [],
@@ -2138,6 +2314,7 @@ async function generate() {
       downloadSummaryLink
     );
     downloadSummaryLink.style.display = 'inline-flex';
+    setArtifactState('data', 'ok', 'CSV and JSON ready');
 
     if (outputsSection) {
       outputsSection.hidden = false;
@@ -2184,29 +2361,41 @@ async function generate() {
           ? 'manual-review'
           : 'ok';
     setStatus(
-      generatedStatus === 'against-rules'
-        ? `Generated: Against the rules · ${compliance.violations.length + photoCompliance.violationCount} automated violation(s). Review the affected route and photo findings.`
-        : generatedStatus === 'manual-review'
-          ? `Generated: Manual review required · automated checks passed, but ${photoCompliance.warningCount} photo item(s) lack reliable metadata.`
-          : 'Generated: OK for automated checks. Complete the listed manual judge checks.',
-      generatedStatus === 'ok' ? 'success' : 'warning'
+      artifactFailures.length
+        ? `Generated with partial failures: ${artifactFailures.join(' | ')}. Completed downloads remain available.`
+        : generatedStatus === 'against-rules'
+          ? `Generated: Against the rules · ${compliance.violations.length + photoCompliance.violationCount} automated violation(s). Review the affected route and photo findings.`
+          : generatedStatus === 'manual-review'
+            ? `Generated: Manual review required · no automated violation was found, but ${photoCompliance.warningCount} photo/judge review item(s) remain.`
+            : 'Generated: OK for automated checks. Complete the listed manual judge checks.',
+      generatedStatus === 'ok' && artifactFailures.length === 0 ? 'success' : 'warning'
     );
   } catch (err) {
     console.error(err);
-    setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    resultsContent.hidden = true;
+    const cancelled = controller.signal.aborted;
+    setStatus(
+      cancelled
+        ? 'Generation cancelled. Any completed downloads remain available.'
+        : `Error: ${err instanceof Error ? err.message : String(err)}`
+    );
+    if (!outputsSection || outputsSection.hidden) resultsContent.hidden = true;
     if (resultsPlaceholder && !hasGeneratedOnce) {
       resultsPlaceholder.hidden = false;
     }
     syncResultsVisibility();
   } finally {
-    generateBtn.disabled = false;
+    if (generationController === controller) generationController = null;
+    setGenerationBusy(false);
     generateBtn.classList.remove('is-loading');
     generateBtn.innerHTML = originalButtonHtml;
   }
 }
 
 generateBtn.addEventListener('click', generate);
+cancelGenerationBtn.addEventListener('click', () => {
+  generationController?.abort('Cancelled by the user.');
+  croppedPreviewController?.abort('Cancelled by the user.');
+});
 waypointLibraryToggle.addEventListener('click', toggleWaypointLibraryVisibility);
 
 if (libraryControls) {
@@ -2247,6 +2436,7 @@ mapPresetButtons.forEach((btn) => {
     handleMapPresetChange(btn.dataset.mapKey);
   });
 });
+osmThirdPartyConsent.addEventListener('change', () => updateMapInputsVisibility());
 
 window.addEventListener('beforeunload', () => {
   Object.values(downloadUrls).forEach((url) => {
@@ -2262,3 +2452,4 @@ window.addEventListener('beforeunload', () => {
 // Initial UI state setup
 setStatus('');
 handleMapPresetChange(selectedMapKey);
+photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));

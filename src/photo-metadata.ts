@@ -1,5 +1,5 @@
-import ExifReader from 'exifreader';
 import {
+  type HeadingReference,
   missingValue,
   type PhotoClassification,
   type PhotoMetadata,
@@ -35,6 +35,16 @@ function tagNumber(...tags: Tag[]): number | null {
   return null;
 }
 
+function groupNumber(value: unknown): number | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return tagNumber(value as Tag);
+  return finiteNumber(value);
+}
+
+function groupText(value: unknown): string | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return tagText(value as Tag);
+  return typeof value === 'string' ? value.trim() || null : null;
+}
+
 function tagText(...tags: Tag[]): string | null {
   for (const tag of tags) {
     const candidate = tag?.description ?? tag?.value;
@@ -67,8 +77,14 @@ export function normalizeExifTags(raw: unknown): PhotoMetadata {
   const gps = (groups.gps ?? {}) as Record<string, unknown>;
   const latitude = finiteNumber(gps.Latitude);
   const longitude = finiteNumber(gps.Longitude);
-  const altitude = finiteNumber(gps.Altitude);
-  const heading = tagNumber(exif.GPSImgDirection, exif.CameraDirection);
+  const rawAltitude = finiteNumber(gps.Altitude);
+  const altitudeReference = groupNumber(gps.GPSAltitudeRef);
+  const altitude =
+    rawAltitude === null ? null : altitudeReference === 1 ? -Math.abs(rawAltitude) : rawAltitude;
+  const heading = groupNumber(gps.GPSImgDirection) ?? tagNumber(exif.GPSImgDirection, exif.CameraDirection);
+  const rawHeadingReference = groupText(gps.GPSImgDirectionRef)?.toUpperCase();
+  const headingReference: HeadingReference =
+    rawHeadingReference === 'T' ? 'true' : rawHeadingReference === 'M' ? 'magnetic' : 'unknown';
   const focal = tagNumber(exif.FocalLength);
   const focal35 = tagNumber(exif.FocalLengthIn35mmFilm, exif.FocalLengthIn35mmFormat);
   const orientation = tagNumber(exif.Orientation, file.Orientation) ?? 1;
@@ -101,6 +117,16 @@ export function normalizeExifTags(raw: unknown): PhotoMetadata {
       heading !== null,
       heading === null ? 'Camera direction is missing.' : undefined
     ),
+    headingReference: sourcedValue(
+      heading === null ? null : headingReference,
+      'exif',
+      heading !== null && headingReference === 'true',
+      heading === null
+        ? 'Camera direction reference is unavailable.'
+        : headingReference === 'true'
+          ? undefined
+          : `Camera direction reference is ${headingReference}; only true direction is checked automatically.`
+    ),
     focalLengthMm: sourcedValue(
       focal,
       'exif',
@@ -121,8 +147,9 @@ export function normalizeExifTags(raw: unknown): PhotoMetadata {
   };
 }
 
-export async function extractPhotoMetadata(file: File): Promise<PhotoMetadata> {
-  const buffer = await file.arrayBuffer();
+export async function extractPhotoMetadata(file: File, existingBuffer?: ArrayBuffer): Promise<PhotoMetadata> {
+  const buffer = existingBuffer ?? (await file.arrayBuffer());
+  const { default: ExifReader } = await import('exifreader');
   const tags = await ExifReader.load(buffer, { expanded: true, async: true });
   return normalizeExifTags(tags);
 }

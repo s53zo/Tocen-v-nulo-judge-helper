@@ -14,21 +14,51 @@ describe('photo metadata', () => {
       exif: {
         DateTimeOriginal: { description: '2025:09:19 15:51:39' },
         OffsetTimeOriginal: { description: '+02:00' },
-        GPSImgDirection: { value: 370 },
         FocalLength: { value: [12, 10] },
         FocalLengthIn35mmFilm: { value: 55 },
         Orientation: { value: 6 },
         Make: { description: 'Insta360' },
       },
-      gps: { Latitude: 46.5, Longitude: 16.2, Altitude: 491.5 },
+      gps: {
+        Latitude: 46.5,
+        Longitude: 16.2,
+        Altitude: 491.5,
+        GPSAltitudeRef: 0,
+        GPSImgDirection: { value: 370 },
+        GPSImgDirectionRef: { description: 'T' },
+      },
     });
     expect(metadata.captureTime.value).toBe('2025-09-19T15:51:39+02:00');
     expect(metadata.headingDeg.value).toBe(10);
+    expect(metadata.headingReference.value).toBe('true');
+    expect(metadata.headingReference.reliable).toBe(true);
     expect(metadata.focalLengthMm.value).toBe(1.2);
     expect(metadata.focalLength35Mm.value).toBe(55);
     expect(metadata.gpsAltitudeMslM.note).toContain('MSL');
     expect(metadata.altitudeAglFt.value).toBeNull();
     expect(metadata.orientation.value).toBe(6);
+  });
+
+  it('does not treat magnetic or unknown camera direction as true heading', () => {
+    const magnetic = normalizeExifTags({
+      gps: {
+        Latitude: 46.5,
+        Longitude: 16.2,
+        GPSImgDirection: { value: 90 },
+        GPSImgDirectionRef: { description: 'M' },
+      },
+    });
+    expect(magnetic.headingDeg.value).toBe(90);
+    expect(magnetic.headingReference.value).toBe('magnetic');
+    expect(magnetic.headingReference.reliable).toBe(false);
+    const unknown = normalizeExifTags({ gps: { GPSImgDirection: { value: 45 } } });
+    expect(unknown.headingReference.value).toBe('unknown');
+    expect(unknown.headingReference.reliable).toBe(false);
+  });
+
+  it('applies the GPS altitude reference sign', () => {
+    const metadata = normalizeExifTags({ gps: { Altitude: 12.5, GPSAltitudeRef: 1 } });
+    expect(metadata.gpsAltitudeMslM.value).toBe(-12.5);
   });
 
   it('marks absent timezone and absent fields as unreliable', () => {

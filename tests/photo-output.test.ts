@@ -25,6 +25,7 @@ describe('photo outputs', () => {
       gpsAltitudeMslM: { value: null },
       altitudeAglFt: { value: null },
       headingDeg: { value: null },
+      headingReference: { value: null },
       focalLengthMm: { value: null },
       focalLength35Mm: { value: null },
       cameraMake: { value: null },
@@ -40,11 +41,48 @@ describe('photo outputs', () => {
         originalMetadata: metadata,
         metadata,
         analysis: null,
+        taskAnalysis: null,
+        taskLatitude: { value: null, source: 'missing' },
+        taskLongitude: { value: null, source: 'missing' },
         findings: [],
       },
     ] as unknown as PhotoRecord[];
     expect(photoAnalysisCsv(records)).toContain('"one,""two"".jpg"');
-    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(1);
+    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(2);
+  });
+
+  it('neutralizes spreadsheet formulas while leaving numeric values numeric', () => {
+    const metadata = {
+      captureTime: { value: null },
+      latitude: { value: -46, source: 'manual' },
+      longitude: { value: null, source: 'missing' },
+      gpsAltitudeMslM: { value: null },
+      altitudeAglFt: { value: null },
+      headingDeg: { value: null },
+      headingReference: { value: null },
+      focalLengthMm: { value: null },
+      focalLength35Mm: { value: null },
+      cameraMake: { value: null },
+      cameraModel: { value: null },
+      lensModel: { value: null },
+    };
+    const record = {
+      fileName: '=HYPERLINK("bad")',
+      identifier: '+SUM(1,1)',
+      classification: 'reference',
+      linkedWaypoint: null,
+      originalMetadata: metadata,
+      metadata,
+      analysis: null,
+      taskAnalysis: null,
+      taskLatitude: { value: null, source: 'missing' },
+      taskLongitude: { value: null, source: 'missing' },
+      findings: [],
+    } as unknown as PhotoRecord;
+    const csv = photoAnalysisCsv([record]);
+    expect(csv).toContain("'+SUM(1,1)");
+    expect(csv).toContain("'=HYPERLINK");
+    expect(csv).toContain('-46');
   });
 
   it('defines transforms for all eight EXIF orientations', () => {
@@ -83,9 +121,36 @@ describe('photo outputs', () => {
     const font = fs.readFileSync('node_modules/notosans-fontface/fonts/NotoSans-Bold.ttf');
     const bytes = await buildPhotoHandout([], compliance, new Uint8Array(font), {
       splitWaypoint: 'TP5',
+      splitAfterM: 10_000,
       includeSummary: true,
     });
     const document = await PDFDocument.load(bytes);
     expect(document.getPageCount()).toBe(1);
+  });
+
+  it('paginates every handout compliance finding', async () => {
+    const font = fs.readFileSync('node_modules/notosans-fontface/fonts/NotoSans-Bold.ttf');
+    const manyFindings: PhotoComplianceSummary = {
+      ...compliance,
+      status: 'manual-review',
+      warningCount: 60,
+      findings: Array.from({ length: 60 }, (_, index) => ({
+        photoId: null,
+        severity: 'warning' as const,
+        code: `finding-${index}`,
+        rule: 'A2.4.5',
+        affected: `photo-${index}`,
+        message: `Manual finding ${index}`,
+        measured: `measurement ${index}`,
+        permitted: 'manual confirmation',
+      })),
+    };
+    const bytes = await buildPhotoHandout([], manyFindings, new Uint8Array(font), {
+      splitWaypoint: 'TP5',
+      splitAfterM: 10_000,
+      includeSummary: true,
+    });
+    const document = await PDFDocument.load(bytes);
+    expect(document.getPageCount()).toBeGreaterThan(2);
   });
 });

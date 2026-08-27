@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePreviewGeometry } from '../src/map-preview';
+import { computePreviewGeometry, waitForAbortSignal } from '../src/map-preview';
 
 describe('bounded map preview geometry', () => {
   it('maps a PDF crop into the top-left raster coordinate system', () => {
@@ -37,5 +37,13 @@ describe('bounded map preview geometry', () => {
     expect(() =>
       computePreviewGeometry(2000, 1000, 1000, 500, { minX: -1, minY: 0, maxX: 100, maxY: 100 })
     ).toThrow('within');
+  });
+
+  it('rejects a pending preview stage when it is cancelled', async () => {
+    const controller = new AbortController();
+    const pending = new Promise<void>(() => undefined);
+    const result = waitForAbortSignal(pending, controller.signal);
+    controller.abort('cancelled');
+    await expect(result).rejects.toBe('cancelled');
   });
 });

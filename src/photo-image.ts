@@ -34,26 +34,60 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number):
 }
 
 export async function preparePhotoJpeg(file: File, orientation: number, maxEdge = 2200): Promise<Uint8Array> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'none' });
-  } catch {
-    bitmap = await createImageBitmap(file);
-    orientation = 1;
+  let source: CanvasImageSource;
+  let sourceWidth: number;
+  let sourceHeight: number;
+  let close: () => void = () => undefined;
+  if (typeof createImageBitmap === 'function') {
+    try {
+      // Both supported engines decode EXIF orientation with `from-image`.
+      // Normalise the transform here so it is never applied a second time.
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      source = bitmap;
+      sourceWidth = bitmap.width;
+      sourceHeight = bitmap.height;
+      orientation = 1;
+      close = () => bitmap.close();
+    } catch {
+      const bitmap = await createImageBitmap(file);
+      source = bitmap;
+      sourceWidth = bitmap.width;
+      sourceHeight = bitmap.height;
+      orientation = 1;
+      close = () => bitmap.close();
+    }
+  } else {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    try {
+      image.src = url;
+      await image.decode();
+      source = image;
+      sourceWidth = image.naturalWidth;
+      sourceHeight = image.naturalHeight;
+      orientation = 1;
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      throw error;
+    }
+    close = () => URL.revokeObjectURL(url);
   }
-  const [orientedWidth, orientedHeight] = orientationOutputSize(bitmap.width, bitmap.height, orientation);
-  const scale = Math.min(1, maxEdge / Math.max(orientedWidth, orientedHeight));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(orientedWidth * scale));
-  canvas.height = Math.max(1, Math.round(orientedHeight * scale));
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Canvas rendering is unavailable.');
-  context.fillStyle = '#fff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.scale(scale, scale);
-  context.transform(...orientationTransform(orientation, bitmap.width, bitmap.height));
-  context.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  const blob = await canvasToBlob(canvas, 'image/jpeg', 0.9);
-  return new Uint8Array(await blob.arrayBuffer());
+  try {
+    const [orientedWidth, orientedHeight] = orientationOutputSize(sourceWidth, sourceHeight, orientation);
+    const scale = Math.min(1, maxEdge / Math.max(orientedWidth, orientedHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(orientedWidth * scale));
+    canvas.height = Math.max(1, Math.round(orientedHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas rendering is unavailable.');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.scale(scale, scale);
+    context.transform(...orientationTransform(orientation, sourceWidth, sourceHeight));
+    context.drawImage(source, 0, 0);
+    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.88);
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    close();
+  }
 }

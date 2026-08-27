@@ -1,14 +1,16 @@
 {
   "name": "precision-route-planner",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "biome check src tests vite.config.ts",
-    "format": "biome format --write src tests vite.config.ts",
+    "test": "vitest run tests",
+    "test:e2e": "playwright test",
+    "dev": "vite --host 127.0.0.1",
+    "lint": "biome check src tests e2e playwright.config.ts vite.config.ts",
+    "format": "biome format --write src tests e2e playwright.config.ts vite.config.ts",
     "check": "npm run typecheck && npm run test && npm run lint"
   },
   "dependencies": {
@@ -19,9 +21,12 @@
     "pdf-lib": "1.17.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "2.5.10",
+    "@playwright/test": "^1.62.1",
     "@types/leaflet": "1.9.22",
     "@types/node": "^26.4.0",
+    "ajv": "^8.20.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
