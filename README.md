@@ -1,6 +1,6 @@
 # Precision Route Planner
 
-A browser-only tool for building precision-flying routes, calculating waypoint schedules and minute markers, and producing calibrated map overlays as PDFs. All route and PDF processing happens locally in the browser.
+A browser-only tool for building precision-flying routes, analysing route photos, checking calculable judging rules, and producing calibrated map overlays and photo handouts. All route, photo, EXIF, and PDF processing happens locally in the browser; photos are never uploaded.
 
 The production page is the single root [`index.html`](./index.html). GitHub Pages serves it directly from the `main` branch root; there is no second web application or Python pipeline.
 
@@ -17,6 +17,14 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Unicode waypoint labels in generated PDFs
 - Searchable location library
 - Explicit chart-edition warnings
+- Multi-JPEG drag-and-drop import with previews, progress, SHA-256 duplicate detection, removal, and ordering
+- Local EXIF extraction with explicit provenance and editable GPS, time, heading, AGL altitude, and focal-length fields
+- Route projection, along-track/lateral distance, leg assignment, camera-heading comparison, and post-control spacing
+- En-route, correct/false control, sign-task, and reference classifications with waypoint linking
+- Per-photo and route-wide `OK for automated checks`, `Against the rules`, or `Manual review required` findings
+- Exact and route-projected photo layers on calibrated PDFs and OpenStreetMap
+- `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, and print-ready `photo_handout.pdf`
+- An opt-in 29-photo historical TVN 2025 example recovered from the original workflow
 
 ## Development
 
@@ -41,9 +49,17 @@ src/data-url.ts         CSP-safe decoder for bundled data URL assets
 src/maps.ts             Map-preset validation
 src/map-presets.json    Versioned map metadata and calibration
 src/styles.css          Application styles
+src/photo-metadata.ts   EXIF normalization and metadata provenance
+src/photo-analysis.ts   Pure route/photo geographic calculations
+src/photo-compliance.ts Photo-task judging-rule checks
+src/photo-workflow.ts   Import, editing, ordering, and UI state
+src/photo-output.ts     CSV and JSON schemas
+src/photo-image.ts      EXIF orientation correction
+src/photo-handout.ts    Browser-generated A4 handout
 tests/                  Calculation and configuration regression tests
 maps/                   Browser map assets
 assets/                 Generated production bundle
+examples/photos/        Historical browser test/example photos
 docs/                   Event and judging reference documents
 locations.txt           Location library data
 ```
@@ -54,9 +70,17 @@ Map editions and calibration data live in `src/map-presets.json`. PDF presets mu
 
 ## Rule compliance
 
-After every successful generation, the app evaluates the calculable requirements in `docs/Pravilnik Aerorally.pdf`: official 1:250,000 map scale (A1.4), permitted groundspeeds (A1.5), 70-120 NM route length (A2.1.1), minimum 5 NM legs, control-point limit, and SP/FP identifiers (A2.1.2). A prominent result lists every pass or violation and is also included in `route_summary.json`.
+After every successful generation, the app evaluates the calculable requirements in `docs/Pravilnik Aerorally.pdf`: official 1:250,000 map scale (A1.4), permitted groundspeeds (A1.5), 70-120 NM route length (A2.1.1), minimum 5 NM legs, control-point limit, and SP/FP identifiers (A2.1.2). Photo checks cover false control-object separation (A2.4.2), the 12 en-route-photo limit plus reliable 50-70 mm equivalent focal length, 500-1,000 ft AGL, 300 m route-axis distance, and 45-degree camera-angle limits (A2.4.5), and the 15-task and 1 NM post-control restrictions (A2.4.6).
 
-The result is deliberately limited to automated checks. The app also lists the operational and judge-only items that still require manual confirmation, including landing, control-point descriptions, timed-control designation, altitude/direction, observation tasks, GPS logging, chart approval, and VFR requirements.
+Every finding records the rule, measured value, permitted value, and affected photo. Unreliable or unavailable GPS, AGL, heading, focal length, or false-object coordinates produce `Manual review required`; the app does not guess or silently discard a photo. EXIF GPS altitude remains labelled MSL and is never treated as AGL.
+
+The historical example intentionally demonstrates discrepancies: it contains 20 en-route photos (over the maximum of 12), several post-control tasks inside 1 NM, unreliable repeated EXIF GPS, no camera heading or AGL, and a 6 mm-equivalent lens. Its GPX-interpolated example coordinates are stored as explicit overrides so the original EXIF remains auditable.
+
+The result is deliberately limited to checks supported by reliable inputs. The app also lists operational and judge-only items that still require manual confirmation, including landing, control-point descriptions, timed-control designation, observation-task correctness, GPS logging, chart approval, and VFR requirements.
+
+## Browser support and privacy
+
+Use a current Chrome, Edge, Firefox, or Safari release with Web Crypto, File/Blob, Canvas, and `createImageBitmap` support. Photo hashes, previews, EXIF metadata, route analysis, and generated downloads live only in memory in the current tab. Reloading clears imported user photos. OpenStreetMap mode requests public map tiles, but it does not send photo files or EXIF metadata.
 
 Bundled aeronautical charts display a validity warning. Confirm that a chart is current and approved for the event before operational use. Updating a chart requires updating its file, metadata, calibration, tests, and generated bundle together.
 

@@ -134,6 +134,44 @@ TP6,46.552346,16.430293
 FP,46.608093,16.234769</textarea>
           </div>
 
+          <section class="control-group photo-workflow" aria-labelledby="photoWorkflowTitle">
+            <h2 id="photoWorkflowTitle">5. Photos &amp; Tasks</h2>
+            <p class="note privacy-note"><strong>Private by design:</strong> photos, EXIF metadata, analysis, and generated files stay in this browser tab. Nothing is uploaded.</p>
+            <label id="photoDropzone" class="photo-dropzone" for="photoFiles">
+              <span><strong>Drop JPEG photos here</strong> or choose multiple files</span>
+              <input id="photoFiles" type="file" accept="image/jpeg,.jpg,.jpeg" multiple>
+            </label>
+            <div class="photo-import-actions">
+              <button type="button" id="loadPhotoExample" class="btn btn-secondary">Load TVN 2025 example (29 photos)</button>
+              <span class="note">The historical example is about 49 MB and loads only when requested.</span>
+            </div>
+            <progress id="photoProgress" value="0" max="1" hidden></progress>
+            <p id="photoProgressText" class="note" role="status" aria-live="polite"></p>
+
+            <details class="photo-options">
+              <summary>Map layers and handout options</summary>
+              <div class="check-grid">
+                <label><input id="photoExactDots" type="checkbox" checked> Exact GPS dots</label>
+                <label><input id="photoProjectedMarkers" type="checkbox" checked> Route-projected markers</label>
+                <label><input id="photoHeadingArrows" type="checkbox" checked> Heading arrows</label>
+                <label><input id="photoConnectors" type="checkbox" checked> GPS-to-route connectors</label>
+                <label><input id="photoLegend" type="checkbox" checked> Photo legend</label>
+                <label><input id="photoCropBounds" type="checkbox" checked> Include photos in crop bounds</label>
+                <label>Split handout at
+                  <select id="handoutSplit">
+                    <option>TP1</option><option>TP2</option><option>TP3</option><option>TP4</option><option selected>TP5</option><option>TP6</option><option>TP7</option>
+                  </select>
+                </label>
+                <label><input id="handoutSummary" type="checkbox" checked> Add compliance summary page</label>
+              </div>
+            </details>
+
+            <div id="photoComplianceStatus" class="photo-overall-status" role="status" aria-live="polite"></div>
+            <ul id="photoFindings" class="photo-findings"></ul>
+            <p id="photoEmpty" class="empty-state">No photos selected. You can generate a route without photos.</p>
+            <div id="photoList" class="photo-list"></div>
+          </section>
+
           <button id="generate" class="btn btn-primary">Generate Overlay</button>
           <div class="status" id="status"></div>
         </div>
@@ -171,6 +209,9 @@ FP,46.608093,16.234769</textarea>
                 <a id="downloadOverlay" href="#" class="btn btn-ghost">Overlay Only</a>
                 <a id="downloadCropped" href="#" class="btn btn-ghost">Cropped Map (PDF)</a>
                 <a id="downloadSummary" href="#" class="btn btn-ghost">Summary (JSON)</a>
+                <a id="downloadPhotoAnalysis" href="#" class="btn btn-ghost">Photo Analysis (CSV)</a>
+                <a id="downloadPhotoKey" href="#" class="btn btn-ghost">Photo Overlay Key (CSV)</a>
+                <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Photo Handout (PDF)</a>
               </div>
             </div>
 

@@ -721,6 +721,167 @@ th:not(:first-child) {
   cursor: zoom-in;
 }
 
+.privacy-note {
+  padding: 0.7rem 0.85rem;
+  border-left: 4px solid #24745d;
+  background: #edf7f3;
+}
+
+.photo-dropzone {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  padding: 1rem;
+  border: 2px dashed #7c9d91;
+  border-radius: 8px;
+  background: #f8fbfa;
+  cursor: pointer;
+  text-align: center;
+}
+
+.photo-dropzone.is-dragging {
+  border-color: #176149;
+  background: #e4f4ee;
+}
+
+.photo-dropzone input {
+  max-width: 100%;
+  margin-top: 0.7rem;
+}
+
+.photo-import-actions,
+.photo-order-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.photo-workflow progress {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.photo-options {
+  margin: 0.8rem 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.photo-overall-status,
+.photo-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.photo-overall-status[data-tone="ok"],
+.photo-status[data-tone="ok"] {
+  background: #dff3e7;
+  color: #145a32;
+}
+.photo-overall-status[data-tone="review"],
+.photo-status[data-tone="review"] {
+  background: #fff1c7;
+  color: #73510b;
+}
+.photo-overall-status[data-tone="fail"],
+.photo-status[data-tone="fail"] {
+  background: #fbe1e1;
+  color: #8a1c1c;
+}
+
+.photo-findings,
+.photo-card-findings {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0.6rem 0;
+  padding-left: 1.2rem;
+  color: #6f2c20;
+  font-size: 0.82rem;
+}
+
+.photo-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.photo-card {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 0.9rem;
+  padding: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: white;
+}
+
+.photo-thumbnail {
+  width: 150px;
+  height: 105px;
+  object-fit: contain;
+  background: #eef0f1;
+  border-radius: 5px;
+  image-orientation: from-image;
+}
+
+.photo-card-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+
+.photo-order-controls {
+  margin-top: 0;
+}
+.btn-small {
+  padding: 0.25rem 0.48rem;
+  font-size: 0.75rem;
+}
+
+.photo-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.photo-field {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.photo-field input,
+.photo-field select {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.15rem;
+  padding: 0.38rem;
+  font-size: 0.78rem;
+}
+
+.photo-provenance,
+.photo-metrics {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
 @media (max-width: 1080px) {
   .desk-layout {
     grid-template-columns: 1fr;
@@ -744,10 +905,44 @@ th:not(:first-child) {
   .results-inner {
     padding: 1.5rem;
   }
+
+  .photo-card {
+    grid-template-columns: 1fr;
+  }
+  .photo-thumbnail {
+    width: 100%;
+    height: 180px;
+  }
+  .photo-field-grid,
+  .check-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .control-panel,
+  header,
+  .results-placeholder,
+  .download-actions,
+  .compliance-notice {
+    display: none;
+  }
+  main,
+  .results-panel,
+  .panel-content,
+  .results-inner {
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+  }
+  #osmMap {
+    height: 95vh;
+  }
 }
 
 .leaflet-marker-icon.osm-label-icon,
-.leaflet-marker-icon.osm-minute-label-icon {
+.leaflet-marker-icon.osm-minute-label-icon,
+.leaflet-marker-icon.osm-photo-label-icon {
   background: transparent;
   border: none;
   pointer-events: none;
@@ -761,6 +956,10 @@ th:not(:first-child) {
   transform: translate(-50%, calc(-100% - 6px));
 }
 
+.leaflet-marker-icon.osm-photo-label-icon {
+  transform: translate(8px, -20px);
+}
+
 .osm-label,
 .osm-minute-label {
   display: inline-flex;
@@ -769,6 +968,17 @@ th:not(:first-child) {
   pointer-events: none;
   white-space: nowrap;
   font-family: var(--font-ui);
+}
+
+.osm-photo-label {
+  display: inline-flex;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  font: 700 0.75rem var(--font-ui);
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .osm-label {

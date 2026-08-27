@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import notoSansBoldUrl from '@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff?url';
 import fontkit from '@pdf-lib/fontkit';
+import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
 import { degrees, PDFDocument, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -20,6 +20,10 @@ import {
 } from './domain';
 import rawMapPresets from './map-presets.json';
 import { loadMapPresets } from './maps';
+import { buildPhotoHandout } from './photo-handout';
+import { preparePhotoJpeg } from './photo-image';
+import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
+import { PhotoWorkflow } from './photo-workflow';
 import './styles.css';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -28,7 +32,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '2.0.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -93,12 +97,18 @@ const downloadPdfLink = requiredElement<HTMLAnchorElement>('downloadPdf');
 const downloadOverlayLink = requiredElement<HTMLAnchorElement>('downloadOverlay');
 const downloadCroppedLink = requiredElement<HTMLAnchorElement>('downloadCropped');
 const downloadSummaryLink = requiredElement<HTMLAnchorElement>('downloadSummary');
+const downloadPhotoAnalysisLink = requiredElement<HTMLAnchorElement>('downloadPhotoAnalysis');
+const downloadPhotoKeyLink = requiredElement<HTMLAnchorElement>('downloadPhotoKey');
+const downloadPhotoHandoutLink = requiredElement<HTMLAnchorElement>('downloadPhotoHandout');
 downloadCroppedLink.style.display = 'none';
 const downloadUrls = {
   pdf: null,
   overlay: null,
   cropped: null,
   summary: null,
+  photoAnalysis: null,
+  photoKey: null,
+  photoHandout: null,
 };
 let previewObjectUrl = null;
 
@@ -147,6 +157,9 @@ registerDownloadPreview(downloadPdfLink, 'pdf');
 registerDownloadPreview(downloadOverlayLink, 'overlay');
 registerDownloadPreview(downloadCroppedLink, 'cropped');
 registerDownloadPreview(downloadSummaryLink, 'summary');
+registerDownloadPreview(downloadPhotoAnalysisLink, 'photoAnalysis');
+registerDownloadPreview(downloadPhotoKeyLink, 'photoKey');
+registerDownloadPreview(downloadPhotoHandoutLink, 'photoHandout');
 
 const croppedPreviewContainer = requiredElement<HTMLElement>('croppedPreviewContainer');
 const croppedPreviewLink = requiredElement<HTMLAnchorElement>('croppedPreviewLink');
@@ -276,6 +289,8 @@ function setStatus(message, tone = message.startsWith('Error:') ? 'error' : 'neu
   statusEl.classList.toggle('is-success', tone === 'success');
   statusEl.classList.toggle('is-warning', tone === 'warning');
 }
+
+const photoWorkflow = new PhotoWorkflow(setStatus);
 
 function renderRuleList(
   target: HTMLUListElement,
@@ -1114,9 +1129,15 @@ async function generate() {
     clearDownloadUrl('overlay', downloadOverlayLink);
     clearDownloadUrl('cropped', downloadCroppedLink);
     clearDownloadUrl('summary', downloadSummaryLink);
+    clearDownloadUrl('photoAnalysis', downloadPhotoAnalysisLink);
+    clearDownloadUrl('photoKey', downloadPhotoKeyLink);
+    clearDownloadUrl('photoHandout', downloadPhotoHandoutLink);
     downloadOverlayLink.style.display = 'none';
     downloadCroppedLink.style.display = 'none';
     downloadSummaryLink.style.display = 'none';
+    downloadPhotoAnalysisLink.style.display = 'none';
+    downloadPhotoKeyLink.style.display = 'none';
+    downloadPhotoHandoutLink.style.display = 'none';
     clearCroppedPreview();
     if (outputsSection) {
       outputsSection.hidden = true;
@@ -1142,6 +1163,7 @@ async function generate() {
 
     const route = buildRoute(points);
     const compliance = evaluateRouteCompliance(route, points, speed, mapConfig.scaleDenominator);
+    const photoCompliance = photoWorkflow.analyze(points);
     const metersPerMinute = speed.metersPerSecond * 60;
     const waypointTimes = computeWaypointTimes(route, points, takeoffToSp, metersPerMinute);
     const legsSummary = route.legs.map((leg) => ({
@@ -1550,6 +1572,217 @@ async function generate() {
         });
       });
 
+      const photoLayerOptions = photoWorkflow.layerOptions;
+      const photoColors = {
+        enroute: rgb(0.45, 0.12, 0.66),
+        'control-correct': rgb(0.05, 0.48, 0.25),
+        'control-false': rgb(0.92, 0.42, 0.04),
+        'sign-task': rgb(0.05, 0.35, 0.72),
+        reference: rgb(0.35, 0.38, 0.4),
+      };
+      const photoMarkerSize = Math.max(5, 7 * scaleAvg);
+      const drawPhotoSymbol = (target, x, y, classification, color, warning) => {
+        const borderColor = warning ? rgb(0.8, 0.02, 0.02) : color;
+        if (classification === 'enroute') {
+          target.page.drawLine({
+            start: { x: x - photoMarkerSize, y },
+            end: { x: x + photoMarkerSize, y },
+            thickness: 2,
+            color: borderColor,
+          });
+          target.page.drawLine({
+            start: { x, y: y - photoMarkerSize },
+            end: { x, y: y + photoMarkerSize },
+            thickness: 2,
+            color: borderColor,
+          });
+        } else if (classification === 'control-correct') {
+          target.page.drawRectangle({
+            x: x - photoMarkerSize,
+            y: y - photoMarkerSize,
+            width: photoMarkerSize * 2,
+            height: photoMarkerSize * 2,
+            borderWidth: warning ? 2.5 : 1.8,
+            borderColor,
+            color: rgb(1, 1, 1),
+            opacity: 0.88,
+          });
+        } else if (classification === 'control-false') {
+          const vertices = [
+            [x, y + photoMarkerSize],
+            [x + photoMarkerSize, y],
+            [x, y - photoMarkerSize],
+            [x - photoMarkerSize, y],
+          ];
+          vertices.forEach((start, index) => {
+            target.page.drawLine({
+              start: { x: start[0], y: start[1] },
+              end: { x: vertices[(index + 1) % 4][0], y: vertices[(index + 1) % 4][1] },
+              thickness: warning ? 2.5 : 1.8,
+              color: borderColor,
+            });
+          });
+        } else if (classification === 'sign-task') {
+          const vertices = [
+            [x, y + photoMarkerSize],
+            [x + photoMarkerSize, y - photoMarkerSize],
+            [x - photoMarkerSize, y - photoMarkerSize],
+          ];
+          vertices.forEach((start, index) => {
+            target.page.drawLine({
+              start: { x: start[0], y: start[1] },
+              end: { x: vertices[(index + 1) % 3][0], y: vertices[(index + 1) % 3][1] },
+              thickness: warning ? 2.5 : 1.8,
+              color: borderColor,
+            });
+          });
+        } else {
+          target.page.drawCircle({
+            x,
+            y,
+            size: photoMarkerSize,
+            borderWidth: warning ? 2.5 : 1.8,
+            borderColor,
+          });
+        }
+      };
+      for (const photo of photoWorkflow.records) {
+        const latitude = photo.metadata.latitude.value;
+        const longitude = photo.metadata.longitude.value;
+        if (latitude === null || longitude === null || !photo.analysis) continue;
+        const exact = projectToPdf(latitude, longitude);
+        const projectedPhoto = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
+        if (![...exact, ...projectedPhoto].every(Number.isFinite)) continue;
+        const color = photoColors[photo.classification];
+        const hasViolation = photo.findings.some((finding) => finding.severity === 'violation');
+        if (
+          photoLayerOptions.connectors &&
+          Math.hypot(exact[0] - projectedPhoto[0], exact[1] - projectedPhoto[1]) > 1
+        ) {
+          drawTargets.forEach((target) => {
+            target.page.drawLine({
+              start: { x: exact[0], y: exact[1] },
+              end: { x: projectedPhoto[0], y: projectedPhoto[1] },
+              thickness: Math.max(0.6, scaleAvg),
+              color,
+              opacity: 0.65,
+              dashArray: [3, 3],
+            });
+          });
+        }
+        if (photoLayerOptions.exactDots) {
+          drawTargets.forEach((target) => {
+            target.page.drawCircle({
+              x: exact[0],
+              y: exact[1],
+              size: Math.max(2.3, 3 * scaleAvg),
+              color,
+              borderColor: hasViolation ? rgb(0.8, 0.02, 0.02) : rgb(1, 1, 1),
+              borderWidth: 0.8,
+            });
+          });
+        }
+        if (photoLayerOptions.projectedMarkers) {
+          drawTargets.forEach((target) => {
+            drawPhotoSymbol(
+              target,
+              projectedPhoto[0],
+              projectedPhoto[1],
+              photo.classification,
+              color,
+              hasViolation
+            );
+          });
+          const label = photo.identifier || '?';
+          const fontSize = Math.max(5, 9 * scaleAvg);
+          const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
+          const adjusted = adjustLabelPosition(
+            projectedPhoto[0] + photoMarkerSize * 1.5,
+            projectedPhoto[1] + photoMarkerSize,
+            1,
+            1,
+            width,
+            fontSize,
+            0,
+            placedLabelBoxes,
+            { allowNegative: false }
+          );
+          registerLabelBox(adjusted.box);
+          drawTargets.forEach((target) => {
+            target.page.drawText(label, {
+              x: adjusted.x,
+              y: adjusted.y,
+              size: fontSize,
+              font: target.fontBold,
+              color,
+            });
+          });
+        }
+        if (photoLayerOptions.headingArrows && photo.metadata.headingDeg.value !== null) {
+          const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
+          const distanceM = 300;
+          const headingLat = latitude + ((distanceM * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
+          const headingLon =
+            longitude +
+            ((distanceM * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
+              (180 / Math.PI);
+          const endpoint = projectToPdf(headingLat, headingLon);
+          drawTargets.forEach((target) => {
+            target.page.drawLine({
+              start: { x: exact[0], y: exact[1] },
+              end: { x: endpoint[0], y: endpoint[1] },
+              thickness: Math.max(0.8, 1.2 * scaleAvg),
+              color,
+            });
+          });
+        }
+        if (photoLayerOptions.includeInCrop) {
+          [exact, projectedPhoto].forEach(([x, y]) => {
+            expandBounds(x - photoMarkerSize * 2, y - photoMarkerSize * 2);
+            expandBounds(x + photoMarkerSize * 2, y + photoMarkerSize * 2);
+          });
+        }
+      }
+      if (photoLayerOptions.legend && photoWorkflow.records.length > 0) {
+        const legendItems = [
+          ['enroute', 'En-route'],
+          ['control-correct', 'Correct CP'],
+          ['control-false', 'False CP'],
+          ['sign-task', 'Sign task'],
+          ['reference', 'Reference'],
+        ];
+        const legendX = 20;
+        const legendY = 20;
+        const lineHeight = 12;
+        drawTargets.forEach((target) => {
+          target.page.drawRectangle({
+            x: legendX - 8,
+            y: legendY - 7,
+            width: 105,
+            height: legendItems.length * lineHeight + 14,
+            color: rgb(1, 1, 1),
+            opacity: 0.88,
+            borderColor: rgb(0.55, 0.58, 0.6),
+            borderWidth: 0.6,
+          });
+          legendItems.forEach(([classification, label], index) => {
+            const y = legendY + (legendItems.length - 1 - index) * lineHeight;
+            drawPhotoSymbol(target, legendX, y + 2, classification, photoColors[classification], false);
+            target.page.drawText(label, {
+              x: legendX + 12,
+              y,
+              size: 7,
+              font: target.fontBold,
+              color: photoColors[classification],
+            });
+          });
+        });
+        if (photoLayerOptions.includeInCrop) {
+          expandBounds(legendX - 8, legendY - 7);
+          expandBounds(legendX + 97, legendY + legendItems.length * lineHeight + 7);
+        }
+      }
+
       for (let i = 0; i < route.legs.length; i++) {
         const start = projected[i].pdf;
         const end = projected[i + 1].pdf;
@@ -1714,6 +1947,80 @@ async function generate() {
           }).addTo(osmMap)
         );
       });
+      const photoLayerOptions = photoWorkflow.layerOptions;
+      const photoColors = {
+        enroute: '#731fa8',
+        'control-correct': '#087a40',
+        'control-false': '#eb6b0b',
+        'sign-task': '#0d59b8',
+        reference: '#5b6166',
+      };
+      for (const photo of photoWorkflow.records) {
+        const latitude = photo.metadata.latitude.value;
+        const longitude = photo.metadata.longitude.value;
+        if (latitude === null || longitude === null || !photo.analysis) continue;
+        const exact: [number, number] = [latitude, longitude];
+        const projectedPhoto: [number, number] = [
+          photo.analysis.closestLatitude,
+          photo.analysis.closestLongitude,
+        ];
+        const color = photoColors[photo.classification];
+        const hasViolation = photo.findings.some((finding) => finding.severity === 'violation');
+        if (photoLayerOptions.connectors) {
+          osmLayers.push(
+            L.polyline([exact, projectedPhoto], { color, weight: 1.5, opacity: 0.7, dashArray: '4 4' }).addTo(
+              osmMap
+            )
+          );
+        }
+        if (photoLayerOptions.exactDots) {
+          osmLayers.push(
+            L.circleMarker(exact, {
+              radius: 4,
+              color: hasViolation ? '#c90000' : '#fff',
+              fillColor: color,
+              fillOpacity: 1,
+              weight: 2,
+            })
+              .bindTooltip(`${photo.identifier}: exact photo position`)
+              .addTo(osmMap)
+          );
+        }
+        if (photoLayerOptions.projectedMarkers) {
+          osmLayers.push(
+            L.circleMarker(projectedPhoto, {
+              radius: photo.classification === 'enroute' ? 7 : 9,
+              color: hasViolation ? '#c90000' : color,
+              fillColor: '#fff',
+              fillOpacity: 0.9,
+              weight: hasViolation ? 3 : 2,
+            })
+              .bindTooltip(`${photo.identifier} · ${photo.classification}`)
+              .addTo(osmMap)
+          );
+          osmLayers.push(
+            L.marker(projectedPhoto, {
+              icon: L.divIcon({
+                className: 'leaflet-marker-icon osm-photo-label-icon',
+                html: `<div class="osm-photo-label" style="border-color:${color};color:${color}">${escapeHtml(photo.identifier || '?')}</div>`,
+              }),
+              interactive: false,
+            }).addTo(osmMap)
+          );
+        }
+        if (photoLayerOptions.headingArrows && photo.metadata.headingDeg.value !== null) {
+          const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
+          const headingLat = latitude + ((300 * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
+          const headingLon =
+            longitude +
+            ((300 * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
+              (180 / Math.PI);
+          osmLayers.push(
+            L.polyline([exact, [headingLat, headingLon]], { color, weight: 2, opacity: 0.9 }).addTo(osmMap)
+          );
+        }
+        routeBounds.extend(exact);
+      }
       const refreshOsmViewport = () => {
         if (!osmMap) {
           return;
@@ -1752,8 +2059,50 @@ async function generate() {
       };
     }
 
+    const analysisCsv = photoAnalysisCsv(photoWorkflow.records);
+    const overlayKeyCsv = photoOverlayKeyCsv(photoWorkflow.records);
+    setDownloadUrl(
+      'photoAnalysis',
+      URL.createObjectURL(new Blob([analysisCsv], { type: 'text/csv;charset=utf-8' })),
+      'photo_analysis.csv',
+      downloadPhotoAnalysisLink
+    );
+    setDownloadUrl(
+      'photoKey',
+      URL.createObjectURL(new Blob([overlayKeyCsv], { type: 'text/csv;charset=utf-8' })),
+      'photo_overlay_key.csv',
+      downloadPhotoKeyLink
+    );
+    downloadPhotoAnalysisLink.style.display = 'inline-flex';
+    downloadPhotoKeyLink.style.display = 'inline-flex';
+
+    setStatus(
+      `Preparing ${photoWorkflow.records.length} photo${photoWorkflow.records.length === 1 ? '' : 's'} for the handout...`
+    );
+    const handoutPhotos = [];
+    for (const record of photoWorkflow.records) {
+      handoutPhotos.push({
+        record,
+        jpeg: await preparePhotoJpeg(record.file, record.metadata.orientation.value ?? 1),
+      });
+    }
+    const handoutFontBytes = await loadAssetBytes(notoSansBoldUrl, 'the photo handout font');
+    const handoutBytes = await buildPhotoHandout(
+      handoutPhotos,
+      photoCompliance,
+      handoutFontBytes,
+      photoWorkflow.handoutOptions
+    );
+    setDownloadUrl(
+      'photoHandout',
+      createPdfObjectUrl(handoutBytes),
+      'photo_handout.pdf',
+      downloadPhotoHandoutLink
+    );
+    downloadPhotoHandoutLink.style.display = 'inline-flex';
+
     const summary = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       appVersion: APP_VERSION,
       generatedAt: new Date().toISOString(),
       speedLabel: speed.label,
@@ -1786,6 +2135,7 @@ async function generate() {
         checks: compliance.checks,
         manualChecks: compliance.manualChecks,
       },
+      photos: photoSummaryJson(photoWorkflow.records, photoCompliance),
       warnings: mapConfig.requiresValidityReview
         ? [`Confirm that ${mapConfig.label} (${mapConfig.edition} edition) is current and event-approved.`]
         : [],
@@ -1837,11 +2187,19 @@ async function generate() {
     }
     resultsContent.hidden = false;
     syncResultsVisibility();
+    const generatedStatus =
+      compliance.status !== 'ok' || photoCompliance.status === 'against-rules'
+        ? 'against-rules'
+        : photoCompliance.status === 'manual-review'
+          ? 'manual-review'
+          : 'ok';
     setStatus(
-      compliance.status === 'ok'
-        ? 'Generated: OK for automated route rules. Complete the listed manual judge checks.'
-        : `Generated: route is against the rules (${compliance.violations.length} ${compliance.violations.length === 1 ? 'violation' : 'violations'}).`,
-      compliance.status === 'ok' ? 'success' : 'warning'
+      generatedStatus === 'against-rules'
+        ? `Generated: Against the rules · ${compliance.violations.length + photoCompliance.violationCount} automated violation(s). Review the affected route and photo findings.`
+        : generatedStatus === 'manual-review'
+          ? `Generated: Manual review required · automated checks passed, but ${photoCompliance.warningCount} photo item(s) lack reliable metadata.`
+          : 'Generated: OK for automated checks. Complete the listed manual judge checks.',
+      generatedStatus === 'ok' ? 'success' : 'warning'
     );
   } catch (err) {
     console.error(err);
