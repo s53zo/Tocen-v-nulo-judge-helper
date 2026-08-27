@@ -1,0 +1,64 @@
+{
+  "vfr": {
+    "label": "VFR chart Slovenija",
+    "type": "pdf",
+    "edition": "2025",
+    "requiresValidityReview": true,
+    "fileName": "00_VFRspredaj_25_SC_WEB_flat.pdf",
+    "assetPath": "maps/00_VFRspredaj_25_SC_WEB_flat.pdf",
+    "baseWidth": 2862,
+    "baseHeight": 1985,
+    "controlPoints": [
+      ["CP1", 46.32138888888889, 14.341944444444445, 873, 715],
+      ["CP2", 46.65361111111111, 16.075833333333332, 2382, 294],
+      ["CP3", 45.73, 15.201388888888888, 1626, 1463]
+    ]
+  },
+  "legacy": {
+    "label": "1:200k chart",
+    "type": "pdf",
+    "edition": "legacy",
+    "requiresValidityReview": true,
+    "fileName": "1 200k original karta.pdf",
+    "assetPath": "maps/1 200k original karta.pdf",
+    "baseWidth": 1191,
+    "baseHeight": 842,
+    "controlPoints": [
+      ["TP1", 46.500800369520974, 16.155215089283285, 609, 653],
+      ["TP4", 46.80079362139448, 16.036790112456796, 476, 183],
+      ["TP5", 46.83695523, 16.30844783, 768, 118]
+    ]
+  },
+  "p250": {
+    "label": "P25004B chart",
+    "type": "pdf",
+    "edition": "P25004B",
+    "requiresValidityReview": true,
+    "fileName": "P25004BR.pdf",
+    "assetPath": "maps/P25004BR.pdf",
+    "baseWidth": 11890,
+    "baseHeight": 8410,
+    "styleScale": 4.2,
+    "transform": "tfw",
+    "tfw": {
+      "pixelSizeX": 25,
+      "rotationY": 0,
+      "rotationX": 0,
+      "pixelSizeY": -25,
+      "originX": 341822.5,
+      "originY": 216030,
+      "width": 11890,
+      "height": 8410,
+      "scaleX": 1.001316402326914,
+      "scaleY": 0.998973280855398,
+      "offsetX": -1.76620066279429,
+      "offsetY": 20.54570609428447
+    }
+  },
+  "osm": {
+    "label": "OpenStreetMap",
+    "type": "osm",
+    "edition": "live",
+    "requiresValidityReview": false
+  }
+}

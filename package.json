@@ -1,0 +1,28 @@
+{
+  "name": "precision-route-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check src tests vite.config.ts",
+    "format": "biome format --write src tests vite.config.ts",
+    "check": "npm run typecheck && npm run test && npm run lint"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans": "5.3.0",
+    "@pdf-lib/fontkit": "1.1.1",
+    "leaflet": "1.9.4",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.2.108"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/leaflet": "1.9.22",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

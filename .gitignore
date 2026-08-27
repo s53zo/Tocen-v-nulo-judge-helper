@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+.DS_Store
+*.log
+
+# Python is no longer part of the application.
+__pycache__/
+*.py[cod]
