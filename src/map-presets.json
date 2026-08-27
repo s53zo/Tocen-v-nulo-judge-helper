@@ -8,6 +8,7 @@
     "assetPath": "maps/00_VFRspredaj_25_SC_WEB_flat.pdf",
     "baseWidth": 2862,
     "baseHeight": 1985,
+    "scaleDenominator": 250000,
     "controlPoints": [
       ["CP1", 46.32138888888889, 14.341944444444445, 873, 715],
       ["CP2", 46.65361111111111, 16.075833333333332, 2382, 294],
@@ -23,6 +24,7 @@
     "assetPath": "maps/1 200k original karta.pdf",
     "baseWidth": 1191,
     "baseHeight": 842,
+    "scaleDenominator": 200000,
     "controlPoints": [
       ["TP1", 46.500800369520974, 16.155215089283285, 609, 653],
       ["TP4", 46.80079362139448, 16.036790112456796, 476, 183],
@@ -38,6 +40,7 @@
     "assetPath": "maps/P25004BR.pdf",
     "baseWidth": 11890,
     "baseHeight": 8410,
+    "scaleDenominator": 250000,
     "styleScale": 4.2,
     "transform": "tfw",
     "tfw": {

@@ -11,7 +11,10 @@ import {
   buildRoute,
   computeMinuteMarkers,
   computeWaypointTimes,
+  evaluateRouteCompliance,
+  metersToNauticalMiles,
   parseSpeed,
+  type RouteCompliance,
   roundedBearing,
 } from './domain';
 import rawMapPresets from './map-presets.json';
@@ -24,7 +27,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -60,6 +63,12 @@ const summarySection = requiredElement<HTMLElement>('summary');
 const legsTable = requiredElement<HTMLTableSectionElement>('legsTable');
 const waypointTable = requiredElement<HTMLTableSectionElement>('waypointTable');
 const summaryText = requiredElement<HTMLElement>('summaryText');
+const routeComplianceSection = requiredElement<HTMLElement>('routeCompliance');
+const complianceBadge = requiredElement<HTMLElement>('complianceBadge');
+const complianceTitle = requiredElement<HTMLElement>('complianceTitle');
+const complianceSummary = requiredElement<HTMLElement>('complianceSummary');
+const complianceChecks = requiredElement<HTMLUListElement>('complianceChecks');
+const manualComplianceChecks = requiredElement<HTMLUListElement>('manualComplianceChecks');
 const speedInput = requiredElement<HTMLInputElement>('speed');
 const minuteIntervalInput = requiredElement<HTMLInputElement>('minuteInterval');
 const takeoffBufferInput = requiredElement<HTMLInputElement>('takeoffBuffer');
@@ -236,16 +245,52 @@ function syncResultsVisibility() {
   const hasVisibleOutputs =
     (outputsSection && !outputsSection.hidden) ||
     (summarySection && !summarySection.hidden) ||
-    (croppedPreviewContainer && !croppedPreviewContainer.hidden);
+    (croppedPreviewContainer && !croppedPreviewContainer.hidden) ||
+    !routeComplianceSection.hidden;
   if (resultsPlaceholder && !hasGeneratedOnce) {
     resultsPlaceholder.hidden = hasVisibleOutputs;
   }
   resultsContent.hidden = !hasVisibleOutputs;
 }
 
-function setStatus(message) {
+function setStatus(message, tone = message.startsWith('Error:') ? 'error' : 'neutral') {
   statusEl.textContent = message;
-  statusEl.classList.toggle('is-error', message.startsWith('Error:'));
+  statusEl.classList.toggle('is-error', tone === 'error');
+  statusEl.classList.toggle('is-success', tone === 'success');
+  statusEl.classList.toggle('is-warning', tone === 'warning');
+}
+
+function renderRuleList(
+  target: HTMLUListElement,
+  entries: Array<{ rule: string; message: string; passed?: boolean }>
+) {
+  const fragment = document.createDocumentFragment();
+  for (const entry of entries) {
+    const item = document.createElement('li');
+    if (typeof entry.passed === 'boolean') {
+      item.className = entry.passed ? 'compliance-check-pass' : 'compliance-check-fail';
+      item.append(`${entry.passed ? 'Pass' : 'Fail'} - `);
+    }
+    const rule = document.createElement('strong');
+    rule.textContent = entry.rule;
+    item.append(rule, `: ${entry.message}`);
+    fragment.appendChild(item);
+  }
+  target.replaceChildren(fragment);
+}
+
+function renderCompliance(compliance: RouteCompliance) {
+  const isOk = compliance.status === 'ok';
+  routeComplianceSection.classList.toggle('is-ok', isOk);
+  routeComplianceSection.classList.toggle('is-fail', !isOk);
+  complianceBadge.textContent = isOk ? 'OK' : 'FAIL';
+  complianceTitle.textContent = isOk ? 'OK for automated route rules' : 'Route is against the rules';
+  complianceSummary.textContent = isOk
+    ? 'No violations were detected in the rules this app can calculate. Manual judge checks below are still required.'
+    : `${compliance.violations.length} automated rule ${compliance.violations.length === 1 ? 'violation was' : 'violations were'} detected. Generated files are available for correction and review.`;
+  renderRuleList(complianceChecks, compliance.checks);
+  renderRuleList(manualComplianceChecks, compliance.manualChecks);
+  routeComplianceSection.hidden = false;
 }
 
 function clearCroppedPreview() {
@@ -265,7 +310,7 @@ function clearCroppedPreview() {
 
 if (typeof MutationObserver !== 'undefined') {
   const resultsObserver = new MutationObserver(syncResultsVisibility);
-  [outputsSection, summarySection, croppedPreviewContainer].forEach((el) => {
+  [outputsSection, summarySection, croppedPreviewContainer, routeComplianceSection].forEach((el) => {
     if (el) {
       resultsObserver.observe(el, { attributes: true, attributeFilter: ['hidden'] });
     }
@@ -1061,6 +1106,7 @@ async function generate() {
     if (summarySection) {
       summarySection.hidden = true;
     }
+    routeComplianceSection.hidden = true;
     if (osmMapContainer) {
       osmMapContainer.hidden = true;
     }
@@ -1077,11 +1123,13 @@ async function generate() {
     const points = parseWaypoints(waypointTextarea.value);
 
     const route = buildRoute(points);
+    const compliance = evaluateRouteCompliance(route, points, speed, mapConfig.scaleDenominator);
     const metersPerMinute = speed.metersPerSecond * 60;
     const waypointTimes = computeWaypointTimes(route, points, takeoffToSp, metersPerMinute);
     const legsSummary = route.legs.map((leg) => ({
       id: `${leg.fromName}-${leg.toName}`,
       distanceKm: leg.length / 1000,
+      distanceNm: metersToNauticalMiles(leg.length),
       bearingDeg: roundedBearing(bearingDegrees(leg.fromLat, leg.fromLon, leg.toLat, leg.toLon)),
     }));
     const routeDurationMinutes = takeoffToSp + route.totalDistance / metersPerMinute;
@@ -1687,11 +1735,13 @@ async function generate() {
     }
 
     const summary = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       appVersion: APP_VERSION,
       generatedAt: new Date().toISOString(),
       speedLabel: speed.label,
+      speedKnots: speed.knots,
       totalDistanceKm: route.totalDistance / 1000,
+      totalDistanceNm: compliance.totalDistanceNm,
       map: {
         key: selectedMapKey,
         label: mapConfig.label,
@@ -1699,6 +1749,7 @@ async function generate() {
         file: mapFilename || null,
         transform: mapConfig.type === 'pdf' ? mapConfig.transform : null,
         validityReviewRequired: mapConfig.requiresValidityReview,
+        scaleDenominator: mapConfig.scaleDenominator,
       },
       waypoints: points.map(([name, latitude, longitude]) => ({ name, latitude, longitude })),
       legs: legsSummary,
@@ -1710,6 +1761,13 @@ async function generate() {
       takeoffToSp,
       totalMinutes: routeDurationMinutes,
       cropped: summaryCropped,
+      compliance: {
+        rulebook: 'Pravilnik Rally Letenja za Prvenstvo Slovenije, corrected August 2023',
+        automatedStatus: compliance.status,
+        maximumControlPoints: compliance.maximumControlPoints,
+        checks: compliance.checks,
+        manualChecks: compliance.manualChecks,
+      },
       warnings: mapConfig.requiresValidityReview
         ? [`Confirm that ${mapConfig.label} (${mapConfig.edition} edition) is current and event-approved.`]
         : [],
@@ -1729,13 +1787,20 @@ async function generate() {
 
     replaceTableRows(
       legsTable,
-      legsSummary.map((leg) => [leg.id, leg.distanceKm.toFixed(2), leg.bearingDeg])
+      legsSummary.map((leg) => [
+        leg.id,
+        leg.distanceNm.toFixed(2),
+        leg.distanceKm.toFixed(2),
+        leg.bearingDeg.toString().padStart(3, '0'),
+      ])
     );
     replaceTableRows(
       waypointTable,
       Array.from(waypointTimes.entries()).map(([name, minutes]) => [name, formatWaypointTimeLabel(minutes)])
     );
-    summaryText.textContent = `${summary.speedLabel} - ${summary.totalDistanceKm.toFixed(2)} km course - ${mapConfig.label}`;
+    summaryText.textContent = `${summary.speedLabel} - ${summary.totalDistanceNm.toFixed(2)} NM (${summary.totalDistanceKm.toFixed(2)} km) course - ${mapConfig.label}`;
+
+    renderCompliance(compliance);
 
     if (summarySection) {
       summarySection.hidden = false;
@@ -1754,7 +1819,12 @@ async function generate() {
     }
     resultsContent.hidden = false;
     syncResultsVisibility();
-    setStatus('Flight plan calculated successfully.');
+    setStatus(
+      compliance.status === 'ok'
+        ? 'Generated: OK for automated route rules. Complete the listed manual judge checks.'
+        : `Generated: route is against the rules (${compliance.violations.length} ${compliance.violations.length === 1 ? 'violation' : 'violations'}).`,
+      compliance.status === 'ok' ? 'success' : 'warning'
+    );
   } catch (err) {
     console.error(err);
     setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);

@@ -336,6 +336,18 @@ textarea {
   border-color: rgba(198, 40, 40, 0.25);
 }
 
+.status.is-success {
+  color: #1b5e20;
+  background: rgba(46, 125, 50, 0.09);
+  border-color: rgba(46, 125, 50, 0.28);
+}
+
+.status.is-warning {
+  color: #7a3e00;
+  background: rgba(237, 137, 54, 0.1);
+  border-color: rgba(194, 93, 0, 0.3);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -447,6 +459,101 @@ textarea {
 
 .results-content[hidden] {
   display: none;
+}
+
+.compliance-notice {
+  margin-bottom: 2rem;
+  padding: 1.15rem;
+  border: 2px solid;
+  border-radius: var(--border-radius);
+}
+
+.compliance-notice[hidden] {
+  display: none;
+}
+
+.compliance-notice.is-ok {
+  color: #174d1b;
+  border-color: #4f9b55;
+  background: #f1f8f2;
+}
+
+.compliance-notice.is-fail {
+  color: #7d1717;
+  border-color: #d05252;
+  background: #fff4f4;
+}
+
+.compliance-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.compliance-heading h2,
+.compliance-heading p {
+  margin: 0;
+}
+
+.compliance-heading p {
+  margin-top: 0.25rem;
+}
+
+.compliance-badge {
+  flex: 0 0 auto;
+  min-width: 3.5rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  color: #fff;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.is-ok .compliance-badge {
+  background: #2e7d32;
+}
+
+.is-fail .compliance-badge {
+  background: #b71c1c;
+}
+
+.compliance-checks,
+.manual-checks ul {
+  margin: 1rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.compliance-checks li + li,
+.manual-checks li + li {
+  margin-top: 0.45rem;
+}
+
+.compliance-checks strong,
+.manual-checks strong {
+  font-family: var(--font-mono);
+}
+
+.compliance-check-pass {
+  color: #245d28;
+}
+
+.compliance-check-fail {
+  color: #8f1d1d;
+  font-weight: 600;
+}
+
+.manual-checks {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid currentColor;
+  color: var(--color-text);
+}
+
+.compliance-notice .manual-checks summary {
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .results-group + .results-group {

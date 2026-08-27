@@ -9,6 +9,8 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Decimal latitude/longitude and Slovenian D96/TM waypoint input
 - Knots, mph, and km/h groundspeed support
 - Route distances, normalized bearings, and waypoint timing
+- Automated Slovenian rally-rule checks with a clear OK/against-rules result
+- Nautical-mile totals and leg distances alongside metric values
 - Configurable minute markers and overlay styling
 - Calibrated PDF maps plus an OpenStreetMap preview
 - Marked, overlay-only, and true-scale A4 PDF downloads
@@ -48,6 +50,12 @@ locations.txt           Location library data
 ## Map safety and calibration
 
 Map editions and calibration data live in `src/map-presets.json`. PDF presets must declare dimensions and either exactly three affine control points or a valid TFW transform. Routes that project outside the calibrated PDF are rejected instead of producing a misleading overlay.
+
+## Rule compliance
+
+After every successful generation, the app evaluates the calculable requirements in `docs/Pravilnik Aerorally.pdf`: official 1:250,000 map scale (A1.4), permitted groundspeeds (A1.5), 70-120 NM route length (A2.1.1), minimum 5 NM legs, control-point limit, and SP/FP identifiers (A2.1.2). A prominent result lists every pass or violation and is also included in `route_summary.json`.
+
+The result is deliberately limited to automated checks. The app also lists the operational and judge-only items that still require manual confirmation, including landing, control-point descriptions, timed-control designation, altitude/direction, observation tasks, GPS logging, chart approval, and VFR requirements.
 
 Bundled aeronautical charts display a validity warning. Confirm that a chart is current and approved for the event before operational use. Updating a chart requires updating its file, metadata, calibration, tests, and generated bundle together.
 

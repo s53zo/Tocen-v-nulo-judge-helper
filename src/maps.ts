@@ -10,6 +10,7 @@ export interface PdfMapPreset {
   url: string;
   baseWidth: number;
   baseHeight: number;
+  scaleDenominator: number;
   styleScale?: number;
   transform?: 'affine' | 'tfw';
   controlPoints?: ControlPoint[];
@@ -21,6 +22,7 @@ export interface OsmMapPreset {
   type: 'osm';
   edition: string;
   requiresValidityReview: false;
+  scaleDenominator: null;
 }
 
 export type MapPreset = PdfMapPreset | OsmMapPreset;
@@ -51,6 +53,7 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
         type: 'osm',
         edition: preset.edition,
         requiresValidityReview: false,
+        scaleDenominator: null,
       };
       continue;
     }
@@ -75,6 +78,7 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
       transform,
       baseWidth: positiveNumber(preset.baseWidth, `${id}.baseWidth`),
       baseHeight: positiveNumber(preset.baseHeight, `${id}.baseHeight`),
+      scaleDenominator: positiveNumber(preset.scaleDenominator, `${id}.scaleDenominator`),
       url: new URL(preset.assetPath, baseUrl).href,
     };
   }

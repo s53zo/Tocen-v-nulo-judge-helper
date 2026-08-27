@@ -4,6 +4,7 @@ import {
   buildRoute,
   computeMinuteMarkers,
   computeWaypointTimes,
+  evaluateRouteCompliance,
   parseSpeed,
   roundedBearing,
   type Waypoint,
@@ -57,5 +58,93 @@ describe('route calculations', () => {
 
   it('rejects zero-length legs', () => {
     expect(() => buildRoute([routePoints[0], routePoints[0]])).toThrow(/same position/);
+  });
+});
+
+describe('Slovenian rally route compliance', () => {
+  const compliantPoints: Waypoint[] = [
+    ['SP', 0, 0],
+    ['TP1', 0, 0.15],
+    ['TP2', 0, 0.3],
+    ['TP3', 0, 0.45],
+    ['TP4', 0, 0.6],
+    ['TP5', 0, 0.75],
+    ['TP6', 0, 0.9],
+    ['FP', 0, 1.2],
+  ];
+
+  it('passes every automated rule for a compliant route', () => {
+    const compliance = evaluateRouteCompliance(
+      buildRoute(compliantPoints),
+      compliantPoints,
+      parseSpeed('75kt'),
+      250_000
+    );
+
+    expect(compliance.status).toBe('ok');
+    expect(compliance.violations).toEqual([]);
+    expect(compliance.totalDistanceNm).toBeGreaterThan(70);
+    expect(compliance.maximumControlPoints).toBe(8);
+  });
+
+  it('keeps the app default route compliant with automated checks', () => {
+    const defaultPoints: Waypoint[] = [
+      ['SP', 46.60085, 16.180022],
+      ['TP1', 46.500801, 16.155215],
+      ['TP2', 46.515128, 16.008368],
+      ['TP3', 46.800823, 16.0368],
+      ['TP4', 46.836955, 16.308447],
+      ['TP5', 46.775187, 16.202892],
+      ['TP6', 46.552346, 16.430293],
+      ['FP', 46.608093, 16.234769],
+    ];
+    const compliance = evaluateRouteCompliance(
+      buildRoute(defaultPoints),
+      defaultPoints,
+      parseSpeed('75kt'),
+      250_000
+    );
+
+    expect(compliance.status).toBe('ok');
+    expect(compliance.totalDistanceNm).toBeCloseTo(71.56, 2);
+    expect(compliance.maximumControlPoints).toBe(8);
+  });
+
+  it('counts SP and FP in the maximum control-point rule', () => {
+    const points: Waypoint[] = [
+      ['SP', 0, 0],
+      ['TP1', 0, 0.15],
+      ['TP2', 0, 0.3],
+      ['TP3', 0, 0.45],
+      ['TP4', 0, 0.6],
+      ['TP5', 0, 0.75],
+      ['TP6', 0, 0.9],
+      ['TP7', 0, 1.05],
+      ['FP', 0, 1.2],
+    ];
+    const compliance = evaluateRouteCompliance(buildRoute(points), points, parseSpeed('75kt'), 250_000);
+
+    expect(compliance.maximumControlPoints).toBe(8);
+    expect(compliance.violations.map((check) => check.title)).toContain('Control-point limit');
+  });
+
+  it('reports all calculable rule violations without blocking generation', () => {
+    const points: Waypoint[] = [
+      ['START', 0, 0],
+      ['FINISH', 0, 0.05],
+    ];
+    const compliance = evaluateRouteCompliance(buildRoute(points), points, parseSpeed('74kt'), null);
+
+    expect(compliance.status).toBe('against-rules');
+    expect(compliance.violations.map((check) => check.title)).toEqual(
+      expect.arrayContaining([
+        'Official chart scale',
+        'Competition groundspeed',
+        'Route distance',
+        'Minimum leg distance',
+        'Start and finish identifiers',
+      ])
+    );
+    expect(compliance.manualChecks.length).toBeGreaterThan(0);
   });
 });

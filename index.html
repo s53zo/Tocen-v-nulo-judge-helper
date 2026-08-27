@@ -127,11 +127,10 @@
             <textarea id="waypoints">SP,46.600850,16.180022
 TP1,46.500801,16.155215
 TP2,46.515128,16.008368
-TP3,46.616968,16.069071
-TP4,46.800823,16.036800
-TP5,46.836955,16.308447
-TP6,46.775187,16.202892
-TP7,46.552346,16.430293
+TP3,46.800823,16.036800
+TP4,46.836955,16.308447
+TP5,46.775187,16.202892
+TP6,46.552346,16.430293
 FP,46.608093,16.234769</textarea>
           </div>
 
@@ -150,6 +149,21 @@ FP,46.608093,16.234769</textarea>
             <p>Complete the inputs on the left and generate to preview downloads and summaries.</p>
           </div>
           <div id="resultsContent" class="results-inner results-content" hidden>
+            <section id="routeCompliance" class="compliance-notice" role="alert" aria-live="assertive" hidden>
+              <div class="compliance-heading">
+                <span id="complianceBadge" class="compliance-badge"></span>
+                <div>
+                  <h2 id="complianceTitle"></h2>
+                  <p id="complianceSummary"></p>
+                </div>
+              </div>
+              <ul id="complianceChecks" class="compliance-checks"></ul>
+              <details class="manual-checks" open>
+                <summary>Manual judge checks still required</summary>
+                <ul id="manualComplianceChecks"></ul>
+              </details>
+            </section>
+
             <div class="results-group">
               <h2>Downloads</h2>
               <div class="download-actions" id="outputs" hidden>
@@ -177,7 +191,7 @@ FP,46.608093,16.234769</textarea>
               <h3>Legs</h3>
               <table>
                 <thead>
-                  <tr><th>Leg</th><th>Distance (km)</th><th>Bearing (°)</th></tr>
+                  <tr><th>Leg</th><th>Distance (NM)</th><th>Distance (km)</th><th>True bearing (°)</th></tr>
                 </thead>
                 <tbody id="legsTable"></tbody>
               </table>

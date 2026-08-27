@@ -23,6 +23,7 @@ describe('map preset validation', () => {
             assetPath: 'map.pdf',
             baseWidth: 100,
             baseHeight: 100,
+            scaleDenominator: 250000,
             controlPoints: [],
           },
         },
