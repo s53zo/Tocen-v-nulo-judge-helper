@@ -20,5 +20,11 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Enforce browser asset budgets
+        run: |
+          test "$(stat -c%s assets/app.js)" -le 3000000
+          find maps/previews -type f -size +3M -print -quit | (! grep .)
       - name: Verify committed browser bundle
         run: git diff --exit-code -- assets
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
