@@ -37,6 +37,7 @@ index.html              Single production page
 src/main.ts             Browser UI, map rendering, and PDF orchestration
 src/domain.ts           Route, bearing, speed, and timing calculations
 src/csv.ts              Standards-aware CSV parser
+src/data-url.ts         CSP-safe decoder for bundled data URL assets
 src/maps.ts             Map-preset validation
 src/map-presets.json    Versioned map metadata and calibration
 src/styles.css          Application styles

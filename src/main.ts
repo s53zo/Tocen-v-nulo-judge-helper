@@ -6,6 +6,7 @@ import { degrees, PDFDocument, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { parseCsv } from './csv';
+import { decodeDataUrl } from './data-url';
 import {
   bearingDegrees,
   buildRoute,
@@ -211,6 +212,22 @@ function replaceTableRows(tableBody, rows) {
 function createPdfObjectUrl(bytes: Uint8Array): string {
   const copy = Uint8Array.from(bytes);
   return URL.createObjectURL(new Blob([copy.buffer], { type: 'application/pdf' }));
+}
+
+async function loadAssetBytes(url: string, label: string): Promise<Uint8Array> {
+  if (url.startsWith('data:')) {
+    return decodeDataUrl(url).bytes;
+  }
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    throw new Error(`Could not load ${label}. Check the connection and reload the page.`, { cause: error });
+  }
+  if (!response.ok) {
+    throw new Error(`Could not load ${label} (${response.status} ${response.statusText}).`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 function setDownloadUrl(key, url, filename, linkEl) {
@@ -490,7 +507,8 @@ async function renderCroppedPreview(bytes) {
     previewUrl = previewObjectUrl;
   } else {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    const blob = await (await fetch(dataUrl)).blob();
+    const decoded = decodeDataUrl(dataUrl);
+    const blob = new Blob([Uint8Array.from(decoded.bytes).buffer], { type: decoded.mimeType });
     previewObjectUrl = URL.createObjectURL(blob);
     previewUrl = previewObjectUrl;
   }
@@ -1180,7 +1198,7 @@ async function generate() {
         headingOffset: HEADING_OFFSET_SCALE * scaleAvg,
       };
 
-      const fontBytes = new Uint8Array(await (await fetch(notoSansBoldUrl)).arrayBuffer());
+      const fontBytes = await loadAssetBytes(notoSansBoldUrl, 'the PDF label font');
       const overlayFontBold = await overlayDoc.embedFont(fontBytes, { subset: true });
       const baseFontBold = await pdfDoc.embedFont(fontBytes, { subset: true });
       const drawTargets = [
