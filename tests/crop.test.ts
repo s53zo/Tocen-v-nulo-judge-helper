@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseTrueScaleCropPage } from '../src/crop';
+import { choosePreviewScale, chooseTrueScaleCropPage } from '../src/crop';
 
 const A4 = [595.28, 841.89] as const;
 
@@ -20,5 +20,17 @@ describe('true-scale crop page selection', () => {
   it('rejects invalid dimensions', () => {
     expect(() => chooseTrueScaleCropPage(Number.NaN, 100, A4)).toThrow('finite');
     expect(() => chooseTrueScaleCropPage(0, 100, A4)).toThrow('positive');
+  });
+
+  it('bounds previews of very large chart pages', () => {
+    const scale = choosePreviewScale(11890, 8410, 1.2, 1800, 3_000_000);
+    expect(11890 * scale).toBeLessThanOrEqual(1800);
+    expect(11890 * scale * (8410 * scale)).toBeLessThanOrEqual(3_000_000);
+  });
+
+  it('keeps hard caps for extreme dimensions', () => {
+    const scale = choosePreviewScale(1_000_000, 1_000_000, 1.2, 1800, 3_000_000);
+    expect(1_000_000 * scale).toBeLessThanOrEqual(1800);
+    expect(1_000_000 * scale * (1_000_000 * scale)).toBeLessThanOrEqual(3_000_000.001);
   });
 });

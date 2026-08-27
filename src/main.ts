@@ -3,8 +3,6 @@ import 'leaflet/dist/leaflet.css';
 import fontkit from '@pdf-lib/fontkit';
 import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
 import { degrees, PDFDocument, rgb } from 'pdf-lib';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { chooseTrueScaleCropPage } from './crop';
 import { parseCsv } from './csv';
 import { decodeDataUrl } from './data-url';
@@ -20,14 +18,13 @@ import {
   roundedBearing,
 } from './domain';
 import rawMapPresets from './map-presets.json';
+import { renderBoundedMapPreview } from './map-preview';
 import { loadMapPresets } from './maps';
 import { buildPhotoHandout } from './photo-handout';
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PhotoWorkflow } from './photo-workflow';
 import './styles.css';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
@@ -48,8 +45,7 @@ const MINUTE_LABEL_OFFSET_MULTIPLIER = 4.0;
 const TP_LABEL_OFFSET_FACTOR = 0.35;
 const DEFAULT_TAKEOFF_TO_SP_MIN = 4.0;
 const MM_TO_PT = 72 / 25.4;
-const MAX_PREVIEW_EDGE_PX = 4096;
-const MAX_PREVIEW_PIXELS = 16000000;
+const PREVIEW_STEP_TIMEOUT_MS = 15000;
 const LABEL_COLLISION_MARGIN = 3.0;
 const LABEL_DISTANCE_STEP = 5.0;
 const MAX_LABEL_ADJUST_STEPS = 12;
@@ -112,6 +108,7 @@ const downloadUrls = {
   photoHandout: null,
 };
 let previewObjectUrl = null;
+let croppedPreviewController: AbortController | null = null;
 
 function openPreviewInNewTab(url, descriptor) {
   if (!url) {
@@ -170,7 +167,8 @@ const croppedPreviewMessage = requiredElement<HTMLElement>('croppedPreviewMessag
 const resultsPlaceholder = requiredElement<HTMLElement>('resultsPlaceholder');
 const resultsContent = requiredElement<HTMLElement>('resultsContent');
 let hasGeneratedOnce = false;
-const presetCache = new Map();
+let cachedPresetKey: string | null = null;
+let cachedPresetBuffer: ArrayBuffer | null = null;
 const mapStatus = requiredElement<HTMLElement>('mapStatus');
 const chartWarning = requiredElement<HTMLElement>('chartWarning');
 const osmMapContainer = requiredElement<HTMLElement>('osmMapContainer');
@@ -327,6 +325,8 @@ function renderCompliance(compliance: RouteCompliance) {
 }
 
 function clearCroppedPreview() {
+  croppedPreviewController?.abort('A newer operation replaced this preview.');
+  croppedPreviewController = null;
   croppedPreviewContainer.hidden = true;
   croppedPreviewImage.removeAttribute('src');
   if (previewObjectUrl) {
@@ -423,11 +423,11 @@ async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean } = {
   if (preset.type !== 'pdf') {
     return null;
   }
-  if (!options.forceReload && presetCache.has(mapKey)) {
+  if (!options.forceReload && cachedPresetKey === mapKey && cachedPresetBuffer) {
     if (mapKey === selectedMapKey) {
       updateMapStatus(`Using preset map: ${preset.label}`);
     }
-    return presetCache.get(mapKey);
+    return cachedPresetBuffer;
   }
   if (!preset.url) {
     throw new Error(`Preset '${mapKey}' does not include a bundled PDF URL.`);
@@ -440,7 +440,8 @@ async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean } = {
     throw new Error(`Failed to load preset PDF (${response.status} ${response.statusText})`);
   }
   const buffer = await response.arrayBuffer();
-  presetCache.set(mapKey, buffer);
+  cachedPresetKey = mapKey;
+  cachedPresetBuffer = buffer;
   if (mapKey === selectedMapKey) {
     updateMapStatus(`Using preset map: ${preset.label}`);
   }
@@ -450,98 +451,47 @@ async function ensurePresetBuffer(mapKey, options: { forceReload?: boolean } = {
 function selectMapPresetButton(mapKey) {
   selectedMapKey = MAP_PRESETS[mapKey] ? mapKey : DEFAULT_MAP_KEY;
   mapPresetButtons.forEach((btn) => {
-    btn.classList.toggle('is-selected', btn.dataset.mapKey === selectedMapKey);
+    const isSelected = btn.dataset.mapKey === selectedMapKey;
+    btn.classList.toggle('is-selected', isSelected);
+    btn.setAttribute('aria-pressed', String(isSelected));
   });
 }
 
 function handleMapPresetChange(newKey = selectedMapKey) {
   selectMapPresetButton(newKey);
   updateMapInputsVisibility();
-  if (!isPdfPreset()) {
-    return;
-  }
-  ensurePresetBuffer(selectedMapKey).catch((err) => {
-    console.warn('Failed to load preset map', err);
-    updateMapStatus('Could not load the preset map automatically.', true);
-  });
 }
 
-async function ensurePdfJs() {
-  return pdfjsLib;
-}
-
-async function renderCroppedPreview(bytes) {
-  if (!bytes) {
-    clearCroppedPreview();
-    return;
-  }
+async function renderCroppedPreview(options) {
+  croppedPreviewController?.abort('A newer preview was requested.');
+  const controller = new AbortController();
+  croppedPreviewController = controller;
   croppedPreviewContainer.hidden = false;
   croppedPreviewMessage.classList.remove('danger-text');
   croppedPreviewMessage.textContent = 'Rendering cropped map preview...';
-  let pdf = null;
+  const timeout = setTimeout(
+    () => controller.abort(`Preview exceeded ${PREVIEW_STEP_TIMEOUT_MS / 1000} seconds.`),
+    PREVIEW_STEP_TIMEOUT_MS
+  );
   try {
-    const pdfjsLib = await ensurePdfJs();
-    pdf = await pdfjsLib.getDocument({ data: Uint8Array.from(bytes) }).promise;
-    const page = await pdf.getPage(1);
-    const rawViewport = page.getViewport({ scale: 1 });
-    const scaleCandidates = [1.6];
-    // Limit preview canvas to stay within safe browser dimensions.
-    const longestEdge = Math.max(rawViewport.width, rawViewport.height);
-    if (Number.isFinite(longestEdge) && longestEdge > 0) {
-      scaleCandidates.push(MAX_PREVIEW_EDGE_PX / longestEdge);
-    }
-    const totalPixels = rawViewport.width * rawViewport.height;
-    if (Number.isFinite(totalPixels) && totalPixels > 0) {
-      scaleCandidates.push(Math.sqrt(MAX_PREVIEW_PIXELS / totalPixels));
-    }
-    const scale = Math.max(
-      Math.min(...scaleCandidates.filter((value) => Number.isFinite(value) && value > 0)),
-      0.05
-    );
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(viewport.width));
-    canvas.height = Math.max(1, Math.round(viewport.height));
-    const context = canvas.getContext('2d', { alpha: false });
-    if (!context) throw new Error('Canvas rendering is unavailable.');
-    await page.render({ canvas, canvasContext: context, viewport }).promise;
-    page.cleanup();
+    const blob = await renderBoundedMapPreview({ ...options, signal: controller.signal });
+    if (controller.signal.aborted || croppedPreviewController !== controller) return false;
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
       previewObjectUrl = null;
     }
-    let previewUrl: string;
-    if (typeof canvas.toBlob === 'function') {
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (result) => {
-            if (result) resolve(result);
-            else reject(new Error('Failed to build preview image blob.'));
-          },
-          'image/jpeg',
-          0.9
-        );
-      });
-      previewObjectUrl = URL.createObjectURL(blob);
-      previewUrl = previewObjectUrl;
-    } else {
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      const decoded = decodeDataUrl(dataUrl);
-      const blob = new Blob([Uint8Array.from(decoded.bytes).buffer], { type: decoded.mimeType });
-      previewObjectUrl = URL.createObjectURL(blob);
-      previewUrl = previewObjectUrl;
-    }
+    previewObjectUrl = URL.createObjectURL(blob);
+    const previewUrl = previewObjectUrl;
     croppedPreviewImage.src = previewUrl;
     croppedPreviewImage.alt = 'Preview of the cropped true-scale route map';
     croppedPreviewLink.href = previewUrl;
     croppedPreviewLink.setAttribute('aria-disabled', 'false');
-    const downscaled = scale < 1.6 - 1e-3;
-    croppedPreviewMessage.textContent = downscaled
-      ? 'Preview downscaled for browser limits; download the cropped PDF for full detail.'
-      : 'JPEG preview generated from the cropped PDF.';
+    croppedPreviewMessage.textContent =
+      'Bounded preview generated from the calibrated low-resolution map. Download the cropped PDF for print detail.';
     return true;
   } catch (error) {
     console.error('Could not render cropped map preview', error);
+    if (croppedPreviewController !== controller) return false;
     croppedPreviewImage.removeAttribute('src');
     croppedPreviewLink.removeAttribute('href');
     croppedPreviewLink.setAttribute('aria-disabled', 'true');
@@ -549,7 +499,8 @@ async function renderCroppedPreview(bytes) {
     croppedPreviewMessage.textContent = `Preview could not be rendered: ${error instanceof Error ? error.message : String(error)}. The cropped PDF is still available.`;
     return false;
   } finally {
-    await pdf?.destroy();
+    clearTimeout(timeout);
+    if (croppedPreviewController === controller) croppedPreviewController = null;
   }
 }
 
@@ -1763,15 +1714,23 @@ async function generate() {
           ['sign-task', 'Sign task'],
           ['reference', 'Reference'],
         ];
-        const legendX = 20;
-        const legendY = 20;
         const lineHeight = 12;
+        const legendWidth = 105;
+        const legendHeight = legendItems.length * lineHeight + 14;
+        const legendLeft = Math.min(Math.max(0, bounds.minX), Math.max(0, pageWidth - legendWidth));
+        const belowRoute = bounds.minY - legendHeight - 6;
+        const legendBottom =
+          belowRoute >= 0
+            ? belowRoute
+            : Math.min(Math.max(0, pageHeight - legendHeight), Math.max(0, bounds.maxY + 6));
+        const legendX = legendLeft + 8;
+        const legendY = legendBottom + 7;
         drawTargets.forEach((target) => {
           target.page.drawRectangle({
-            x: legendX - 8,
-            y: legendY - 7,
-            width: 105,
-            height: legendItems.length * lineHeight + 14,
+            x: legendLeft,
+            y: legendBottom,
+            width: legendWidth,
+            height: legendHeight,
             color: rgb(1, 1, 1),
             opacity: 0.88,
             borderColor: rgb(0.55, 0.58, 0.6),
@@ -1790,8 +1749,8 @@ async function generate() {
           });
         });
         if (photoLayerOptions.includeInCrop) {
-          expandBounds(legendX - 8, legendY - 7);
-          expandBounds(legendX + 97, legendY + legendItems.length * lineHeight + 7);
+          expandBounds(legendLeft, legendBottom);
+          expandBounds(legendLeft + legendWidth, legendBottom + legendHeight);
         }
       }
 
@@ -1844,6 +1803,7 @@ async function generate() {
       const overlayOnlyBytes = await overlayDoc.save();
       const markedBytes = await pdfDoc.save();
       let croppedBytes = null;
+      let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
         const m = 10 * MM_TO_PT;
         const [minX, minY, maxX, maxY] = [
@@ -1867,10 +1827,38 @@ async function generate() {
             y: -minY + (targetPage.height - contentHeight) / 2,
           });
           croppedBytes = await cropDoc.save();
+          const previewPhotoColors = {
+            enroute: '#7331a5',
+            'control-correct': '#0d7a40',
+            'control-false': '#eb6b0a',
+            'sign-task': '#0d59b8',
+            reference: '#596166',
+          };
+          previewOptions = {
+            imageUrl: mapConfig.previewUrl,
+            pageWidth,
+            pageHeight,
+            crop: { minX, minY, maxX, maxY },
+            route: projected.map(({ name, pdf: [x, y] }) => ({ x, y, label: name })),
+            photos: photoWorkflow.records.flatMap((photo) => {
+              if (!photo.analysis) return [];
+              const [x, y] = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
+              if (![x, y].every(Number.isFinite)) return [];
+              return [
+                {
+                  x,
+                  y,
+                  label: photo.identifier || '?',
+                  color: previewPhotoColors[photo.classification],
+                  warning: photo.findings.some((finding) => finding.severity === 'violation'),
+                },
+              ];
+            }),
+          };
           summaryCropped = {
             available: true,
-            widthMm: (targetPage.width / MM_TO_PT).toFixed(1),
-            heightMm: (targetPage.height / MM_TO_PT).toFixed(1),
+            widthMm: targetPage.width / MM_TO_PT,
+            heightMm: targetPage.height / MM_TO_PT,
             format: targetPage.format,
             scale: '100%',
           };
@@ -1884,10 +1872,10 @@ async function generate() {
         downloadOverlayLink
       );
       downloadOverlayLink.style.display = 'inline-flex';
-      if (croppedBytes) {
+      if (croppedBytes && previewOptions) {
         setDownloadUrl('cropped', createPdfObjectUrl(croppedBytes), 'route_cropped.pdf', downloadCroppedLink);
         downloadCroppedLink.style.display = 'inline-flex';
-        await renderCroppedPreview(croppedBytes);
+        void renderCroppedPreview(previewOptions);
       }
     } else {
       if (osmMapContainer) {

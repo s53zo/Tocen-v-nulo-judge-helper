@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest';
+import { computePreviewGeometry } from '../src/map-preview';
+
+describe('bounded map preview geometry', () => {
+  it('maps a PDF crop into the top-left raster coordinate system', () => {
+    const geometry = computePreviewGeometry(2000, 1000, 1000, 500, {
+      minX: 250,
+      minY: 100,
+      maxX: 750,
+      maxY: 400,
+    });
+    expect(geometry).toEqual({
+      sourceX: 500,
+      sourceY: 200,
+      sourceWidth: 1000,
+      sourceHeight: 600,
+      outputWidth: 1000,
+      outputHeight: 600,
+    });
+  });
+
+  it('enforces output edge and pixel limits', () => {
+    const geometry = computePreviewGeometry(
+      20_000,
+      10_000,
+      1000,
+      500,
+      { minX: 0, minY: 0, maxX: 1000, maxY: 500 },
+      1800,
+      3_000_000
+    );
+    expect(Math.max(geometry.outputWidth, geometry.outputHeight)).toBeLessThanOrEqual(1800);
+    expect(geometry.outputWidth * geometry.outputHeight).toBeLessThanOrEqual(3_000_000);
+  });
+
+  it('rejects crops outside the page', () => {
+    expect(() =>
+      computePreviewGeometry(2000, 1000, 1000, 500, { minX: -1, minY: 0, maxX: 100, maxY: 100 })
+    ).toThrow('within');
+  });
+});

@@ -4,6 +4,26 @@ export interface CropPageChoice {
   format: 'A4 portrait' | 'A4 landscape' | 'custom true-scale';
 }
 
+export function choosePreviewScale(
+  width: number,
+  height: number,
+  maximumScale: number,
+  maximumEdge: number,
+  maximumPixels: number
+): number {
+  if (![width, height, maximumScale, maximumEdge, maximumPixels].every(Number.isFinite)) {
+    throw new Error('Preview dimensions must be finite.');
+  }
+  if ([width, height, maximumScale, maximumEdge, maximumPixels].some((value) => value <= 0)) {
+    throw new Error('Preview dimensions must be positive.');
+  }
+  return Math.min(
+    maximumScale,
+    maximumEdge / Math.max(width, height),
+    Math.sqrt(maximumPixels / (width * height))
+  );
+}
+
 export function chooseTrueScaleCropPage(
   contentWidth: number,
   contentHeight: number,

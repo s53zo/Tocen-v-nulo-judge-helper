@@ -8,6 +8,8 @@ export interface PdfMapPreset {
   fileName: string;
   assetPath: string;
   url: string;
+  previewAssetPath: string;
+  previewUrl: string;
   baseWidth: number;
   baseHeight: number;
   scaleDenominator: number;
@@ -60,7 +62,8 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
     if (
       preset.type !== 'pdf' ||
       typeof preset.fileName !== 'string' ||
-      typeof preset.assetPath !== 'string'
+      typeof preset.assetPath !== 'string' ||
+      typeof preset.previewAssetPath !== 'string'
     ) {
       throw new Error(`PDF map preset ${id} is incomplete.`);
     }
@@ -80,6 +83,7 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
       baseHeight: positiveNumber(preset.baseHeight, `${id}.baseHeight`),
       scaleDenominator: positiveNumber(preset.scaleDenominator, `${id}.scaleDenominator`),
       url: new URL(preset.assetPath, baseUrl).href,
+      previewUrl: new URL(preset.previewAssetPath, baseUrl).href,
     };
   }
   if (!presets.vfr) throw new Error('The default VFR map preset is missing.');

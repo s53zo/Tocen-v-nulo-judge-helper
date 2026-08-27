@@ -8,6 +8,7 @@ describe('map preset validation', () => {
     expect(presets.vfr.type).toBe('pdf');
     if (presets.vfr.type === 'pdf') {
       expect(presets.vfr.url).toBe('https://example.test/app/maps/00_VFRspredaj_25_SC_WEB_flat.pdf');
+      expect(presets.vfr.previewUrl).toBe('https://example.test/app/maps/previews/vfr.webp');
     }
   });
 
@@ -21,6 +22,7 @@ describe('map preset validation', () => {
             edition: 'test',
             fileName: 'map.pdf',
             assetPath: 'map.pdf',
+            previewAssetPath: 'map.webp',
             baseWidth: 100,
             baseHeight: 100,
             scaleDenominator: 250000,
