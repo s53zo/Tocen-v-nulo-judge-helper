@@ -5,6 +5,7 @@ import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
 import { degrees, PDFDocument, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { chooseTrueScaleCropPage } from './crop';
 import { parseCsv } from './csv';
 import { decodeDataUrl } from './data-url';
 import {
@@ -475,70 +476,81 @@ async function renderCroppedPreview(bytes) {
     return;
   }
   croppedPreviewContainer.hidden = false;
-  const pdfjsLib = await ensurePdfJs();
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-  const page = await pdf.getPage(1);
-  const rawViewport = page.getViewport({ scale: 1 });
-  const scaleCandidates = [1.6];
-  // Limit preview canvas to stay within safe browser dimensions.
-  const longestEdge = Math.max(rawViewport.width, rawViewport.height);
-  if (Number.isFinite(longestEdge) && longestEdge > 0) {
-    scaleCandidates.push(MAX_PREVIEW_EDGE_PX / longestEdge);
-  }
-  const totalPixels = rawViewport.width * rawViewport.height;
-  if (Number.isFinite(totalPixels) && totalPixels > 0) {
-    scaleCandidates.push(Math.sqrt(MAX_PREVIEW_PIXELS / totalPixels));
-  }
-  const scale = Math.max(
-    Math.min(...scaleCandidates.filter((value) => Number.isFinite(value) && value > 0)),
-    0.05
-  );
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(viewport.width));
-  canvas.height = Math.max(1, Math.round(viewport.height));
-  const context = canvas.getContext('2d', { alpha: false });
-  await page.render({ canvas, canvasContext: context, viewport }).promise;
-  if (previewObjectUrl) {
-    URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = null;
-  }
-  let previewUrl: string;
-  if (typeof canvas.toBlob === 'function') {
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (result) => {
-          if (result) {
-            resolve(result);
-          } else {
-            reject(new Error('Failed to build preview image blob.'));
-          }
-        },
-        'image/jpeg',
-        0.9
-      );
-    });
-    previewObjectUrl = URL.createObjectURL(blob);
-    previewUrl = previewObjectUrl;
-  } else {
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    const decoded = decodeDataUrl(dataUrl);
-    const blob = new Blob([Uint8Array.from(decoded.bytes).buffer], { type: decoded.mimeType });
-    previewObjectUrl = URL.createObjectURL(blob);
-    previewUrl = previewObjectUrl;
-  }
-  croppedPreviewImage.src = previewUrl;
-  if (croppedPreviewLink) {
+  croppedPreviewMessage.classList.remove('danger-text');
+  croppedPreviewMessage.textContent = 'Rendering cropped map preview...';
+  let pdf = null;
+  try {
+    const pdfjsLib = await ensurePdfJs();
+    pdf = await pdfjsLib.getDocument({ data: Uint8Array.from(bytes) }).promise;
+    const page = await pdf.getPage(1);
+    const rawViewport = page.getViewport({ scale: 1 });
+    const scaleCandidates = [1.6];
+    // Limit preview canvas to stay within safe browser dimensions.
+    const longestEdge = Math.max(rawViewport.width, rawViewport.height);
+    if (Number.isFinite(longestEdge) && longestEdge > 0) {
+      scaleCandidates.push(MAX_PREVIEW_EDGE_PX / longestEdge);
+    }
+    const totalPixels = rawViewport.width * rawViewport.height;
+    if (Number.isFinite(totalPixels) && totalPixels > 0) {
+      scaleCandidates.push(Math.sqrt(MAX_PREVIEW_PIXELS / totalPixels));
+    }
+    const scale = Math.max(
+      Math.min(...scaleCandidates.filter((value) => Number.isFinite(value) && value > 0)),
+      0.05
+    );
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('Canvas rendering is unavailable.');
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
+    page.cleanup();
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = null;
+    }
+    let previewUrl: string;
+    if (typeof canvas.toBlob === 'function') {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) => {
+            if (result) resolve(result);
+            else reject(new Error('Failed to build preview image blob.'));
+          },
+          'image/jpeg',
+          0.9
+        );
+      });
+      previewObjectUrl = URL.createObjectURL(blob);
+      previewUrl = previewObjectUrl;
+    } else {
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const decoded = decodeDataUrl(dataUrl);
+      const blob = new Blob([Uint8Array.from(decoded.bytes).buffer], { type: decoded.mimeType });
+      previewObjectUrl = URL.createObjectURL(blob);
+      previewUrl = previewObjectUrl;
+    }
+    croppedPreviewImage.src = previewUrl;
+    croppedPreviewImage.alt = 'Preview of the cropped true-scale route map';
     croppedPreviewLink.href = previewUrl;
     croppedPreviewLink.setAttribute('aria-disabled', 'false');
-  }
-  if (croppedPreviewMessage) {
     const downscaled = scale < 1.6 - 1e-3;
     croppedPreviewMessage.textContent = downscaled
       ? 'Preview downscaled for browser limits; download the cropped PDF for full detail.'
       : 'JPEG preview generated from the cropped PDF.';
+    return true;
+  } catch (error) {
+    console.error('Could not render cropped map preview', error);
+    croppedPreviewImage.removeAttribute('src');
+    croppedPreviewLink.removeAttribute('href');
+    croppedPreviewLink.setAttribute('aria-disabled', 'true');
+    croppedPreviewMessage.classList.add('danger-text');
+    croppedPreviewMessage.textContent = `Preview could not be rendered: ${error instanceof Error ? error.message : String(error)}. The cropped PDF is still available.`;
+    return false;
+  } finally {
+    await pdf?.destroy();
   }
-  croppedPreviewContainer.hidden = false;
 }
 
 function parseNumericInput(input, fallback) {
@@ -1843,35 +1855,25 @@ async function generate() {
         if (maxX > minX + 1 && maxY > minY + 1) {
           const contentWidth = maxX - minX;
           const contentHeight = maxY - minY;
-          const a4Portrait = [210 * MM_TO_PT, 297 * MM_TO_PT];
-          const a4Landscape = [a4Portrait[1], a4Portrait[0]];
-          const preferred = contentWidth > contentHeight ? a4Landscape : a4Portrait;
-          const alternate = preferred === a4Landscape ? a4Portrait : a4Landscape;
-          const targetPage = [preferred, alternate].find(
-            ([width, height]) => contentWidth <= width && contentHeight <= height
-          );
-          if (targetPage) {
-            const [targetWidth, targetHeight] = targetPage;
-            const cropDoc = await PDFDocument.create();
-            const [embedded] = await cropDoc.embedPdf(markedBytes, [0]);
-            const cropPage = cropDoc.addPage([targetWidth, targetHeight]);
-            cropPage.drawPage(embedded, {
-              x: -minX + (targetWidth - contentWidth) / 2,
-              y: -minY + (targetHeight - contentHeight) / 2,
-            });
-            croppedBytes = await cropDoc.save();
-            summaryCropped = {
-              widthMm: (targetWidth / MM_TO_PT).toFixed(1),
-              heightMm: (targetHeight / MM_TO_PT).toFixed(1),
-              format: targetWidth > targetHeight ? 'A4 landscape' : 'A4 portrait',
-              scale: '100%',
-            };
-          } else {
-            summaryCropped = {
-              available: false,
-              reason: 'The true-scale route footprint does not fit on one A4 page.',
-            };
-          }
+          const targetPage = chooseTrueScaleCropPage(contentWidth, contentHeight, [
+            210 * MM_TO_PT,
+            297 * MM_TO_PT,
+          ]);
+          const cropDoc = await PDFDocument.create();
+          const [embedded] = await cropDoc.embedPdf(markedBytes, [0]);
+          const cropPage = cropDoc.addPage([targetPage.width, targetPage.height]);
+          cropPage.drawPage(embedded, {
+            x: -minX + (targetPage.width - contentWidth) / 2,
+            y: -minY + (targetPage.height - contentHeight) / 2,
+          });
+          croppedBytes = await cropDoc.save();
+          summaryCropped = {
+            available: true,
+            widthMm: (targetPage.width / MM_TO_PT).toFixed(1),
+            heightMm: (targetPage.height / MM_TO_PT).toFixed(1),
+            format: targetPage.format,
+            scale: '100%',
+          };
         }
       }
       setDownloadUrl('pdf', createPdfObjectUrl(markedBytes), 'route_marked.pdf', downloadPdfLink);
@@ -1885,7 +1887,7 @@ async function generate() {
       if (croppedBytes) {
         setDownloadUrl('cropped', createPdfObjectUrl(croppedBytes), 'route_cropped.pdf', downloadCroppedLink);
         downloadCroppedLink.style.display = 'inline-flex';
-        renderCroppedPreview(croppedBytes);
+        await renderCroppedPreview(croppedBytes);
       }
     } else {
       if (osmMapContainer) {

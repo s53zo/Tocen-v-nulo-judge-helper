@@ -13,7 +13,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Nautical-mile totals and leg distances alongside metric values
 - Configurable minute markers and overlay styling
 - Calibrated PDF maps plus an OpenStreetMap preview
-- Marked, overlay-only, and true-scale A4 PDF downloads
+- Marked, overlay-only, and true-scale cropped PDF downloads (A4 when the footprint fits, custom size otherwise)
 - Unicode waypoint labels in generated PDFs
 - Searchable location library
 - Explicit chart-edition warnings
