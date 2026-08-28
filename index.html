@@ -137,8 +137,12 @@ TP5,46.775187,16.202892
 TP6,46.552346,16.430293
 FP,46.608093,16.234769</textarea>
           </div>
+        </div>
+      </section>
 
-          <section class="control-group photo-workflow" aria-labelledby="photoWorkflowTitle">
+      <section class="photo-panel">
+        <div class="panel-content">
+          <section class="photo-workflow" aria-labelledby="photoWorkflowTitle">
             <h2 id="photoWorkflowTitle">5. Photos &amp; Tasks</h2>
             <p class="note privacy-note"><strong>Private by design:</strong> photos, EXIF metadata, analysis, and generated files stay in this browser tab. Bundled-map mode makes no third-party map request; optional OSM tiles disclose only the approximate displayed area after consent.</p>
             <label id="photoDropzone" class="photo-dropzone" for="photoFiles">
@@ -176,11 +180,13 @@ FP,46.608093,16.234769</textarea>
             <div id="photoList" class="photo-list"></div>
           </section>
 
-          <div class="generation-actions">
-            <button id="generate" class="btn btn-primary">Generate Overlay</button>
-            <button id="cancelGeneration" class="btn btn-secondary" hidden>Cancel</button>
+          <div class="generation-dock">
+            <div class="generation-actions">
+              <button id="generate" class="btn btn-primary">Generate Overlay</button>
+              <button id="cancelGeneration" class="btn btn-secondary" hidden>Cancel</button>
+            </div>
+            <div class="status" id="status" role="status" aria-live="polite"></div>
           </div>
-          <div class="status" id="status" role="status" aria-live="polite"></div>
         </div>
       </section>
 

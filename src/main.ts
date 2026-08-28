@@ -27,7 +27,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.4.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;

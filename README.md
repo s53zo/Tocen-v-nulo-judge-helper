@@ -28,6 +28,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Per-artifact progress, cancellation, and partial-success handling so an optional handout/preview failure does not discard maps
 - `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, and an accepted-photo-only judge handout
 - An opt-in 29-photo historical TVN 2025 example recovered from the original workflow
+- Wide review workspace with compact route controls, multi-column photo cards, a persistent generation bar, and responsive result panels
 
 ## Development
 

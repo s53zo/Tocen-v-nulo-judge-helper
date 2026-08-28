@@ -439,7 +439,7 @@ async function ie(e, t, n) {
 		URL.revokeObjectURL(o);
 	}
 }
-function k(e, t) {
+function ae(e, t) {
 	let n = Math.max(0, Math.floor(e.sourceX / t.tileSize)), r = Math.min(t.columns - 1, Math.ceil((e.sourceX + e.sourceWidth) / t.tileSize) - 1), i = Math.max(0, Math.floor(e.sourceY / t.tileSize)), a = Math.min(t.rows - 1, Math.ceil((e.sourceY + e.sourceHeight) / t.tileSize) - 1), o = [];
 	for (let e = i; e <= a; e += 1) for (let t = n; t <= r; t += 1) o.push({
 		column: t,
@@ -447,8 +447,8 @@ function k(e, t) {
 	});
 	return o;
 }
-async function ae(e, t, n, r, i, a, o) {
-	let s = k(t, n);
+async function oe(e, t, n, r, i, a, o) {
+	let s = ae(t, n);
 	if (s.length > a) throw Error(`High-resolution preview requires ${s.length} tiles; limit is ${a}.`);
 	let c = 0, l = t.outputWidth / t.sourceWidth, u = t.outputHeight / t.sourceHeight;
 	for (let a = 0; a < s.length; a += 4) {
@@ -469,10 +469,10 @@ async function ae(e, t, n, r, i, a, o) {
 		}
 	}
 }
-function A(e, t, n) {
+function k(e, t, n) {
 	return [(e.x - t.minX) / (t.maxX - t.minX) * n.outputWidth, (t.maxY - e.y) / (t.maxY - t.minY) * n.outputHeight];
 }
-async function oe(e) {
+async function se(e) {
 	let t = e.maximumBytes ?? w;
 	if (!e.tileSet && !e.imageUrl) throw Error("A preview image or tile set is required.");
 	let n = null, r = e.tileSet ? [e.tileSet.width, e.tileSet.height] : await ie(e.imageUrl, e.signal, t).then(({ image: e }) => (n = e, [e.naturalWidth, e.naturalHeight]));
@@ -481,16 +481,16 @@ async function oe(e) {
 	a.width = i.outputWidth, a.height = i.outputHeight;
 	let o = a.getContext("2d", { alpha: !1 });
 	if (!o) throw Error("Canvas rendering is unavailable.");
-	o.fillStyle = "#fff", o.fillRect(0, 0, a.width, a.height), e.tileSet ? await ae(o, i, e.tileSet, e.signal, t, e.maximumTiles ?? E, e.maximumTotalTileBytes ?? D) : (o.drawImage(n, i.sourceX, i.sourceY, i.sourceWidth, i.sourceHeight, 0, 0, i.outputWidth, i.outputHeight), n?.removeAttribute("src")), e.route.length > 1 && (o.save(), o.strokeStyle = "#d21f26", o.lineWidth = Math.max(2, i.outputWidth / 650), o.lineJoin = "round", o.beginPath(), e.route.forEach((t, n) => {
-		let [r, a] = A(t, e.crop, i);
+	o.fillStyle = "#fff", o.fillRect(0, 0, a.width, a.height), e.tileSet ? await oe(o, i, e.tileSet, e.signal, t, e.maximumTiles ?? E, e.maximumTotalTileBytes ?? D) : (o.drawImage(n, i.sourceX, i.sourceY, i.sourceWidth, i.sourceHeight, 0, 0, i.outputWidth, i.outputHeight), n?.removeAttribute("src")), e.route.length > 1 && (o.save(), o.strokeStyle = "#d21f26", o.lineWidth = Math.max(2, i.outputWidth / 650), o.lineJoin = "round", o.beginPath(), e.route.forEach((t, n) => {
+		let [r, a] = k(t, e.crop, i);
 		n === 0 ? o.moveTo(r, a) : o.lineTo(r, a);
 	}), o.stroke(), o.restore()), o.font = `600 ${Math.max(10, Math.round(i.outputWidth / 120))}px sans-serif`, o.textBaseline = "bottom";
 	for (let t of e.route) {
-		let [n, r] = A(t, e.crop, i);
+		let [n, r] = k(t, e.crop, i);
 		o.fillStyle = "#fff", o.strokeStyle = "#d21f26", o.lineWidth = 2, o.beginPath(), o.arc(n, r, Math.max(4, i.outputWidth / 300), 0, Math.PI * 2), o.fill(), o.stroke(), t.label && (o.lineWidth = 3, o.strokeStyle = "#fff", o.strokeText(t.label, n + 7, r - 5), o.fillStyle = "#8f1017", o.fillText(t.label, n + 7, r - 5));
 	}
 	for (let t of e.photos) {
-		let [n, r] = A(t, e.crop, i), a = t.tickVector ?? [0, 1], s = Math.hypot(a[0], a[1]) || 1, c = [a[0] / s, -a[1] / s], l = Math.max(8, i.outputWidth / 180);
+		let [n, r] = k(t, e.crop, i), a = t.tickVector ?? [0, 1], s = Math.hypot(a[0], a[1]) || 1, c = [a[0] / s, -a[1] / s], l = Math.max(8, i.outputWidth / 180);
 		if (t.showTick !== !1 && (o.strokeStyle = t.color ?? "#7331a5", o.lineWidth = Math.max(3, i.outputWidth / 700), o.lineCap = "butt", o.beginPath(), o.moveTo(n - c[0] * l, r - c[1] * l), o.lineTo(n + c[0] * l, r + c[1] * l), o.stroke()), t.label) {
 			let e = n + c[0] * l * 4, i = r + c[1] * l * 4;
 			o.lineWidth = 3, o.strokeStyle = "#fff", o.strokeText(t.label, e, i), o.fillStyle = t.color ?? "#7331a5", o.fillText(t.label, e, i);
@@ -500,11 +500,11 @@ async function oe(e) {
 }
 //#endregion
 //#region src/maps.ts
-function j(e, t) {
+function A(e, t) {
 	if (typeof e != "number" || !Number.isFinite(e) || e <= 0) throw Error(`Map preset ${t} must be a positive number.`);
 	return e;
 }
-function M(e, t) {
+function j(e, t) {
 	if (!e || typeof e != "object" || Array.isArray(e)) throw Error("Map presets must be an object.");
 	let n = {};
 	for (let [r, i] of Object.entries(e)) {
@@ -531,18 +531,18 @@ function M(e, t) {
 			...e,
 			type: "pdf",
 			transform: a,
-			baseWidth: j(e.baseWidth, `${r}.baseWidth`),
-			baseHeight: j(e.baseHeight, `${r}.baseHeight`),
-			scaleDenominator: j(e.scaleDenominator, `${r}.scaleDenominator`),
+			baseWidth: A(e.baseWidth, `${r}.baseWidth`),
+			baseHeight: A(e.baseHeight, `${r}.baseHeight`),
+			scaleDenominator: A(e.scaleDenominator, `${r}.scaleDenominator`),
 			url: new URL(e.assetPath, t).href,
 			previewUrl: new URL(e.previewAssetPath, t).href,
 			previewTiles: {
 				baseUrl: new URL(s.basePath, t).href,
-				width: j(s.width, `${r}.previewTiles.width`),
-				height: j(s.height, `${r}.previewTiles.height`),
-				tileSize: j(s.tileSize, `${r}.previewTiles.tileSize`),
-				columns: j(s.columns, `${r}.previewTiles.columns`),
-				rows: j(s.rows, `${r}.previewTiles.rows`)
+				width: A(s.width, `${r}.previewTiles.width`),
+				height: A(s.height, `${r}.previewTiles.height`),
+				tileSize: A(s.tileSize, `${r}.previewTiles.tileSize`),
+				columns: A(s.columns, `${r}.previewTiles.columns`),
+				rows: A(s.rows, `${r}.previewTiles.rows`)
 			}
 		};
 	}
@@ -551,15 +551,15 @@ function M(e, t) {
 }
 //#endregion
 //#region src/photo-compliance.ts
-var N = 1852;
-function se(e) {
+var M = 1852;
+function ce(e) {
 	return e.exceptionAccepted || !e.findings.some((e) => e.severity === "violation");
 }
-function P(e, t, n) {
+function N(e, t, n) {
 	let r = e[0].trim().toUpperCase();
 	return t === 0 && r === "SP" ? "start" : t === n.length - 1 && r === "FP" ? "finish" : /^TP\d+$/.test(r) ? "turning-point" : "control-point";
 }
-function ce(e, t) {
+function le(e, t) {
 	if (!e.linkedWaypoint) return null;
 	let n = t.findIndex(([t]) => t.trim().toUpperCase() === e.linkedWaypoint?.trim().toUpperCase());
 	return n < 0 ? null : {
@@ -567,15 +567,15 @@ function ce(e, t) {
 		index: n
 	};
 }
-function le(e) {
+function ue(e) {
 	return e.classification !== "reference";
 }
-function F(e, t) {
-	if (!le(e)) return !1;
-	let n = ce(e, t);
-	return !n || P(n.point, n.index, t) !== "turning-point";
+function P(e, t) {
+	if (!ue(e)) return !1;
+	let n = le(e, t);
+	return !n || N(n.point, n.index, t) !== "turning-point";
 }
-function I(e, t, n, r, i, a, o, s = null) {
+function F(e, t, n, r, i, a, o, s = null) {
 	return {
 		photoId: s,
 		severity: e,
@@ -587,28 +587,28 @@ function I(e, t, n, r, i, a, o, s = null) {
 		permitted: o
 	};
 }
-function ue(e, t) {
+function de(e, t) {
 	if (e.taskLatitude.reliable && e.taskLongitude.reliable && e.taskLatitude.value !== null && e.taskLongitude.value !== null) return [e.taskLatitude.value, e.taskLongitude.value];
-	let n = ce(e, t);
+	let n = le(e, t);
 	return n ? [n.point[1], n.point[2]] : null;
 }
-function de(e, t) {
-	let n = [], r = e.filter((e) => e.classification === "enroute"), i = e.filter((e) => F(e, t));
-	n.push(I(r.length <= 12 ? "pass" : "violation", "enroute-photo-count", "A2.4.5", "route", r.length <= 12 ? "En-route photo count is within the limit." : "Too many en-route photos.", `${r.length} en-route photos`, "maximum 12"), I(i.length <= 15 ? "pass" : "violation", "route-task-count", "A2.4.6", "route", i.length <= 15 ? "Route task count is within the limit." : "Too many route tasks.", `${i.length} route tasks`, "maximum 15, excluding verified photos/signs at turning points"));
+function fe(e, t) {
+	let n = [], r = e.filter((e) => e.classification === "enroute"), i = e.filter((e) => P(e, t));
+	n.push(F(r.length <= 12 ? "pass" : "violation", "enroute-photo-count", "A2.4.5", "route", r.length <= 12 ? "En-route photo count is within the limit." : "Too many en-route photos.", `${r.length} en-route photos`, "maximum 12"), F(i.length <= 15 ? "pass" : "violation", "route-task-count", "A2.4.6", "route", i.length <= 15 ? "Route task count is within the limit." : "Too many route tasks.", `${i.length} route tasks`, "maximum 15, excluding verified photos/signs at turning points"));
 	let a = r.map((e) => e.identifier.trim().toUpperCase()), o = a.every((e) => /^[A-Z]$/.test(e)) && new Set(a).size === a.length;
-	n.push(I(o ? "pass" : "violation", "enroute-identifiers", "A2.4.5", "route", o ? "En-route photo identifiers are unique single letters." : "En-route photo identifiers must be unique single letters.", a.join(", ") || "no en-route photos", "unique letters A-Z"));
+	n.push(F(o ? "pass" : "violation", "enroute-identifiers", "A2.4.5", "route", o ? "En-route photo identifiers are unique single letters." : "En-route photo identifiers must be unique single letters.", a.join(", ") || "no en-route photos", "unique letters A-Z"));
 	let s = new Map(t.map(([e, t, n]) => [e.toUpperCase(), {
 		latitude: t,
 		longitude: n
 	}]));
 	for (let r of e) {
-		let e = `${r.identifier || "?"} (${r.fileName})`, i = (t, n, i, a, o, s) => I(t, n, i, e, a, o, s, r.id), a = r.metadata.latitude.reliable && r.metadata.longitude.reliable, o = ce(r, t);
-		if (r.importError && n.push(i("warning", "photo-import-error", "A2.4.1-A2.4.8", "The image or metadata import failed and requires manual review.", r.importError, "readable image and reviewable metadata")), r.linkedWaypoint && !o && n.push(i("warning", "stale-waypoint-link", "A2.4.2-A2.4.7", "The linked waypoint does not exist in the current route.", r.linkedWaypoint, "an existing route waypoint")), F(r, t)) {
+		let e = `${r.identifier || "?"} (${r.fileName})`, i = (t, n, i, a, o, s) => F(t, n, i, e, a, o, s, r.id), a = r.metadata.latitude.reliable && r.metadata.longitude.reliable, o = le(r, t);
+		if (r.importError && n.push(i("warning", "photo-import-error", "A2.4.1-A2.4.8", "The image or metadata import failed and requires manual review.", r.importError, "readable image and reviewable metadata")), r.linkedWaypoint && !o && n.push(i("warning", "stale-waypoint-link", "A2.4.2-A2.4.7", "The linked waypoint does not exist in the current route.", r.linkedWaypoint, "an existing route waypoint")), P(r, t)) {
 			if (r.taskAnalysis) {
 				if (r.taskAnalysis.routePosition !== "on-route") n.push(i("violation", "task-outside-route", "A2.4.6-A2.4.7", "The task lies before SP or after FP.", r.taskAnalysis.routePosition, "a task on the competition route"));
 				else {
 					let e = r.taskAnalysis.distanceAfterPreviousControlPointM;
-					n.push(i(e >= N ? "pass" : "violation", "post-control-spacing", "A2.4.6", e >= N ? "Task is outside the prohibited segment after the previous control point." : `Task is too close after ${r.taskAnalysis.previousControlPoint}.`, `${(e / N).toFixed(2)} NM after ${r.taskAnalysis.previousControlPoint}`, "at least 1.00 NM after a control point"));
+					n.push(i(e >= M ? "pass" : "violation", "post-control-spacing", "A2.4.6", e >= M ? "Task is outside the prohibited segment after the previous control point." : `Task is too close after ${r.taskAnalysis.previousControlPoint}.`, `${(e / M).toFixed(2)} NM after ${r.taskAnalysis.previousControlPoint}`, "at least 1.00 NM after a control point"));
 				}
 				r.taskAnalysis.ambiguousLegIndices.length > 1 && !r.taskAnalysis.manuallySelectedLeg && n.push(i("warning", "task-leg-ambiguous", "A2.4.6-A2.4.7", "Task position matches multiple route legs; confirm its intended sequence.", `candidate legs ${r.taskAnalysis.ambiguousLegIndices.map((e) => e + 1).join(", ")}`, "one confirmed route leg"));
 			} else n.push(i("warning", "task-position-missing", "A2.4.6-A2.4.7", "Task spacing and map placement require a separate task/object position.", "reliable task position unavailable", "task/object coordinates or a valid linked waypoint"));
@@ -621,16 +621,16 @@ function de(e, t) {
 			n.push(t.value !== null && t.reliable ? i(t.value >= 50 && t.value <= 70 ? "pass" : "violation", "focal-length", "A2.4.5", t.value >= 50 && t.value <= 70 ? "Equivalent focal length is within range." : "Equivalent focal length is outside the permitted range.", `${t.value.toFixed(1)} mm equivalent`, "50-70 mm equivalent") : i("warning", "focal-length-missing", "A2.4.5", "Focal length requires manual review.", "reliable 35 mm equivalent unavailable", "50-70 mm equivalent"));
 		}
 		if (r.classification === "control-false") {
-			let e = r.linkedWaypoint ? s.get(r.linkedWaypoint.toUpperCase()) : void 0, a = ue(r, t);
+			let e = r.linkedWaypoint ? s.get(r.linkedWaypoint.toUpperCase()) : void 0, a = de(r, t);
 			if (e && a) {
 				let t = _(a[0], a[1], e.latitude, e.longitude);
-				n.push(i(t >= N ? "pass" : "violation", "false-control-distance", "A2.4.2", t >= N ? "False object is sufficiently separated from the correct object." : "False object is too close to the correct object.", `${(t / N).toFixed(2)} NM`, "at least 1.00 NM"));
+				n.push(i(t >= M ? "pass" : "violation", "false-control-distance", "A2.4.2", t >= M ? "False object is sufficiently separated from the correct object." : "False object is too close to the correct object.", `${(t / M).toFixed(2)} NM`, "at least 1.00 NM"));
 			} else n.push(i("warning", "false-control-distance-missing", "A2.4.2", "False-object separation requires manual review.", "task coordinate or linked waypoint missing", "at least 1.00 NM from correct object"));
 		}
 		r.classification !== "reference" && n.push(i("warning", "judge-content-review", "A2.4.1-A2.4.8", "A judge must confirm content, quality, identification, map marking, and presentation requirements.", "not safely automatable from metadata", "manual judge confirmation"));
 	}
 	let c = r.filter((e) => e.analysis).map((e) => e.analysis?.alongRouteM ?? 0);
-	c.length > 1 && c.every((e, t) => t === 0 || e >= c[t - 1]) && n.push(I("warning", "enroute-presentation-order", "A2.4.5", "route", "En-route photos appear to be presented in route order.", "monotonic route positions", "alphabetical presentation that does not disclose route order"));
+	c.length > 1 && c.every((e, t) => t === 0 || e >= c[t - 1]) && n.push(F("warning", "enroute-presentation-order", "A2.4.5", "route", "En-route photos appear to be presented in route order.", "monotonic route positions", "alphabetical presentation that does not disclose route order"));
 	let l = n.filter((e) => e.severity === "violation").length, u = n.filter((e) => e.severity === "warning").length;
 	return {
 		status: l > 0 ? "against-rules" : u > 0 ? "manual-review" : "ok",
@@ -643,14 +643,14 @@ function de(e, t) {
 }
 //#endregion
 //#region src/photo-types.ts
-var fe = [
+var pe = [
 	"enroute",
 	"control-correct",
 	"control-false",
 	"sign-task",
 	"reference"
 ];
-function L(e) {
+function I(e) {
 	return {
 		value: null,
 		source: "missing",
@@ -658,8 +658,8 @@ function L(e) {
 		...e ? { note: e } : {}
 	};
 }
-function R(e, t, n = !0, r) {
-	return e == null ? L(r) : {
+function L(e, t, n = !0, r) {
+	return e == null ? I(r) : {
 		value: e,
 		source: t,
 		reliable: n,
@@ -668,13 +668,13 @@ function R(e, t, n = !0, r) {
 }
 //#endregion
 //#region src/photo-metadata.ts
-function pe(e) {
+function me(e) {
 	if (typeof e == "number") return Number.isFinite(e) ? e : null;
 	if (Array.isArray(e) && e.length === 2 && e.every((e) => typeof e == "number")) {
 		let t = Number(e[1]);
 		return t ? Number(e[0]) / t : null;
 	}
-	if (Array.isArray(e) && e.length === 1) return pe(e[0]);
+	if (Array.isArray(e) && e.length === 1) return me(e[0]);
 	if (typeof e == "string") {
 		let t = e.replace(",", ".").match(/-?\d+(?:\.\d+)?/);
 		if (t) {
@@ -684,20 +684,20 @@ function pe(e) {
 	}
 	return null;
 }
-function me(...e) {
+function he(...e) {
 	for (let t of e) {
-		let e = pe(t?.value) ?? pe(t?.description);
+		let e = me(t?.value) ?? me(t?.description);
 		if (e !== null) return e;
 	}
 	return null;
 }
-function he(e) {
-	return e && typeof e == "object" && !Array.isArray(e) ? me(e) : pe(e);
-}
 function ge(e) {
-	return e && typeof e == "object" && !Array.isArray(e) ? z(e) : typeof e == "string" && e.trim() || null;
+	return e && typeof e == "object" && !Array.isArray(e) ? he(e) : me(e);
 }
-function z(...e) {
+function _e(e) {
+	return e && typeof e == "object" && !Array.isArray(e) ? R(e) : typeof e == "string" && e.trim() || null;
+}
+function R(...e) {
 	for (let t of e) {
 		let e = t?.description ?? t?.value;
 		if (typeof e == "string" && e.trim()) return e.trim();
@@ -705,54 +705,54 @@ function z(...e) {
 	}
 	return null;
 }
-function _e(e, t) {
-	if (!e) return L("Capture time is missing from EXIF.");
+function ve(e, t) {
+	if (!e) return I("Capture time is missing from EXIF.");
 	let n = e.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-	if (!n) return R(e, "exif", !1, "Unrecognized EXIF date format.");
+	if (!n) return L(e, "exif", !1, "Unrecognized EXIF date format.");
 	let [, r, i, a, o, s, c] = n, l = t?.match(/^[+-]\d{2}:\d{2}$/)?.[0] ?? "";
-	return R(`${r}-${i}-${a}T${o}:${s}:${c}${l}`, "exif", !!l, l ? void 0 : "EXIF capture time has no timezone offset.");
+	return L(`${r}-${i}-${a}T${o}:${s}:${c}${l}`, "exif", !!l, l ? void 0 : "EXIF capture time has no timezone offset.");
 }
-function ve(e) {
-	let t = e ?? {}, n = t.exif ?? {}, r = t.file ?? {}, i = t.gps ?? {}, a = pe(i.Latitude), o = pe(i.Longitude), s = pe(i.Altitude), c = he(i.GPSAltitudeRef), l = s === null ? null : c === 1 ? -Math.abs(s) : s, u = he(i.GPSImgDirection) ?? me(n.GPSImgDirection, n.CameraDirection), d = ge(i.GPSImgDirectionRef)?.toUpperCase(), f = d === "T" ? "true" : d === "M" ? "magnetic" : "unknown", p = me(n.FocalLength), m = me(n.FocalLengthIn35mmFilm, n.FocalLengthIn35mmFormat), h = me(n.Orientation, r.Orientation) ?? 1, g = z(n.DateTimeOriginal, n.CreateDate, r["File Modified Date"]), _ = z(n.OffsetTimeOriginal, n.OffsetTime);
+function ye(e) {
+	let t = e ?? {}, n = t.exif ?? {}, r = t.file ?? {}, i = t.gps ?? {}, a = me(i.Latitude), o = me(i.Longitude), s = me(i.Altitude), c = ge(i.GPSAltitudeRef), l = s === null ? null : c === 1 ? -Math.abs(s) : s, u = ge(i.GPSImgDirection) ?? he(n.GPSImgDirection, n.CameraDirection), d = _e(i.GPSImgDirectionRef)?.toUpperCase(), f = d === "T" ? "true" : d === "M" ? "magnetic" : "unknown", p = he(n.FocalLength), m = he(n.FocalLengthIn35mmFilm, n.FocalLengthIn35mmFormat), h = he(n.Orientation, r.Orientation) ?? 1, g = R(n.DateTimeOriginal, n.CreateDate, r["File Modified Date"]), _ = R(n.OffsetTimeOriginal, n.OffsetTime);
 	return {
-		latitude: R(a, "exif", a !== null, a === null ? "GPS latitude is missing." : void 0),
-		longitude: R(o, "exif", o !== null, o === null ? "GPS longitude is missing." : void 0),
-		gpsAltitudeMslM: R(l, "exif", l !== null, l === null ? "GPS altitude is missing." : "EXIF GPS altitude is MSL, not AGL."),
-		altitudeAglFt: L("AGL cannot be inferred safely from EXIF MSL altitude."),
-		headingDeg: R(u === null ? null : (u % 360 + 360) % 360, "exif", u !== null, u === null ? "Camera direction is missing." : void 0),
-		headingReference: R(u === null ? null : f, "exif", u !== null && f === "true", u === null ? "Camera direction reference is unavailable." : f === "true" ? void 0 : `Camera direction reference is ${f}; only true direction is checked automatically.`),
-		focalLengthMm: R(p, "exif", p !== null, p === null ? "Focal length is missing." : void 0),
-		focalLength35Mm: R(m, "exif", m !== null, m === null ? "35 mm-equivalent focal length is missing." : void 0),
-		captureTime: _e(g, _),
-		orientation: R(h, "exif", h >= 1 && h <= 8),
-		cameraMake: R(z(n.Make), "exif"),
-		cameraModel: R(z(n.Model), "exif"),
-		lensModel: R(z(n.LensModel), "exif")
+		latitude: L(a, "exif", a !== null, a === null ? "GPS latitude is missing." : void 0),
+		longitude: L(o, "exif", o !== null, o === null ? "GPS longitude is missing." : void 0),
+		gpsAltitudeMslM: L(l, "exif", l !== null, l === null ? "GPS altitude is missing." : "EXIF GPS altitude is MSL, not AGL."),
+		altitudeAglFt: I("AGL cannot be inferred safely from EXIF MSL altitude."),
+		headingDeg: L(u === null ? null : (u % 360 + 360) % 360, "exif", u !== null, u === null ? "Camera direction is missing." : void 0),
+		headingReference: L(u === null ? null : f, "exif", u !== null && f === "true", u === null ? "Camera direction reference is unavailable." : f === "true" ? void 0 : `Camera direction reference is ${f}; only true direction is checked automatically.`),
+		focalLengthMm: L(p, "exif", p !== null, p === null ? "Focal length is missing." : void 0),
+		focalLength35Mm: L(m, "exif", m !== null, m === null ? "35 mm-equivalent focal length is missing." : void 0),
+		captureTime: ve(g, _),
+		orientation: L(h, "exif", h >= 1 && h <= 8),
+		cameraMake: L(R(n.Make), "exif"),
+		cameraModel: L(R(n.Model), "exif"),
+		lensModel: L(R(n.LensModel), "exif")
 	};
 }
-async function ye(e, t) {
+async function be(e, t) {
 	let n = t ?? await e.arrayBuffer(), { default: r } = await import("./exif-reader-Bgw6G94I.js");
-	return ve(await r.load(n, {
+	return ye(await r.load(n, {
 		expanded: !0,
 		async: !0
 	}));
 }
-function be(e, t) {
+function xe(e, t) {
 	return t === null ? {
 		...e,
 		value: null,
 		source: "missing",
 		reliable: !1
-	} : R(t, "manual", !0);
+	} : L(t, "manual", !0);
 }
-function xe(e) {
+function Se(e) {
 	let t = e.normalize("NFKD").replace(/[^A-Za-z0-9]+/g, " ").toUpperCase().split(" ").filter(Boolean).find((e) => e === "SP" || e === "FP" || /^TP\d+$/.test(e)) ?? null;
 	return {
 		classification: t ? "control-correct" : "enroute",
 		linkedWaypoint: t
 	};
 }
-function Se(e) {
+function Ce(e) {
 	let t = /* @__PURE__ */ new Map();
 	e.forEach((e, n) => {
 		if (e.latitude.value === null || e.longitude.value === null) return;
@@ -767,12 +767,12 @@ function Se(e) {
 	}
 	return n;
 }
-function Ce(e, t, n) {
+function we(e, t, n) {
 	return n >= 5 && n <= 8 ? [t, e] : [e, t];
 }
 //#endregion
 //#region src/photo-image.ts
-function we(e, t, n) {
+function Te(e, t, n) {
 	switch (e) {
 		case 2: return [
 			-1,
@@ -840,12 +840,12 @@ function we(e, t, n) {
 		];
 	}
 }
-function Te(e, t, n) {
+function Ee(e, t, n) {
 	return new Promise((r, i) => {
 		e.toBlob((e) => e ? r(e) : i(/* @__PURE__ */ Error("Could not encode the corrected photo.")), t, n);
 	});
 }
-async function Ee(e, t, n = 2200) {
+async function De(e, t, n = 2200) {
 	let r, i, a, o = () => void 0;
 	if (typeof createImageBitmap == "function") try {
 		let n = await createImageBitmap(e, { imageOrientation: "from-image" });
@@ -864,12 +864,12 @@ async function Ee(e, t, n = 2200) {
 		o = () => URL.revokeObjectURL(n);
 	}
 	try {
-		let [e, o] = Ce(i, a, t), s = Math.min(1, n / Math.max(e, o)), c = document.createElement("canvas");
+		let [e, o] = we(i, a, t), s = Math.min(1, n / Math.max(e, o)), c = document.createElement("canvas");
 		c.width = Math.max(1, Math.round(e * s)), c.height = Math.max(1, Math.round(o * s));
 		let l = c.getContext("2d");
 		if (!l) throw Error("Canvas rendering is unavailable.");
-		l.fillStyle = "#fff", l.fillRect(0, 0, c.width, c.height), l.scale(s, s), l.transform(...we(t, i, a)), l.drawImage(r, 0, 0);
-		let u = await Te(c, "image/jpeg", .88);
+		l.fillStyle = "#fff", l.fillRect(0, 0, c.width, c.height), l.scale(s, s), l.transform(...Te(t, i, a)), l.drawImage(r, 0, 0);
+		let u = await Ee(c, "image/jpeg", .88);
 		return new Uint8Array(await u.arrayBuffer());
 	} finally {
 		o();
@@ -877,15 +877,15 @@ async function Ee(e, t, n = 2200) {
 }
 //#endregion
 //#region src/photo-output.ts
-function De(e) {
+function Oe(e) {
 	let t = e == null ? "" : String(e), n = typeof e == "string" && /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
 	return /[",\r\n]/.test(n) ? `"${n.replaceAll("\"", "\"\"")}"` : n;
 }
-var Oe = /* @__PURE__ */ "order.identifier.file_name.classification.linked_waypoint.capture_time.capture_time_source.capture_time_reliable.original_exif_capture_time.latitude.latitude_source.original_exif_latitude.longitude.longitude_source.original_exif_longitude.gps_altitude_msl_m.altitude_agl_ft.altitude_agl_source.altitude_agl_reliable.heading_deg.heading_source.heading_reliable.heading_reference.original_exif_heading_deg.focal_length_mm.focal_length_35mm_equivalent.focal_length_35mm_source.focal_length_35mm_reliable.original_exif_focal_length_35mm_equivalent.camera.lens.nearest_leg.fraction_on_leg.along_route_m.lateral_m.closest_latitude.closest_longitude.previous_control_point.distance_after_control_point_nm.heading_difference_deg.nearest_control_point.signed_distance_from_nearest_control_point_m.route_position.task_latitude.task_latitude_source.task_longitude.task_longitude_source.task_nearest_leg.task_lateral_m.task_route_position.estimated_route_sequence.status.exception_accepted.exception_accepted_at.finding_codes.finding_details".split(".");
-function ke(e) {
+var ke = /* @__PURE__ */ "order.identifier.file_name.classification.linked_waypoint.capture_time.capture_time_source.capture_time_reliable.original_exif_capture_time.latitude.latitude_source.original_exif_latitude.longitude.longitude_source.original_exif_longitude.gps_altitude_msl_m.altitude_agl_ft.altitude_agl_source.altitude_agl_reliable.heading_deg.heading_source.heading_reliable.heading_reference.original_exif_heading_deg.focal_length_mm.focal_length_35mm_equivalent.focal_length_35mm_source.focal_length_35mm_reliable.original_exif_focal_length_35mm_equivalent.camera.lens.nearest_leg.fraction_on_leg.along_route_m.lateral_m.closest_latitude.closest_longitude.previous_control_point.distance_after_control_point_nm.heading_difference_deg.nearest_control_point.signed_distance_from_nearest_control_point_m.route_position.task_latitude.task_latitude_source.task_longitude.task_longitude_source.task_nearest_leg.task_lateral_m.task_route_position.estimated_route_sequence.status.exception_accepted.exception_accepted_at.finding_codes.finding_details".split(".");
+function Ae(e) {
 	return e.findings.some((e) => e.severity === "violation") ? "against-rules" : e.findings.some((e) => e.severity === "warning") ? "manual-review" : "ok";
 }
-function Ae(e) {
+function je(e) {
 	let t = new Map([...e].filter((e) => e.analysis).sort((e, t) => (e.analysis?.alongRouteM ?? 0) - (t.analysis?.alongRouteM ?? 0)).map((e, t) => [e.id, t + 1]));
 	return e.map((e, n) => ({
 		order: n + 1,
@@ -939,7 +939,7 @@ function Ae(e) {
 		task_lateral_m: e.taskAnalysis?.lateralDistanceM,
 		task_route_position: e.taskAnalysis?.routePosition,
 		estimated_route_sequence: t.get(e.id),
-		status: ke(e),
+		status: Ae(e),
 		exception_accepted: e.exceptionAccepted,
 		exception_accepted_at: e.exceptionAcceptedAt,
 		finding_codes: e.findings.filter((e) => e.severity !== "pass").map((e) => e.code).join(";"),
@@ -952,14 +952,14 @@ function Ae(e) {
 		})))
 	}));
 }
-function je(e, t) {
-	return [e.map(De).join(","), ...t.map((t) => e.map((e) => De(t[e])).join(","))].join("\r\n");
-}
-function Me(e) {
-	return je(Oe, Ae(e));
+function Me(e, t) {
+	return [e.map(Oe).join(","), ...t.map((t) => e.map((e) => Oe(t[e])).join(","))].join("\r\n");
 }
 function Ne(e) {
-	return je([
+	return Me(ke, je(e));
+}
+function Pe(e) {
+	return Me([
 		"identifier",
 		"file_name",
 		"classification",
@@ -985,7 +985,7 @@ function Ne(e) {
 		exact_longitude: e.metadata.longitude.value
 	})));
 }
-function Pe(e, t) {
+function Fe(e, t) {
 	return {
 		schemaVersion: 3,
 		status: t.status,
@@ -1014,7 +1014,7 @@ function Pe(e, t) {
 			},
 			cameraAnalysis: e.analysis,
 			taskAnalysis: e.taskAnalysis,
-			status: ke(e),
+			status: Ae(e),
 			exceptionAccepted: e.exceptionAccepted,
 			exceptionAcceptedAt: e.exceptionAcceptedAt,
 			findings: e.findings
@@ -1024,23 +1024,23 @@ function Pe(e, t) {
 }
 //#endregion
 //#region src/photo-analysis.ts
-var Fe = 6371e3, Ie = 2;
-function Le(e) {
+var Ie = 6371e3, Le = 2;
+function Re(e) {
 	return (e + 540) % 360 - 180;
 }
-function Re(e, t) {
+function ze(e, t) {
 	return Math.abs((e - t + 540) % 360 - 180);
 }
-function ze(e) {
+function Be(e) {
 	return e * Math.PI / 180;
 }
-function Be(e, t, n) {
-	return (e + Le(t - e) * n + 540) % 360 - 180;
+function Ve(e, t, n) {
+	return (e + Re(t - e) * n + 540) % 360 - 180;
 }
-function Ve(e, t, n, r, i, a = null) {
+function He(e, t, n, r, i, a = null) {
 	if (r.legs.length === 0 || i.length < 2) throw Error("A route with at least one leg is required.");
 	let o = r.legs.map((n, r) => {
-		let i = _(n.fromLat, n.fromLon, e, t) / Fe, a = ze(y(n.fromLat, n.fromLon, n.toLat, n.toLon)), o = ze(y(n.fromLat, n.fromLon, e, t)), s = Math.asin(Math.max(-1, Math.min(1, Math.sin(i) * Math.sin(o - a)))), c = Math.atan2(Math.sin(i) * Math.cos(o - a), Math.cos(i)) * Fe / n.length, l = Math.max(0, Math.min(1, c)), u = -s * Fe;
+		let i = _(n.fromLat, n.fromLon, e, t) / Ie, a = Be(y(n.fromLat, n.fromLon, n.toLat, n.toLon)), o = Be(y(n.fromLat, n.fromLon, e, t)), s = Math.asin(Math.max(-1, Math.min(1, Math.sin(i) * Math.sin(o - a)))), c = Math.atan2(Math.sin(i) * Math.cos(o - a), Math.cos(i)) * Ie / n.length, l = Math.max(0, Math.min(1, c)), u = -s * Ie;
 		return {
 			legIndex: r,
 			rawFraction: c,
@@ -1050,7 +1050,7 @@ function Ve(e, t, n, r, i, a = null) {
 		};
 	});
 	if (o.length === 0) throw Error("Could not project the photo onto the route.");
-	let s = Math.min(...o.map((e) => e.lateralDistanceM)), c = o.filter((e) => e.lateralDistanceM <= s + Ie), l = a === null ? void 0 : o.find((e) => e.legIndex === a), u = l ?? [...c].sort((e, t) => e.fraction * r.legs[e.legIndex].length - t.fraction * r.legs[t.legIndex].length || t.legIndex - e.legIndex)[0], d = r.legs[u.legIndex], f = d.cumulativeStart + u.fraction * d.length, p = i.map((e, t) => ({
+	let s = Math.min(...o.map((e) => e.lateralDistanceM)), c = o.filter((e) => e.lateralDistanceM <= s + Le), l = a === null ? void 0 : o.find((e) => e.legIndex === a), u = l ?? [...c].sort((e, t) => e.fraction * r.legs[e.legIndex].length - t.fraction * r.legs[t.legIndex].length || t.legIndex - e.legIndex)[0], d = r.legs[u.legIndex], f = d.cumulativeStart + u.fraction * d.length, p = i.map((e, t) => ({
 		name: e[0],
 		distance: t === 0 ? 0 : r.legs[t - 1].cumulativeStart + r.legs[t - 1].length
 	})), m = p.reduce((e, t) => Math.abs(t.distance - f) < Math.abs(e.distance - f) ? t : e), h = [...p].reverse().find((e) => e.distance <= f + 1e-6) ?? p[0], g = y(d.fromLat, d.fromLon, d.toLat, d.toLon), v = u.legIndex === 0 && u.rawFraction < 0 ? "before-route" : u.legIndex === r.legs.length - 1 && u.rawFraction > 1 ? "after-route" : "on-route";
@@ -1060,7 +1060,7 @@ function Ve(e, t, n, r, i, a = null) {
 		rawFraction: u.rawFraction,
 		fraction: u.fraction,
 		closestLatitude: d.fromLat + (d.toLat - d.fromLat) * u.fraction,
-		closestLongitude: Be(d.fromLon, d.toLon, u.fraction),
+		closestLongitude: Ve(d.fromLon, d.toLon, u.fraction),
 		lateralDistanceM: u.lateralDistanceM,
 		lateralSignedM: u.lateralSignedM,
 		alongRouteM: f,
@@ -1071,32 +1071,32 @@ function Ve(e, t, n, r, i, a = null) {
 		previousControlPoint: h.name,
 		distanceAfterPreviousControlPointM: f - h.distance,
 		legBearingDeg: g,
-		headingDifferenceDeg: n === null ? null : Re(n, g),
+		headingDifferenceDeg: n === null ? null : ze(n, g),
 		ambiguousLegIndices: c.map((e) => e.legIndex),
 		manuallySelectedLeg: l !== void 0
 	};
 }
 //#endregion
 //#region src/photo-workflow.ts
-var He = {
+var Ue = {
 	enroute: "En-route photo",
 	"control-correct": "Correct control photo",
 	"control-false": "False control photo",
 	"sign-task": "Sign task",
 	reference: "Reference only"
-}, B = {
+}, z = {
 	maximumCount: 60,
 	maximumFileBytes: 26214400,
 	maximumTotalBytes: 262144e3,
 	maximumMegapixels: 50,
 	thumbnailEdge: 480
 };
-function V(e) {
+function B(e) {
 	let t = document.getElementById(e);
 	if (!t) throw Error(`Required photo workflow element is missing: #${e}`);
 	return t;
 }
-function Ue(e, t) {
+function We(e, t) {
 	if (!t.trim()) return {
 		value: null,
 		error: null
@@ -1144,34 +1144,34 @@ function Ue(e, t) {
 		error: null
 	};
 }
-function We(e) {
+function Ge(e) {
 	if (!Number.isInteger(e) || e < 0) throw Error("Identifier index must be a non-negative integer.");
 	let t = e + 1, n = "";
 	for (; t > 0;) --t, n = String.fromCharCode(65 + t % 26) + n, t = Math.floor(t / 26);
 	return n;
 }
-function Ge(e) {
+function Ke(e) {
 	return {
-		latitude: L(e),
-		longitude: L(e),
-		gpsAltitudeMslM: L(e),
-		altitudeAglFt: L(e),
-		headingDeg: L(e),
-		headingReference: L(e),
-		focalLengthMm: L(e),
-		focalLength35Mm: L(e),
-		captureTime: L(e),
-		orientation: L(e),
-		cameraMake: L(e),
-		cameraModel: L(e),
-		lensModel: L(e)
+		latitude: I(e),
+		longitude: I(e),
+		gpsAltitudeMslM: I(e),
+		altitudeAglFt: I(e),
+		headingDeg: I(e),
+		headingReference: I(e),
+		focalLengthMm: I(e),
+		focalLength35Mm: I(e),
+		captureTime: I(e),
+		orientation: I(e),
+		cameraMake: I(e),
+		cameraModel: I(e),
+		lensModel: I(e)
 	};
 }
-async function Ke(e) {
+async function qe(e) {
 	let t = await crypto.subtle.digest("SHA-256", e);
 	return Array.from(new Uint8Array(t), (e) => e.toString(16).padStart(2, "0")).join("");
 }
-function qe() {
+function Je() {
 	if (typeof crypto.randomUUID == "function") return crypto.randomUUID();
 	let e = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(16));
 	return e[6] = e[6] & 15 | 64, e[8] = e[8] & 63 | 128, Array.from(e, (e, t) => `${[
@@ -1181,26 +1181,26 @@ function qe() {
 		10
 	].includes(t) ? "-" : ""}${e.toString(16).padStart(2, "0")}`).join("");
 }
-function Je(e) {
+function Ye(e) {
 	return JSON.parse(JSON.stringify(e));
 }
-function Ye(e, t, n) {
+function Xe(e, t, n) {
 	return n.some((n) => n.contentHash === t || n.fileName === e.name && n.fileSize === e.size);
 }
-function Xe(e, t, n) {
+function Ze(e, t, n) {
 	return {
 		...e,
 		classification: t,
 		linkedWaypoint: n
 	};
 }
-function Ze(e) {
+function Qe(e) {
 	return new Promise((t, n) => {
 		let r = new Image();
 		r.onload = () => t([r.naturalWidth, r.naturalHeight]), r.onerror = () => n(/* @__PURE__ */ Error("The JPEG could not be decoded.")), r.src = e;
 	});
 }
-function Qe(e, t, n, r, i = "text", a = null) {
+function $e(e, t, n, r, i = "text", a = null) {
 	let o = document.createElement("label");
 	o.className = "photo-field", o.append(document.createTextNode(e));
 	let s = document.createElement("input");
@@ -1211,7 +1211,7 @@ function Qe(e, t, n, r, i = "text", a = null) {
 	}
 	return o.appendChild(s), o;
 }
-function $e(e, t, n, r, i) {
+function et(e, t, n, r, i) {
 	let a = document.createElement("label");
 	a.className = "photo-field", a.append(document.createTextNode(e));
 	let o = document.createElement("select");
@@ -1222,20 +1222,20 @@ function $e(e, t, n, r, i) {
 	}
 	return a.appendChild(o), a;
 }
-var et = class {
+var tt = class {
 	onMessage;
 	records = [];
-	compliance = de([], []);
+	compliance = fe([], []);
 	route = [];
-	list = V("photoList");
-	empty = V("photoEmpty");
-	progress = V("photoProgress");
-	progressText = V("photoProgressText");
-	input = V("photoFiles");
-	drop = V("photoDropzone");
-	status = V("photoComplianceStatus");
-	findings = V("photoFindings");
-	loadExampleButton = V("loadPhotoExample");
+	list = B("photoList");
+	empty = B("photoEmpty");
+	progress = B("photoProgress");
+	progressText = B("photoProgressText");
+	input = B("photoFiles");
+	drop = B("photoDropzone");
+	status = B("photoComplianceStatus");
+	findings = B("photoFindings");
+	loadExampleButton = B("loadPhotoExample");
 	importing = !1;
 	externallyBusy = !1;
 	get isBusy() {
@@ -1255,43 +1255,43 @@ var et = class {
 	}
 	get layerOptions() {
 		return {
-			exactDots: V("photoExactDots").checked,
-			projectedMarkers: V("photoProjectedMarkers").checked,
-			headingArrows: V("photoHeadingArrows").checked,
-			connectors: V("photoConnectors").checked,
-			legend: V("photoLegend").checked,
-			includeInCrop: V("photoCropBounds").checked
+			exactDots: B("photoExactDots").checked,
+			projectedMarkers: B("photoProjectedMarkers").checked,
+			headingArrows: B("photoHeadingArrows").checked,
+			connectors: B("photoConnectors").checked,
+			legend: B("photoLegend").checked,
+			includeInCrop: B("photoCropBounds").checked
 		};
 	}
 	get handoutOptions() {
-		let e = V("handoutSplit").value, t = this.route.findIndex(([t]) => t === e), n = this.route.length >= 2 ? v(this.route) : null, r = n && t > 0 && t < this.route.length - 1 ? n.legs[t - 1].cumulativeStart + n.legs[t - 1].length : null;
+		let e = B("handoutSplit").value, t = this.route.findIndex(([t]) => t === e), n = this.route.length >= 2 ? v(this.route) : null, r = n && t > 0 && t < this.route.length - 1 ? n.legs[t - 1].cumulativeStart + n.legs[t - 1].length : null;
 		return {
 			splitWaypoint: e || "No valid internal boundary",
 			splitAfterM: r,
-			includeSummary: V("handoutSummary").checked
+			includeSummary: B("handoutSummary").checked
 		};
 	}
 	async importOne(e, t = {}, n = this.records) {
 		if (!/^image\/jpeg$/i.test(e.type) && !/\.jpe?g$/i.test(e.name)) return this.onMessage(`Skipped ${e.name}: only JPEG photos are supported.`, "warning"), null;
-		if (e.size > B.maximumFileBytes) throw Error(`${e.name} exceeds the ${B.maximumFileBytes / 1024 / 1024} MB limit.`);
-		let r = await e.arrayBuffer(), i = await Ke(r);
-		if (Ye(e, i, n)) return this.onMessage(`Skipped duplicate photo: ${e.name}.`, "warning"), null;
+		if (e.size > z.maximumFileBytes) throw Error(`${e.name} exceeds the ${z.maximumFileBytes / 1024 / 1024} MB limit.`);
+		let r = await e.arrayBuffer(), i = await qe(r);
+		if (Xe(e, i, n)) return this.onMessage(`Skipped duplicate photo: ${e.name}.`, "warning"), null;
 		let a = "", o = 0, s = 0, c = null, l;
 		try {
 			let t = URL.createObjectURL(e);
 			try {
-				[o, s] = await Ze(t);
+				[o, s] = await Qe(t);
 			} finally {
 				URL.revokeObjectURL(t);
 			}
-			if (o * s / 1e6 > B.maximumMegapixels) throw Error(`${e.name} exceeds the ${B.maximumMegapixels} megapixel limit.`);
-			l = await ye(e, r);
-			let n = await Ee(e, l.orientation.value ?? 1, B.thumbnailEdge);
+			if (o * s / 1e6 > z.maximumMegapixels) throw Error(`${e.name} exceeds the ${z.maximumMegapixels} megapixel limit.`);
+			l = await be(e, r);
+			let n = await De(e, l.orientation.value ?? 1, z.thumbnailEdge);
 			a = URL.createObjectURL(new Blob([Uint8Array.from(n).buffer], { type: "image/jpeg" }));
 		} catch (t) {
-			c = t instanceof Error ? t.message : String(t), l = Ge(c), a = URL.createObjectURL(e);
+			c = t instanceof Error ? t.message : String(t), l = Ke(c), a = URL.createObjectURL(e);
 		}
-		let u = xe(e.name), d = t.item, f = Je(l);
+		let u = Se(e.name), d = t.item, f = Ye(l);
 		return d && (l.latitude = {
 			value: d.manualOverrides.latitude,
 			source: "example-track",
@@ -1303,7 +1303,7 @@ var et = class {
 			reliable: !0,
 			note: "Interpolated from the original example GPX track."
 		}), {
-			id: qe(),
+			id: Je(),
 			file: e,
 			fileName: e.name,
 			fileSize: e.size,
@@ -1314,10 +1314,10 @@ var et = class {
 			originalMetadata: f,
 			metadata: l,
 			classification: d?.classification ?? u.classification,
-			identifier: d?.identifier ?? We(n.length),
+			identifier: d?.identifier ?? Ge(n.length),
 			linkedWaypoint: d?.linkedWaypoint ?? u.linkedWaypoint,
-			taskLatitude: L("Task/object latitude has not been supplied."),
-			taskLongitude: L("Task/object longitude has not been supplied."),
+			taskLatitude: I("Task/object latitude has not been supplied."),
+			taskLongitude: I("Task/object longitude has not been supplied."),
 			manualLegIndex: null,
 			order: n.length,
 			importError: c,
@@ -1337,12 +1337,12 @@ var et = class {
 			this.onMessage("Photo import is already in progress.", "warning");
 			return;
 		}
-		if (this.records.length + e.length > B.maximumCount) {
-			this.onMessage(`Error: a maximum of ${B.maximumCount} photos is allowed.`, "error");
+		if (this.records.length + e.length > z.maximumCount) {
+			this.onMessage(`Error: a maximum of ${z.maximumCount} photos is allowed.`, "error");
 			return;
 		}
-		if ([...this.records.map((e) => e.fileSize), ...e.map((e) => e.size)].reduce((e, t) => e + t, 0) > B.maximumTotalBytes) {
-			this.onMessage(`Error: selected photos exceed the ${B.maximumTotalBytes / 1024 / 1024} MB total limit.`, "error");
+		if ([...this.records.map((e) => e.fileSize), ...e.map((e) => e.size)].reduce((e, t) => e + t, 0) > z.maximumTotalBytes) {
+			this.onMessage(`Error: selected photos exceed the ${z.maximumTotalBytes / 1024 / 1024} MB total limit.`, "error");
 			return;
 		}
 		this.setImporting(!0), this.progress.hidden = !1, this.progress.max = e.length, this.progress.value = 0;
@@ -1358,7 +1358,7 @@ var et = class {
 				}
 				this.progress.value = i + 1;
 			}
-			let i = Se(this.records.map((e) => e.metadata));
+			let i = Ce(this.records.map((e) => e.metadata));
 			this.records.forEach((e, t) => {
 				e.metadata.latitude.source === "exif" && (e.metadata.latitude = i[t].latitude), e.metadata.longitude.source === "exif" && (e.metadata.longitude = i[t].longitude), e.order = t;
 			}), this.analyze(this.route), this.progressText.textContent = `${n} of ${e.length} photos imported.${r.length ? ` ${r.length} failed: ${r.join(" | ")}` : ""}`, this.onMessage(r.length ? `Imported ${n} photo(s); ${r.length} failed. Review the persistent import details.` : `Imported ${n} photo${n === 1 ? "" : "s"} locally. Nothing was uploaded.`, r.length ? "warning" : n ? "success" : "warning");
@@ -1377,18 +1377,18 @@ var et = class {
 			let t = await fetch(new URL("examples/photo-manifest.json", document.baseURI));
 			if (!t.ok) throw Error(`manifest returned ${t.status}`);
 			let n = await t.json();
-			if (this.progress.hidden = !1, this.progress.max = n.items.length, n.items.length > B.maximumCount) throw Error(`manifest exceeds the ${B.maximumCount} photo limit`);
+			if (this.progress.hidden = !1, this.progress.max = n.items.length, n.items.length > z.maximumCount) throw Error(`manifest exceeds the ${z.maximumCount} photo limit`);
 			let r = 0;
 			for (let [t, i] of n.items.entries()) {
 				this.progressText.textContent = `Loading example ${t + 1} of ${n.items.length}: ${i.fileName}`;
 				let a = await fetch(new URL(i.path, document.baseURI));
 				if (!a.ok) throw Error(`${i.fileName} returned ${a.status}`);
 				let o = await a.blob();
-				if (r += o.size, r > B.maximumTotalBytes) throw Error(`example exceeds the ${B.maximumTotalBytes / 1024 / 1024} MB limit`);
+				if (r += o.size, r > z.maximumTotalBytes) throw Error(`example exceeds the ${z.maximumTotalBytes / 1024 / 1024} MB limit`);
 				let s = new File([o], i.fileName, { type: "image/jpeg" }), c = await this.importOne(s, { item: i }, e);
 				c && e.push(c), this.progress.value = t + 1;
 			}
-			let i = V("waypoints");
+			let i = B("waypoints");
 			i.value = n.route.map(([e, t, n]) => `${e},${t},${n}`).join("\n"), this.records.forEach((e) => {
 				URL.revokeObjectURL(e.previewUrl);
 			}), this.records = e, this.analyze(n.route), this.onMessage(`Loaded ${n.label}. Its 29 photos remain in this browser tab only.`, "success");
@@ -1405,7 +1405,7 @@ var et = class {
 	}
 	analyze(e) {
 		this.route = e;
-		let t = V("handoutSplit"), n = t.value;
+		let t = B("handoutSplit"), n = t.value;
 		t.replaceChildren(...e.slice(1, -1).map(([e]) => {
 			let t = document.createElement("option");
 			return t.value = e, t.textContent = e, t;
@@ -1413,11 +1413,11 @@ var et = class {
 		let r = e.length >= 2 ? v(e) : null;
 		for (let t of this.records) {
 			let n = t.metadata.latitude.value, i = t.metadata.longitude.value, a = t.metadata.headingReference.value === "true" && t.metadata.headingReference.reliable ? t.metadata.headingDeg.value : null;
-			t.analysis = n !== null && i !== null && r ? Ve(n, i, a, r, e, t.manualLegIndex) : null;
+			t.analysis = n !== null && i !== null && r ? He(n, i, a, r, e, t.manualLegIndex) : null;
 			let o = t.linkedWaypoint ? e.find(([e]) => e.toUpperCase() === t.linkedWaypoint?.toUpperCase()) : void 0, s = t.taskLatitude.reliable ? t.taskLatitude.value : o?.[1] ?? null, c = t.taskLongitude.reliable ? t.taskLongitude.value : o?.[2] ?? null;
-			t.taskAnalysis = s !== null && c !== null && r ? Ve(s, c, null, r, e, t.manualLegIndex) : null;
+			t.taskAnalysis = s !== null && c !== null && r ? He(s, c, null, r, e, t.manualLegIndex) : null;
 		}
-		this.compliance = de(this.records, e);
+		this.compliance = fe(this.records, e);
 		let i = this.records.filter((e) => e.classification === "enroute");
 		if (i.length > 0) {
 			let e = this.handoutOptions.splitAfterM, t = i.filter((e) => e.analysis), n = t.filter((t) => (t.analysis?.alongRouteM ?? 0) <= (e ?? 0)), r = t.filter((t) => (t.analysis?.alongRouteM ?? 0) > (e ?? 0)), a = e !== null && t.length === i.length, o = a && n.length > 0 && r.length > 0;
@@ -1460,10 +1460,10 @@ var et = class {
 		let i = n.id, a = r;
 		n.fieldErrors ??= {}, n.fieldDrafts ??= {};
 		let o = n.fieldErrors, s = n.fieldDrafts, c = (e) => {
-			let i = Ue(r, t.value);
-			i.error ? (o[r] = i.error, s[r] = t.value) : (delete o[r], delete s[r]), e === "taskLatitude" || e === "taskLongitude" ? n[e] = be(n[e], i.value) : n.metadata[e] = be(n.metadata[e], i.value);
+			let i = We(r, t.value);
+			i.error ? (o[r] = i.error, s[r] = t.value) : (delete o[r], delete s[r]), e === "taskLatitude" || e === "taskLongitude" ? n[e] = xe(n[e], i.value) : n.metadata[e] = xe(n.metadata[e], i.value);
 		};
-		if (r === "classification") n.classification = Xe(n, t.value, n.linkedWaypoint).classification;
+		if (r === "classification") n.classification = Ze(n, t.value, n.linkedWaypoint).classification;
 		else if (r === "identifier") {
 			let e = t.value.trim().toUpperCase(), i = this.records.some((t) => t.id !== n.id && t.identifier.trim().toUpperCase() === e), a = /^[A-Z]$/.test(e) ? i ? "Identifier must be unique." : null : "Use one letter from A to Z.";
 			a ? (o[r] = a, s[r] = t.value, n.identifier = "") : (delete o[r], delete s[r], n.identifier = e);
@@ -1471,11 +1471,11 @@ var et = class {
 		else if (r === "manualLegIndex") {
 			let e = t.value === "" ? null : Number(t.value);
 			n.manualLegIndex = Number.isInteger(e) ? e : null;
-		} else r === "latitude" ? c("latitude") : r === "longitude" ? c("longitude") : r === "headingDeg" ? (c("headingDeg"), n.metadata.headingReference = n.metadata.headingDeg.value === null ? L("Manual heading is unavailable.") : {
+		} else r === "latitude" ? c("latitude") : r === "longitude" ? c("longitude") : r === "headingDeg" ? (c("headingDeg"), n.metadata.headingReference = n.metadata.headingDeg.value === null ? I("Manual heading is unavailable.") : {
 			value: "true",
 			source: "manual",
 			reliable: !0
-		}) : r === "altitudeAglFt" ? c("altitudeAglFt") : r === "focalLength35Mm" ? c("focalLength35Mm") : r === "captureTime" ? n.metadata.captureTime = be(n.metadata.captureTime, t.value.trim() || null) : r === "taskLatitude" ? c("taskLatitude") : r === "taskLongitude" && c("taskLongitude");
+		}) : r === "altitudeAglFt" ? c("altitudeAglFt") : r === "focalLength35Mm" ? c("focalLength35Mm") : r === "captureTime" ? n.metadata.captureTime = xe(n.metadata.captureTime, t.value.trim() || null) : r === "taskLatitude" ? c("taskLatitude") : r === "taskLongitude" && c("taskLongitude");
 		this.analyze(this.route), requestAnimationFrame(() => {
 			Array.from(this.list.querySelectorAll("[data-photo-id][data-field]")).find((e) => e.dataset.photoId === i && e.dataset.field === a)?.focus();
 		});
@@ -1513,24 +1513,30 @@ var et = class {
 			m.type = "button", m.className = "btn btn-small photo-exception-button", m.dataset.action = "accept-exception", m.dataset.photoId = i.id, m.textContent = i.exceptionAccepted ? "Revoke accepted exception" : "Accept exception", m.hidden = !f, m.setAttribute("aria-pressed", String(i.exceptionAccepted)), m.title = "Keeps all violations in the audit record and accepts this photo for judging output.";
 			let h = document.createElement("div");
 			h.className = "photo-field-grid";
-			let g = (e, t, n) => Qe(e, i.fieldDrafts?.[t] ?? n?.toString() ?? "", t, i.id, "number", i.fieldErrors?.[t] ?? null);
-			h.append($e("Classification", i.classification, "classification", i.id, fe.map((e) => [e, He[e]])), Qe("Identifier", i.fieldDrafts?.identifier ?? i.identifier, "identifier", i.id, "text", i.fieldErrors?.identifier ?? null), $e("Linked waypoint", i.linkedWaypoint ?? "", "linkedWaypoint", i.id, t), $e("Route leg override", i.manualLegIndex?.toString() ?? "", "manualLegIndex", i.id, n), g("Latitude", "latitude", i.metadata.latitude.value), g("Longitude", "longitude", i.metadata.longitude.value), g("Heading (°)", "headingDeg", i.metadata.headingDeg.value), g("Altitude AGL (ft)", "altitudeAglFt", i.metadata.altitudeAglFt.value), g("35 mm equiv. focal (mm)", "focalLength35Mm", i.metadata.focalLength35Mm.value), Qe("Capture time", i.metadata.captureTime.value ?? "", "captureTime", i.id), g("Task/object latitude", "taskLatitude", i.taskLatitude.value), g("Task/object longitude", "taskLongitude", i.taskLongitude.value));
-			let _ = document.createElement("p");
-			_.className = "photo-provenance";
-			let v = [i.originalMetadata.latitude.value, i.originalMetadata.longitude.value].every((e) => e !== null) ? `; original EXIF GPS: ${i.originalMetadata.latitude.value}, ${i.originalMetadata.longitude.value}` : "";
-			_.textContent = `${i.width}×${i.height}px · Position: ${i.metadata.latitude.source}/${i.metadata.longitude.source}${v}; EXIF altitude: ${i.metadata.gpsAltitudeMslM.value ?? "missing"} m MSL; camera: ${[i.metadata.cameraMake.value, i.metadata.cameraModel.value].filter(Boolean).join(" ") || "missing"}; orientation: ${i.metadata.orientation.value ?? "missing"}.`;
-			let y = document.createElement("p");
-			y.className = "photo-metrics", y.textContent = i.analysis ? `${i.analysis.legId} · ${(i.analysis.alongRouteM / 1852).toFixed(2)} NM along route · ${i.analysis.lateralDistanceM.toFixed(0)} m lateral · ${(i.analysis.distanceAfterPreviousControlPointM / 1852).toFixed(2)} NM after ${i.analysis.previousControlPoint}` : "Route metrics unavailable until both position and a valid route are present.";
-			let b = document.createElement("ul");
-			b.className = "photo-card-findings";
+			let g = document.createElement("details");
+			g.className = "photo-metadata-details";
+			let _ = document.createElement("summary");
+			_.className = "photo-metadata-summary", _.textContent = "Camera metadata & source";
+			let v = document.createElement("div");
+			v.className = "photo-field-grid";
+			let y = (e, t, n) => $e(e, i.fieldDrafts?.[t] ?? n?.toString() ?? "", t, i.id, "number", i.fieldErrors?.[t] ?? null);
+			h.append(et("Classification", i.classification, "classification", i.id, pe.map((e) => [e, Ue[e]])), $e("Identifier", i.fieldDrafts?.identifier ?? i.identifier, "identifier", i.id, "text", i.fieldErrors?.identifier ?? null), et("Linked waypoint", i.linkedWaypoint ?? "", "linkedWaypoint", i.id, t), et("Route leg override", i.manualLegIndex?.toString() ?? "", "manualLegIndex", i.id, n), y("Task/object latitude", "taskLatitude", i.taskLatitude.value), y("Task/object longitude", "taskLongitude", i.taskLongitude.value)), v.append(y("Latitude", "latitude", i.metadata.latitude.value), y("Longitude", "longitude", i.metadata.longitude.value), y("Heading (°)", "headingDeg", i.metadata.headingDeg.value), y("Altitude AGL (ft)", "altitudeAglFt", i.metadata.altitudeAglFt.value), y("35 mm equiv. focal (mm)", "focalLength35Mm", i.metadata.focalLength35Mm.value), $e("Capture time", i.metadata.captureTime.value ?? "", "captureTime", i.id));
+			let b = document.createElement("p");
+			b.className = "photo-provenance";
+			let x = [i.originalMetadata.latitude.value, i.originalMetadata.longitude.value].every((e) => e !== null) ? `; original EXIF GPS: ${i.originalMetadata.latitude.value}, ${i.originalMetadata.longitude.value}` : "";
+			b.textContent = `${i.width}×${i.height}px · Position: ${i.metadata.latitude.source}/${i.metadata.longitude.source}${x}; EXIF altitude: ${i.metadata.gpsAltitudeMslM.value ?? "missing"} m MSL; camera: ${[i.metadata.cameraMake.value, i.metadata.cameraModel.value].filter(Boolean).join(" ") || "missing"}; orientation: ${i.metadata.orientation.value ?? "missing"}.`, g.append(_, v, b);
+			let S = document.createElement("p");
+			S.className = "photo-metrics", S.textContent = i.analysis ? `${i.analysis.legId} · ${(i.analysis.alongRouteM / 1852).toFixed(2)} NM along route · ${i.analysis.lateralDistanceM.toFixed(0)} m lateral · ${(i.analysis.distanceAfterPreviousControlPointM / 1852).toFixed(2)} NM after ${i.analysis.previousControlPoint}` : "Route metrics unavailable until both position and a valid route are present.";
+			let C = document.createElement("ul");
+			C.className = "photo-card-findings";
 			for (let e of i.findings.filter((e) => e.severity !== "pass")) {
 				let t = document.createElement("li");
-				t.textContent = `${e.rule}: ${e.measured}; permitted ${e.permitted}.${i.exceptionAccepted && e.severity === "violation" ? " Accepted as a judge exception; violation retained." : ""}`, b.appendChild(t);
+				t.textContent = `${e.rule}: ${e.measured}; permitted ${e.permitted}.${i.exceptionAccepted && e.severity === "violation" ? " Accepted as a judge exception; violation retained." : ""}`, C.appendChild(t);
 			}
 			if (i.importError) {
 				let e = document.createElement("p");
-				e.className = "danger-text", e.textContent = `Metadata error: ${i.importError}`, s.append(c, d, m, e, h, _, y, b);
-			} else s.append(c, d, m, h, _, y, b);
+				e.className = "danger-text", e.textContent = `Metadata error: ${i.importError}`, s.append(c, d, m, e, h, S, C, g);
+			} else s.append(c, d, m, h, S, C, g);
 			a.append(o, s), e.appendChild(a);
 		}
 		this.list.replaceChildren(e), this.externallyBusy && this.list.querySelectorAll("input,select,button").forEach((e) => {
@@ -1545,17 +1551,17 @@ var et = class {
 		}
 		this.findings.replaceChildren(i);
 	}
-}, tt = new URL("./", document.baseURI), nt = (e) => new URL(e, tt).href, rt = M(C, tt), it = "2.3.2", at = "vfr", H = at, ot = 2.5, st = 20, ct = 12, lt = 18, ut = 60, dt = 7, ft = 1.2, pt = 10, mt = 4, ht = .35, gt = 4, _t = 72 / 25.4, vt = 3e4, yt = 3, bt = 5, xt = 12;
-function U(e) {
+}, nt = new URL("./", document.baseURI), rt = (e) => new URL(e, nt).href, it = j(C, nt), at = "2.4.0", ot = "vfr", V = ot, st = 2.5, ct = 20, lt = 12, ut = 18, dt = 60, ft = 7, pt = 1.2, mt = 10, ht = 4, gt = .35, _t = 4, vt = 72 / 25.4, yt = 3e4, bt = 3, xt = 5, St = 12;
+function H(e) {
 	let t = document.getElementById(e);
 	if (!t) throw Error(`Required page element is missing: #${e}`);
 	return t;
 }
-var St = U("status"), Ct = U("generate"), wt = U("cancelGeneration"), Tt = document.querySelector(".control-panel");
-if (!Tt) throw Error("Required control panel is missing.");
-var Et = U("artifactStatuses"), Dt = U("mapPresetGrid"), Ot = U("osmConsentRow"), kt = U("osmThirdPartyConsent"), At = Array.from(Dt.querySelectorAll("[data-map-key]")), W = U("outputs"), jt = U("summary"), Mt = U("legsTable"), Nt = U("waypointTable"), Pt = U("summaryText"), Ft = U("routeCompliance"), It = U("complianceBadge"), Lt = U("complianceTitle"), Rt = U("complianceSummary"), zt = U("complianceChecks"), Bt = U("manualComplianceChecks"), Vt = U("speed"), Ht = U("minuteInterval"), Ut = U("takeoffBuffer"), Wt = U("styleRouteWidth"), Gt = U("styleWaypointFont"), Kt = U("styleHeadingFont"), qt = U("styleMinuteLabelFont"), Jt = U("styleMinuteMarkerSize"), Yt = U("styleMinuteLineWidth"), Xt = U("waypoints"), Zt = U("waypointLibrary"), Qt = U("toggleWaypointLibrary"), $t = U("waypointLibraryStatus"), en = U("locationTypeFilter"), tn = U("locationCountryFilter"), nn = U("libraryControls"), rn = U("locationsList"), an = U("addAllFiltered"), G = U("downloadPdf"), on = U("downloadOverlay"), sn = U("downloadCropped"), cn = U("downloadSummary"), ln = U("downloadPhotoAnalysis"), un = U("downloadPhotoKey"), dn = U("downloadPhotoHandout");
-sn.style.display = "none";
-var fn = {
+var Ct = H("status"), wt = H("generate"), Tt = H("cancelGeneration"), Et = document.querySelector(".control-panel");
+if (!Et) throw Error("Required control panel is missing.");
+var Dt = H("artifactStatuses"), Ot = H("mapPresetGrid"), kt = H("osmConsentRow"), At = H("osmThirdPartyConsent"), jt = Array.from(Ot.querySelectorAll("[data-map-key]")), U = H("outputs"), Mt = H("summary"), Nt = H("legsTable"), Pt = H("waypointTable"), Ft = H("summaryText"), It = H("routeCompliance"), Lt = H("complianceBadge"), Rt = H("complianceTitle"), zt = H("complianceSummary"), Bt = H("complianceChecks"), Vt = H("manualComplianceChecks"), Ht = H("speed"), Ut = H("minuteInterval"), Wt = H("takeoffBuffer"), Gt = H("styleRouteWidth"), Kt = H("styleWaypointFont"), qt = H("styleHeadingFont"), Jt = H("styleMinuteLabelFont"), Yt = H("styleMinuteMarkerSize"), Xt = H("styleMinuteLineWidth"), Zt = H("waypoints"), Qt = H("waypointLibrary"), $t = H("toggleWaypointLibrary"), en = H("waypointLibraryStatus"), tn = H("locationTypeFilter"), nn = H("locationCountryFilter"), rn = H("libraryControls"), an = H("locationsList"), on = H("addAllFiltered"), W = H("downloadPdf"), sn = H("downloadOverlay"), cn = H("downloadCropped"), ln = H("downloadSummary"), un = H("downloadPhotoAnalysis"), dn = H("downloadPhotoKey"), fn = H("downloadPhotoHandout");
+cn.style.display = "none";
+var pn = {
 	pdf: null,
 	overlay: null,
 	cropped: null,
@@ -1563,9 +1569,9 @@ var fn = {
 	photoAnalysis: null,
 	photoKey: null,
 	photoHandout: null
-}, pn = null, mn = null, hn = null, gn = /* @__PURE__ */ new Map();
+}, mn = null, G = null, hn = null, gn = /* @__PURE__ */ new Map();
 function K(e, t, n) {
-	let r = Et.querySelector(`[data-artifact="${e}"]`);
+	let r = Dt.querySelector(`[data-artifact="${e}"]`);
 	r && (r.dataset.state = t, r.textContent = `${{
 		map: "Judge map",
 		overlay: "Competitor route",
@@ -1586,12 +1592,12 @@ function _n() {
 	]) K(e, "not-started", "not started");
 }
 function vn(e) {
-	let t = Tt.querySelectorAll("input,textarea,select,button");
+	let t = Et.querySelectorAll("input,textarea,select,button");
 	e ? (gn.clear(), t.forEach((e) => {
 		gn.set(e, e.disabled), e.disabled = !0;
 	})) : (gn.forEach((e, t) => {
 		t.isConnected && (t.disabled = e);
-	}), gn.clear()), wt.hidden = !e, wt.disabled = !e, St.setAttribute("aria-busy", String(e)), Tt.setAttribute("aria-busy", String(e)), Zn.setExternalBusy(e);
+	}), gn.clear()), Tt.hidden = !e, Tt.disabled = !e, Ct.setAttribute("aria-busy", String(e)), Et.setAttribute("aria-busy", String(e)), Zn.setExternalBusy(e);
 }
 function yn(e, t) {
 	if (!e) {
@@ -1608,7 +1614,7 @@ function yn(e, t) {
 function bn(e, t) {
 	if (!e) return;
 	let n = e.textContent.trim() || t, r = (e) => {
-		e.preventDefault(), yn(fn[t], n);
+		e.preventDefault(), yn(pn[t], n);
 	};
 	e.addEventListener("click", (e) => {
 		(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && r(e);
@@ -1618,8 +1624,8 @@ function bn(e, t) {
 		(e.key === "Enter" || e.key === " ") && (e.metaKey || e.ctrlKey) && r(e);
 	}), e.setAttribute("title", `${n} — click to download, Cmd/Ctrl-click to open in a new tab`);
 }
-bn(G, "pdf"), bn(on, "overlay"), bn(sn, "cropped"), bn(cn, "summary"), bn(ln, "photoAnalysis"), bn(un, "photoKey"), bn(dn, "photoHandout");
-var xn = U("croppedPreviewContainer"), Sn = U("croppedPreviewLink"), Cn = U("croppedPreviewImage"), wn = U("croppedPreviewMessage"), Tn = U("resultsPlaceholder"), En = U("resultsContent"), Dn = !1, On = null, kn = null, An = U("mapStatus"), jn = U("chartWarning"), Mn = U("osmMapContainer"), Nn = U("osmMap"), Pn = 1, Fn = gt, In = nt("locations.txt"), Ln = null, Rn = {
+bn(W, "pdf"), bn(sn, "overlay"), bn(cn, "cropped"), bn(ln, "summary"), bn(un, "photoAnalysis"), bn(dn, "photoKey"), bn(fn, "photoHandout");
+var xn = H("croppedPreviewContainer"), Sn = H("croppedPreviewLink"), Cn = H("croppedPreviewImage"), wn = H("croppedPreviewMessage"), Tn = H("resultsPlaceholder"), En = H("resultsContent"), Dn = !1, On = null, kn = null, An = H("mapStatus"), jn = H("chartWarning"), Mn = H("osmMapContainer"), Nn = H("osmMap"), Pn = 1, Fn = _t, In = rt("locations.txt"), Ln = null, Rn = {
 	search: "",
 	type: "all",
 	country: "all"
@@ -1668,18 +1674,18 @@ async function Wn(e, t, n) {
 	return new Uint8Array(await r.arrayBuffer());
 }
 function Gn(e, t, n, r) {
-	fn[e] && URL.revokeObjectURL(fn[e]), fn[e] = t, r.onclick = null, r.href = t, r.download = n, e === "pdf" && (r.textContent = "Marked Map (PDF)"), qn();
+	pn[e] && URL.revokeObjectURL(pn[e]), pn[e] = t, r.onclick = null, r.href = t, r.download = n, e === "pdf" && (r.textContent = "Marked Map (PDF)"), qn();
 }
 function Kn(e, t) {
-	fn[e] && (URL.revokeObjectURL(fn[e]), fn[e] = null), t.removeAttribute("href"), t.removeAttribute("download"), t.onclick = null, qn();
+	pn[e] && (URL.revokeObjectURL(pn[e]), pn[e] = null), t.removeAttribute("href"), t.removeAttribute("download"), t.onclick = null, qn();
 }
 function qn() {
 	if (!En) return;
-	let e = W && !W.hidden || jt && !jt.hidden || xn && !xn.hidden || !Ft.hidden;
+	let e = U && !U.hidden || Mt && !Mt.hidden || xn && !xn.hidden || !It.hidden;
 	Tn && !Dn && (Tn.hidden = e), En.hidden = !e;
 }
 function Q(e, t = e.startsWith("Error:") ? "error" : "neutral") {
-	St.textContent = e, St.classList.toggle("is-error", t === "error"), St.classList.toggle("is-success", t === "success"), St.classList.toggle("is-warning", t === "warning");
+	Ct.textContent = e, Ct.classList.toggle("is-error", t === "error"), Ct.classList.toggle("is-success", t === "success"), Ct.classList.toggle("is-warning", t === "warning");
 }
 function Jn(e, t) {
 	if (e.taskLatitude.reliable && e.taskLongitude.reliable && e.taskLatitude.value !== null && e.taskLongitude.value !== null) return [e.taskLatitude.value, e.taskLongitude.value];
@@ -1695,11 +1701,11 @@ function Xn(e) {
 	let t = document.createElement("span");
 	return t.textContent = e, t;
 }
-var Zn = new et(Q), Qn = null;
-Xt.addEventListener("input", () => {
+var Zn = new tt(Q), Qn = null;
+Zt.addEventListener("input", () => {
 	Qn !== null && clearTimeout(Qn), Qn = setTimeout(() => {
 		if (Qn = null, !(hn || Zn.isBusy)) try {
-			Zn.analyze(br(Xt.value)), Q("Route changed: photo analysis refreshed. Generate again to rebuild outputs.");
+			Zn.analyze(br(Zt.value)), Q("Route changed: photo analysis refreshed. Generate again to rebuild outputs.");
 		} catch {
 			Q("Route changed: photo analysis is waiting for a valid route.", "warning");
 		}
@@ -1717,18 +1723,18 @@ function $n(e, t) {
 }
 function er(e) {
 	let t = e.status === "ok";
-	Ft.classList.toggle("is-ok", t), Ft.classList.toggle("is-fail", !t), It.textContent = t ? "OK" : "FAIL", Lt.textContent = t ? "OK for automated route rules" : "Route is against the rules", Rt.textContent = t ? "No violations were detected in the rules this app can calculate. Manual judge checks below are still required." : `${e.violations.length} automated rule ${e.violations.length === 1 ? "violation was" : "violations were"} detected. Generated files are available for correction and review.`, $n(zt, e.checks), $n(Bt, e.manualChecks), Ft.hidden = !1;
+	It.classList.toggle("is-ok", t), It.classList.toggle("is-fail", !t), Lt.textContent = t ? "OK" : "FAIL", Rt.textContent = t ? "OK for automated route rules" : "Route is against the rules", zt.textContent = t ? "No violations were detected in the rules this app can calculate. Manual judge checks below are still required." : `${e.violations.length} automated rule ${e.violations.length === 1 ? "violation was" : "violations were"} detected. Generated files are available for correction and review.`, $n(Bt, e.checks), $n(Vt, e.manualChecks), It.hidden = !1;
 }
 function tr() {
-	mn?.abort("A newer operation replaced this preview."), mn = null, xn.hidden = !0, Cn.removeAttribute("src"), Cn.hidden = !0, pn &&= (URL.revokeObjectURL(pn), null), Sn && (Sn.setAttribute("aria-disabled", "true"), Sn.removeAttribute("href")), wn.textContent = "JPEG preview generated from the cropped PDF.", qn();
+	G?.abort("A newer operation replaced this preview."), G = null, xn.hidden = !0, Cn.removeAttribute("src"), Cn.hidden = !0, mn &&= (URL.revokeObjectURL(mn), null), Sn && (Sn.setAttribute("aria-disabled", "true"), Sn.removeAttribute("href")), wn.textContent = "JPEG preview generated from the cropped PDF.", qn();
 }
 if (typeof MutationObserver < "u") {
 	let e = new MutationObserver(qn);
 	[
-		W,
-		jt,
+		U,
+		Mt,
 		xn,
-		Ft
+		It
 	].forEach((t) => {
 		t && e.observe(t, {
 			attributes: !0,
@@ -1749,10 +1755,10 @@ function rr(e) {
 		jn.textContent = `${e.label} (${e.edition} edition): confirm the chart is current and approved for this event before use.`, jn.hidden = !1;
 	}
 }
-function ir(e = H) {
-	return rt[e] || rt[at];
+function ir(e = V) {
+	return it[e] || it[ot];
 }
-function ar(e = H) {
+function ar(e = V) {
 	return (ir(e)?.type ?? "pdf") !== "osm";
 }
 async function or() {
@@ -1769,47 +1775,47 @@ async function or() {
 }
 function sr() {
 	let e = ar(), t = ir();
-	rr(t), Mn && (Mn.hidden = e), Ot.hidden = e, e ? nr(`Using preset map: ${t.label}`) : nr(kt.checked ? "Interactive OpenStreetMap view active; third-party tiles receive the displayed route area." : "OpenStreetMap requires consent to third-party tile requests. Choose a bundled map for local-only processing.", !kt.checked);
+	rr(t), Mn && (Mn.hidden = e), kt.hidden = e, e ? nr(`Using preset map: ${t.label}`) : nr(At.checked ? "Interactive OpenStreetMap view active; third-party tiles receive the displayed route area." : "OpenStreetMap requires consent to third-party tile requests. Choose a bundled map for local-only processing.", !At.checked);
 }
 async function cr(e, t = {}) {
 	let n = ir(e);
 	if (!n) throw Error(`Unknown map preset: ${e}`);
 	if (n.type !== "pdf") return null;
-	if (!t.forceReload && On === e && kn) return e === H && nr(`Using preset map: ${n.label}`), kn;
+	if (!t.forceReload && On === e && kn) return e === V && nr(`Using preset map: ${n.label}`), kn;
 	if (!n.url) throw Error(`Preset '${e}' does not include a bundled PDF URL.`);
-	e === H && nr(`Loading preset map: ${n.label}...`);
+	e === V && nr(`Loading preset map: ${n.label}...`);
 	let r = await fetch(encodeURI(n.url), { signal: t.signal });
 	if (!r.ok) throw Error(`Failed to load preset PDF (${r.status} ${r.statusText})`);
 	let i = await r.arrayBuffer();
-	return On = e, kn = i, e === H && nr(`Using preset map: ${n.label}`), i;
+	return On = e, kn = i, e === V && nr(`Using preset map: ${n.label}`), i;
 }
 function lr(e) {
-	H = rt[e] ? e : at, At.forEach((e) => {
-		let t = e.dataset.mapKey === H;
+	V = it[e] ? e : ot, jt.forEach((e) => {
+		let t = e.dataset.mapKey === V;
 		e.classList.toggle("is-selected", t), e.setAttribute("aria-pressed", String(t));
 	});
 }
-function ur(e = H) {
+function ur(e = V) {
 	lr(e), sr();
 }
 async function dr(e) {
-	mn?.abort("A newer preview was requested.");
+	G?.abort("A newer preview was requested.");
 	let t = new AbortController();
-	mn = t, xn.hidden = !1, wn.classList.remove("danger-text"), wn.textContent = "Rendering cropped map preview...", Cn.hidden = !0, K("preview", "processing", "rendering bounded preview");
-	let n = setTimeout(() => t.abort(`Preview exceeded ${vt / 1e3} seconds.`), vt);
+	G = t, xn.hidden = !1, wn.classList.remove("danger-text"), wn.textContent = "Rendering cropped map preview...", Cn.hidden = !0, K("preview", "processing", "rendering bounded preview");
+	let n = setTimeout(() => t.abort(`Preview exceeded ${yt / 1e3} seconds.`), yt);
 	try {
-		let n = await oe({
+		let n = await se({
 			...e,
 			signal: t.signal
 		});
-		if (t.signal.aborted || mn !== t) return !1;
-		pn &&= (URL.revokeObjectURL(pn), null), pn = URL.createObjectURL(n);
-		let r = pn;
+		if (t.signal.aborted || G !== t) return !1;
+		mn &&= (URL.revokeObjectURL(mn), null), mn = URL.createObjectURL(n);
+		let r = mn;
 		return Cn.src = r, await te(Cn.decode(), t.signal), Cn.hidden = !1, Cn.alt = "Preview of the true-scale judge solution map", Sn.href = r, Sn.setAttribute("aria-disabled", "false"), wn.textContent = "High-resolution judge-solution preview generated from native-detail map tiles. Use the three PDFs for print.", K("preview", "ok", "ready"), !0;
 	} catch (e) {
-		return console.error("Could not render cropped map preview", e), mn === t && (Cn.removeAttribute("src"), Cn.hidden = !0, Sn.removeAttribute("href"), Sn.setAttribute("aria-disabled", "true"), wn.classList.add("danger-text"), wn.textContent = `Preview could not be rendered: ${e instanceof Error ? e.message : String(e)}. The cropped PDF is still available.`, K("preview", t.signal.aborted ? "cancelled" : "failed", t.signal.aborted ? "cancelled" : "failed; cropped PDF remains available"), !1);
+		return console.error("Could not render cropped map preview", e), G === t && (Cn.removeAttribute("src"), Cn.hidden = !0, Sn.removeAttribute("href"), Sn.setAttribute("aria-disabled", "true"), wn.classList.add("danger-text"), wn.textContent = `Preview could not be rendered: ${e instanceof Error ? e.message : String(e)}. The cropped PDF is still available.`, K("preview", t.signal.aborted ? "cancelled" : "failed", t.signal.aborted ? "cancelled" : "failed; cropped PDF remains available"), !1);
 	} finally {
-		clearTimeout(n), mn === t && (mn = null);
+		clearTimeout(n), G === t && (G = null);
 	}
 }
 function fr(e, t) {
@@ -1822,12 +1828,12 @@ function fr(e, t) {
 }
 function pr() {
 	return {
-		routeWidth: fr(Wt, ot),
-		waypointFont: fr(Gt, ct),
-		headingFont: fr(Kt, lt),
-		minuteLabelFont: fr(qt, pt),
-		minuteMarkerHalf: fr(Jt, dt),
-		minuteLineWidth: fr(Yt, ft)
+		routeWidth: fr(Gt, st),
+		waypointFont: fr(Kt, lt),
+		headingFont: fr(qt, ut),
+		minuteLabelFont: fr(Jt, mt),
+		minuteMarkerHalf: fr(Yt, ft),
+		minuteLineWidth: fr(Xt, pt)
 	};
 }
 function mr(e) {
@@ -1963,7 +1969,7 @@ async function Cr() {
 		let e = await fetch(In);
 		if (!e.ok) throw Error(`${e.status} ${e.statusText}`);
 		let t = Sr(await e.text());
-		Ln = t, wr(en, t.types, "All types"), wr(tn, t.countries, "All countries"), Dr(), Tr(t.records.length ? `Loaded ${t.records.length} locations.` : "No locations found.");
+		Ln = t, wr(tn, t.types, "All types"), wr(nn, t.countries, "All countries"), Dr(), Tr(t.records.length ? `Loaded ${t.records.length} locations.` : "No locations found.");
 	} catch (e) {
 		console.error("Failed to load locations", e), Tr("Could not load saved locations.", !0), Ln = {
 			records: [],
@@ -1978,20 +1984,20 @@ function wr(e, t, n) {
 	for (let n of t) e.innerHTML += `<option value="${Z(n)}">${Z(n)}</option>`;
 }
 function Tr(e, t = !1) {
-	$t && ($t.textContent = e, $t.style.color = t ? "var(--color-danger)" : "var(--color-text-muted)");
+	en && (en.textContent = e, en.style.color = t ? "var(--color-danger)" : "var(--color-text-muted)");
 }
 var Er = (e) => {
 	let t = (Rn.search || "").toLowerCase();
 	return (!t || `${e.name} ${e.id}`.toLowerCase().includes(t)) && (Rn.type === "all" || e.type === Rn.type) && (Rn.country === "all" || e.country === Rn.country);
 };
 function Dr() {
-	if (!rn || !Ln) return;
+	if (!an || !Ln) return;
 	let e = Ln.records.filter(Er);
 	if (e.length === 0) {
-		rn.innerHTML = "<div style=\"padding: 0.5rem; color: #6c757d;\">No locations match filters.</div>";
+		an.innerHTML = "<div style=\"padding: 0.5rem; color: #6c757d;\">No locations match filters.</div>";
 		return;
 	}
-	rn.innerHTML = e.map((e) => `
+	an.innerHTML = e.map((e) => `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid #eee; gap: 0.75rem;">
                 <div>
                     <div>${Z(e.name)}</div>
@@ -2002,16 +2008,16 @@ function Dr() {
         `).join("");
 }
 function Or(e, t, n) {
-	let r = `${e},${t.toFixed(6)},${n.toFixed(6)}`, i = Xt.value.trim();
-	Xt.value = i ? `${i}\n${r}` : r, Xt.dispatchEvent(new Event("change"));
+	let r = `${e},${t.toFixed(6)},${n.toFixed(6)}`, i = Zt.value.trim();
+	Zt.value = i ? `${i}\n${r}` : r, Zt.dispatchEvent(new Event("change"));
 }
 async function kr() {
-	let e = Zt.hidden;
-	Qt.disabled = !0;
+	let e = Qt.hidden;
+	$t.disabled = !0;
 	try {
-		e ? (Zt.hidden = !1, await Cr()) : Zt.hidden = !0;
+		e ? (Qt.hidden = !1, await Cr()) : Qt.hidden = !0;
 	} finally {
-		Qt.disabled = !1;
+		$t.disabled = !1;
 	}
 }
 function Ar(e) {
@@ -2084,10 +2090,10 @@ function Pr(e, t, n, r, i) {
 		let i = e + n * a - r * o, l = t + n * o + r * a;
 		s.push(i), c.push(l);
 	}), [
-		Math.min(...s) - yt,
-		Math.min(...c) - yt,
-		Math.max(...s) + yt,
-		Math.max(...c) + yt
+		Math.min(...s) - bt,
+		Math.min(...c) - bt,
+		Math.max(...s) + bt,
+		Math.max(...c) + bt
 	];
 }
 function Fr(e, t, n, r, i) {
@@ -2119,7 +2125,7 @@ function Rr(e) {
 	return `${String(a).padStart(2, "0")}:${String(i).padStart(2, "0")}`;
 }
 function zr(e, t, n, r, i, a, o, s, c = {}) {
-	let l = c.step ?? bt, u = c.maxSteps ?? xt, d = c.fallbackAngleRad ?? null, f = c.allowNegative ?? !0, p = Math.hypot(n, r), m = p === 0 ? [1, 0] : [n / p, r / p], h = [m, d == null ? [m[1], -m[0]] : [Math.cos(d), Math.sin(d)]], g = (n) => {
+	let l = c.step ?? xt, u = c.maxSteps ?? St, d = c.fallbackAngleRad ?? null, f = c.allowNegative ?? !0, p = Math.hypot(n, r), m = p === 0 ? [1, 0] : [n / p, r / p], h = [m, d == null ? [m[1], -m[0]] : [Math.cos(d), Math.sin(d)]], g = (n) => {
 		let [r, c] = n;
 		for (let n = 0; n <= u; n += 1) {
 			let u = n === 0 ? [0] : f ? [n, -n] : [n];
@@ -2155,24 +2161,24 @@ async function Br() {
 	}
 	let e = new AbortController();
 	hn = e;
-	let n = H, i = [], a = Ct.innerHTML;
+	let n = V, i = [], a = wt.innerHTML;
 	try {
-		vn(!0), Ct.classList.add("is-loading"), Q("Processing..."), _n(), K("map", "processing", "preparing route map"), K("overlay", "processing", "preparing overlay"), En.hidden = !0, Tn && !Dn && (Tn.hidden = !1), Kn("pdf", G), Kn("overlay", on), Kn("cropped", sn), Kn("summary", cn), Kn("photoAnalysis", ln), Kn("photoKey", un), Kn("photoHandout", dn), on.style.display = "none", sn.style.display = "none", cn.style.display = "none", ln.style.display = "none", un.style.display = "none", dn.style.display = "none", tr(), W && (W.hidden = !0), jt && (jt.hidden = !0), Ft.hidden = !0, Mn && (Mn.hidden = !0), qn();
+		vn(!0), wt.classList.add("is-loading"), Q("Processing..."), _n(), K("map", "processing", "preparing route map"), K("overlay", "processing", "preparing overlay"), En.hidden = !0, Tn && !Dn && (Tn.hidden = !1), Kn("pdf", W), Kn("overlay", sn), Kn("cropped", cn), Kn("summary", ln), Kn("photoAnalysis", un), Kn("photoKey", dn), Kn("photoHandout", fn), sn.style.display = "none", cn.style.display = "none", ln.style.display = "none", un.style.display = "none", dn.style.display = "none", fn.style.display = "none", tr(), U && (U.hidden = !0), Mt && (Mt.hidden = !0), It.hidden = !0, Mn && (Mn.hidden = !0), qn();
 		let a = ir(n);
 		if (!a) throw Error(`Unknown map preset: ${n}`);
-		let o = m(Vt.value), s = fr(Ht, Pn), c = fr(Ut, Fn), l = br(Xt.value), u = v(l), d = g(u, l, o, a.scaleDenominator), f = Zn.analyze(l), p = pr(), _ = { ...Zn.layerOptions }, C = { ...Zn.handoutOptions }, w = [...Zn.records], T = w.filter(se), ee = T.filter((e) => e.analysis !== null), E = de(T, l);
+		let o = m(Ht.value), s = fr(Ut, Pn), c = fr(Wt, Fn), l = br(Zt.value), u = v(l), d = g(u, l, o, a.scaleDenominator), f = Zn.analyze(l), p = pr(), _ = { ...Zn.layerOptions }, C = { ...Zn.handoutOptions }, w = [...Zn.records], T = w.filter(ce), ee = T.filter((e) => e.analysis !== null), E = fe(T, l);
 		e.signal.throwIfAborted();
 		let D = o.metersPerSecond * 60, te = x(u, l, c, D), O = u.legs.map((e) => ({
 			id: `${e.fromName}-${e.toName}`,
 			distanceKm: e.length / 1e3,
 			distanceNm: h(e.length),
 			bearingDeg: b(y(e.fromLat, e.fromLon, e.toLat, e.toLon))
-		})), ne = c + u.totalDistance / D, re = ne >= 60 - 1e-6, ie = S(u, c, D, s), k = ie.map((e) => ({
+		})), ne = c + u.totalDistance / D, re = ne >= 60 - 1e-6, ie = S(u, c, D, s), ae = ie.map((e) => ({
 			minute: e.minute,
 			timeLabel: Lr(e.minute, re),
 			leg: `${e.leg.fromName}-${e.leg.toName}`,
 			fraction: e.ratio
-		})), ae = null, A = a.type === "pdf" ? a.fileName : null;
+		})), oe = null, k = a.type === "pdf" ? a.fileName : null;
 		if (a.type === "pdf") {
 			let [{ degrees: i, PDFDocument: o, rgb: s }, { default: c }] = await Promise.all([import("./es-DLUcyPiH.js"), import("./fontkit.es-B5FHmNtr.js")]), d = await cr(n, { signal: e.signal });
 			if (!d) throw Error("Map PDF unavailable.");
@@ -2184,45 +2190,45 @@ async function Br() {
 				return Nr(n, r, v, y, a.baseWidth, a.baseHeight);
 			}, w = {
 				routeLineWidth: Math.max(.4, p.routeWidth * S),
-				tpRadius: st * S,
+				tpRadius: ct * S,
 				tpFontSize: Math.max(4, p.waypointFont * S),
 				minuteCrossHalf: p.minuteMarkerHalf * S,
 				minuteLineWidth: Math.max(.4, p.minuteLineWidth * S),
 				minuteFontSize: Math.max(3, p.minuteLabelFont * S),
 				headingFontSize: Math.max(4, p.headingFont * S),
-				headingOffset: ut * S
-			}, E = await Wn(t, "the PDF label font", e.signal), D = await h.embedFont(E, { subset: !0 }), ne = await m.embedFont(E, { subset: !0 }), k = [{
+				headingOffset: dt * S
+			}, E = await Wn(t, "the PDF label font", e.signal), D = await h.embedFont(E, { subset: !0 }), ne = await m.embedFont(E, { subset: !0 }), ae = [{
 				page: b,
 				fontBold: D
 			}, {
 				page: g,
 				fontBold: ne
-			}], A = [{
+			}], k = [{
 				page: g,
 				fontBold: ne
-			}], oe = {
+			}], se = {
 				route: s(.82, 0, 0),
 				heading: s(1, 0, 0),
 				minute: s(.05, .15, .4)
-			}, j = {
+			}, A = {
 				minX: Infinity,
 				minY: Infinity,
 				maxX: -Infinity,
 				maxY: -Infinity
-			}, M = (e, t) => {
-				j.minX = Math.min(j.minX, e), j.minY = Math.min(j.minY, t), j.maxX = Math.max(j.maxX, e), j.maxY = Math.max(j.maxY, t);
-			}, N = [], se = (e) => {
-				N.push(e);
+			}, j = (e, t) => {
+				A.minX = Math.min(A.minX, e), A.minY = Math.min(A.minY, t), A.maxX = Math.max(A.maxX, e), A.maxY = Math.max(A.maxY, t);
+			}, M = [], ce = (e) => {
+				M.push(e);
 				let [t, n, r, i] = e;
-				M(t, n), M(t, i), M(r, n), M(r, i);
-			}, P = l.map(([e, t, n]) => ({
+				j(t, n), j(t, i), j(r, n), j(r, i);
+			}, N = l.map(([e, t, n]) => ({
 				name: e,
 				pdf: C(t, n)
-			})), ce = P.filter(({ pdf: [e, t] }) => !Number.isFinite(e) || !Number.isFinite(t) || e < 0 || t < 0 || e > v || t > y);
-			if (ce.length > 0) throw Error(`Route falls outside the calibrated map at: ${ce.map(({ name: e }) => e).join(", ")}`);
-			let le = new Map(P.map((e) => [e.name, e.pdf]));
-			for (let e = 0; e < P.length - 1; e++) {
-				let [t, n] = P[e].pdf, [r, i] = P[e + 1].pdf, [a, o] = [r - t, i - n], s = Math.hypot(a, o);
+			})), le = N.filter(({ pdf: [e, t] }) => !Number.isFinite(e) || !Number.isFinite(t) || e < 0 || t < 0 || e > v || t > y);
+			if (le.length > 0) throw Error(`Route falls outside the calibrated map at: ${le.map(({ name: e }) => e).join(", ")}`);
+			let ue = new Map(N.map((e) => [e.name, e.pdf]));
+			for (let e = 0; e < N.length - 1; e++) {
+				let [t, n] = N[e].pdf, [r, i] = N[e + 1].pdf, [a, o] = [r - t, i - n], s = Math.hypot(a, o);
 				if (s === 0) continue;
 				let [c, l] = $(a, o), u = Math.min(w.tpRadius, Math.max(0, s / 2 - w.routeLineWidth)), [d, f, p, m] = [
 					t + c * u,
@@ -2230,7 +2236,7 @@ async function Br() {
 					r - c * u,
 					i - l * u
 				];
-				Math.hypot(p - d, m - f) < .2 || (M(d, f), M(p, m), k.forEach((e) => {
+				Math.hypot(p - d, m - f) < .2 || (j(d, f), j(p, m), ae.forEach((e) => {
 					e.page.drawLine({
 						start: {
 							x: d,
@@ -2241,32 +2247,32 @@ async function Br() {
 							y: m
 						},
 						thickness: w.routeLineWidth,
-						color: oe.route
+						color: se.route
 					});
 				}));
 			}
-			for (let e = 0; e < P.length; e++) {
-				let { name: t, pdf: n } = P[e], [r, a] = n;
-				M(r - w.tpRadius, a - w.tpRadius), M(r + w.tpRadius, a + w.tpRadius), k.forEach((e) => {
+			for (let e = 0; e < N.length; e++) {
+				let { name: t, pdf: n } = N[e], [r, a] = n;
+				j(r - w.tpRadius, a - w.tpRadius), j(r + w.tpRadius, a + w.tpRadius), ae.forEach((e) => {
 					e.page.drawCircle({
 						x: r,
 						y: a,
 						size: w.tpRadius,
 						borderWidth: w.routeLineWidth,
-						borderColor: oe.route
+						borderColor: se.route
 					});
 				});
-				let o = e < P.length - 1 ? [P[e + 1].pdf[0] - r, P[e + 1].pdf[1] - a] : [0, 0], s = e > 0 ? [r - P[e - 1].pdf[0], a - P[e - 1].pdf[1]] : [0, 0], c = o, l = s;
+				let o = e < N.length - 1 ? [N[e + 1].pdf[0] - r, N[e + 1].pdf[1] - a] : [0, 0], s = e > 0 ? [r - N[e - 1].pdf[0], a - N[e - 1].pdf[1]] : [0, 0], c = o, l = s;
 				Math.hypot(c[0], c[1]) < 1e-6 && Math.hypot(l[0], l[1]) < 1e-6 && (c = [1, 0]);
 				let u = $(c[0], c[1]), d = Math.hypot(l[0], l[1]) < 1e-6 ? [-u[0], -u[1]] : $(l[0], l[1]), f = [d[0] + u[0], d[1] + u[1]], p = Math.hypot(f[0], f[1]), m = p > 1e-6 ? [-f[0] / p, -f[1] / p] : $(-u[1], u[0]);
 				Math.hypot(m[0], m[1]) < 1e-6 && (m = $(u[1], -u[0]));
 				let h = d;
-				e === 0 && P.length > 1 && (h = $(P[1].pdf[0] - r, P[1].pdf[1] - a)), Math.hypot(h[0], h[1]) < 1e-6 && (h = u);
+				e === 0 && N.length > 1 && (h = $(N[1].pdf[0] - r, N[1].pdf[1] - a)), Math.hypot(h[0], h[1]) < 1e-6 && (h = u);
 				let g = Math.atan2(h[1], h[0]) - Math.PI / 2, _ = g * 180 / Math.PI, v = $(m[0], m[1]);
 				Math.hypot(v[0], v[1]) < 1e-6 && (v = [1, 0]);
 				let y = $(-v[1], v[0]);
 				Math.hypot(y[0], y[1]) < 1e-6 && (y = [0, 1]);
-				let b = Math.max(w.tpFontSize * ht, w.routeLineWidth * 2.5, w.minuteCrossHalf * 2.2), x = w.tpRadius + b, S = [
+				let b = Math.max(w.tpFontSize * gt, w.routeLineWidth * 2.5, w.minuteCrossHalf * 2.2), x = w.tpRadius + b, S = [
 					[1, 0],
 					[.95, .25],
 					[.95, -.25],
@@ -2276,7 +2282,7 @@ async function Br() {
 				for (let [e, t] of S) {
 					let n = [v[0] * e + y[0] * t, v[1] * e + y[1] * t];
 					if (Math.hypot(n[0], n[1]) < 1e-6 || (n = $(n[0], n[1]), n[0] * v[0] + n[1] * v[1] <= .25)) continue;
-					let i = r + n[0] * x, o = a + n[1] * x, s = Math.atan2(n[1], n[0]), c = zr(i, o, n[0], n[1], T, ee, g, N, {
+					let i = r + n[0] * x, o = a + n[1] * x, s = Math.atan2(n[1], n[0]), c = zr(i, o, n[0], n[1], T, ee, g, M, {
 						fallbackAngleRad: s,
 						allowNegative: !1
 					}), l = Math.hypot(c.x - r, c.y - a);
@@ -2286,7 +2292,7 @@ async function Br() {
 					}, O = n);
 				}
 				if (!E) {
-					let e = zr(r + v[0] * x, a + v[1] * x, v[0], v[1], T, ee, g, N, { allowNegative: !1 });
+					let e = zr(r + v[0] * x, a + v[1] * x, v[0], v[1], T, ee, g, M, { allowNegative: !1 });
 					E = {
 						distance: Math.hypot(e.x - r, e.y - a),
 						position: e
@@ -2296,7 +2302,7 @@ async function Br() {
 					let e = [E.position.x - r, E.position.y - a];
 					Math.hypot(e[0], e[1]) < 1e-6 && (e = O), e = $(e[0], e[1]);
 					let t = r + e[0] * x, n = a + e[1] * x, i = Pr(t, n, T, ee, g);
-					N.some((e) => Ir(i, e)) || (E = {
+					M.some((e) => Ir(i, e)) || (E = {
 						distance: x,
 						position: {
 							x: t,
@@ -2320,13 +2326,13 @@ async function Br() {
 							}
 						};
 					}
-				})(), se(E.position.box), k.forEach((e) => {
+				})(), ce(E.position.box), ae.forEach((e) => {
 					e.page.drawText(C, {
 						x: E.position.x,
 						y: E.position.y,
 						size: w.tpFontSize,
 						font: e.fontBold,
-						color: oe.route,
+						color: se.route,
 						rotate: i(_)
 					});
 				});
@@ -2334,21 +2340,21 @@ async function Br() {
 				if (re) {
 					let e = $(-O[1], O[0]);
 					Math.hypot(e[0], e[1]) < 1e-6 && (e = [0, 1]);
-					let t = Math.max(4, w.tpFontSize * .75), n = x + Math.max(t * .6, w.routeLineWidth * 1.4, w.minuteCrossHalf), o = r + e[0] * n, s = a + e[1] * n, c = Math.atan2(O[1], O[0]), l = D.widthOfTextAtSize(re, t), u = t, d = zr(o, s, e[0], e[1], l, u, g, N, { fallbackAngleRad: c });
-					se(d.box), k.forEach((e) => {
+					let t = Math.max(4, w.tpFontSize * .75), n = x + Math.max(t * .6, w.routeLineWidth * 1.4, w.minuteCrossHalf), o = r + e[0] * n, s = a + e[1] * n, c = Math.atan2(O[1], O[0]), l = D.widthOfTextAtSize(re, t), u = t, d = zr(o, s, e[0], e[1], l, u, g, M, { fallbackAngleRad: c });
+					ce(d.box), ae.forEach((e) => {
 						e.page.drawText(re, {
 							x: d.x,
 							y: d.y,
 							size: t,
 							font: e.fontBold,
-							color: oe.minute,
+							color: se.minute,
 							rotate: i(_)
 						});
 					});
 				}
 			}
 			ie.forEach((e) => {
-				let t = le.get(e.leg.fromName), n = le.get(e.leg.toName);
+				let t = ue.get(e.leg.fromName), n = ue.get(e.leg.toName);
 				if (!t || !n) return;
 				let [r, a] = [n[0] - t[0], n[1] - t[1]], o = Math.hypot(r, a);
 				if (o === 0) return;
@@ -2360,7 +2366,7 @@ async function Br() {
 					d + l * p,
 					f + u * p
 				];
-				M(m, h), M(g, _), k.forEach((e) => {
+				j(m, h), j(g, _), ae.forEach((e) => {
 					e.page.drawLine({
 						start: {
 							x: m,
@@ -2371,40 +2377,40 @@ async function Br() {
 							y: _
 						},
 						thickness: w.minuteLineWidth,
-						color: oe.minute
+						color: se.minute
 					});
 				});
-				let v = Lr(e.minute, re), y = p * mt, b = d + l * y, x = f + u * y, S = Math.atan2(a, r) * 180 / Math.PI - 90, T = S * Math.PI / 180, ee = D.widthOfTextAtSize(v, w.minuteFontSize), E = w.minuteFontSize, te = Math.atan2(u, l) + Math.PI / 2, O = zr(b, x, l, u, ee, E, T, N, { fallbackAngleRad: te });
-				se(O.box), k.forEach((e) => {
+				let v = Lr(e.minute, re), y = p * ht, b = d + l * y, x = f + u * y, S = Math.atan2(a, r) * 180 / Math.PI - 90, T = S * Math.PI / 180, ee = D.widthOfTextAtSize(v, w.minuteFontSize), E = w.minuteFontSize, te = Math.atan2(u, l) + Math.PI / 2, O = zr(b, x, l, u, ee, E, T, M, { fallbackAngleRad: te });
+				ce(O.box), ae.forEach((e) => {
 					e.page.drawText(v, {
 						x: O.x,
 						y: O.y,
 						size: w.minuteFontSize,
 						font: e.fontBold,
-						color: oe.minute,
+						color: se.minute,
 						rotate: i(S)
 					});
 				});
 			});
 			for (let e = 0; e < u.legs.length; e++) {
-				let t = P[e].pdf, n = P[e + 1].pdf, [r, a] = [n[0] - t[0], n[1] - t[1]], o = Math.hypot(r, a);
+				let t = N[e].pdf, n = N[e + 1].pdf, [r, a] = [n[0] - t[0], n[1] - t[1]], o = Math.hypot(r, a);
 				if (o === 0) continue;
-				let [s, c] = [r / o, a / o], [l, u] = [-c, s], d = (t[0] + n[0]) / 2, f = (t[1] + n[1]) / 2, p = d + l * w.headingOffset, m = f + u * w.headingOffset, h = `${O[e].bearingDeg}°`.padStart(4, "0"), g = Math.atan2(a, r) * 180 / Math.PI - 90, _ = g * Math.PI / 180, v = D.widthOfTextAtSize(h, w.headingFontSize), y = w.headingFontSize, b = zr(p, m, l, u, v, y, _, N, { fallbackAngleRad: Math.atan2(u, l) + Math.PI / 2 });
-				se(b.box), k.forEach((e) => {
+				let [s, c] = [r / o, a / o], [l, u] = [-c, s], d = (t[0] + n[0]) / 2, f = (t[1] + n[1]) / 2, p = d + l * w.headingOffset, m = f + u * w.headingOffset, h = `${O[e].bearingDeg}°`.padStart(4, "0"), g = Math.atan2(a, r) * 180 / Math.PI - 90, _ = g * Math.PI / 180, v = D.widthOfTextAtSize(h, w.headingFontSize), y = w.headingFontSize, b = zr(p, m, l, u, v, y, _, M, { fallbackAngleRad: Math.atan2(u, l) + Math.PI / 2 });
+				ce(b.box), ae.forEach((e) => {
 					e.page.drawText(h, {
 						x: b.x,
 						y: b.y,
 						size: w.headingFontSize,
 						font: e.fontBold,
-						color: oe.heading,
+						color: se.heading,
 						rotate: i(g)
 					});
 				});
 			}
-			let F = s(.45, .12, .66), I = Math.max(5, 7 * S), ue = Math.max(1.2, 2.6 * S);
+			let P = s(.45, .12, .66), F = Math.max(5, 7 * S), de = Math.max(1.2, 2.6 * S);
 			for (let e of T) {
 				let t = Yn(e), n = e.metadata.latitude.value, r = e.metadata.longitude.value, i = n === null || r === null ? null : C(n, r), a = e.analysis ? C(e.analysis.closestLatitude, e.analysis.closestLongitude) : null;
-				if (!t && _.connectors && i && a && Math.hypot(i[0] - a[0], i[1] - a[1]) > 1 && A.forEach((e) => {
+				if (!t && _.connectors && i && a && Math.hypot(i[0] - a[0], i[1] - a[1]) > 1 && k.forEach((e) => {
 					e.page.drawLine({
 						start: {
 							x: i[0],
@@ -2415,26 +2421,26 @@ async function Br() {
 							y: a[1]
 						},
 						thickness: Math.max(.6, S),
-						color: F,
+						color: P,
 						opacity: .65,
 						dashArray: [3, 3]
 					});
-				}), _.exactDots && i && A.forEach((e) => {
+				}), _.exactDots && i && k.forEach((e) => {
 					e.page.drawCircle({
 						x: i[0],
 						y: i[1],
 						size: Math.max(2.3, 3 * S),
-						color: F,
+						color: P,
 						borderColor: s(1, 1, 1),
 						borderWidth: .8
 					});
 				}), _.projectedMarkers && a && e.analysis) {
-					let n = P[e.analysis.legIndex]?.pdf, r = P[e.analysis.legIndex + 1]?.pdf;
+					let n = N[e.analysis.legIndex]?.pdf, r = N[e.analysis.legIndex + 1]?.pdf;
 					if (!n || !r) continue;
 					let i = Math.hypot(r[0] - n[0], r[1] - n[1]);
 					if (i <= 1e-6) continue;
-					let o = [-(r[1] - n[1]) / i, (r[0] - n[0]) / i], s = [a[0] - o[0] * I, a[1] - o[1] * I], c = [a[0] + o[0] * I, a[1] + o[1] * I];
-					t || A.forEach((e) => {
+					let o = [-(r[1] - n[1]) / i, (r[0] - n[0]) / i], s = [a[0] - o[0] * F, a[1] - o[1] * F], c = [a[0] + o[0] * F, a[1] + o[1] * F];
+					t || k.forEach((e) => {
 						e.page.drawLine({
 							start: {
 								x: s[0],
@@ -2444,24 +2450,24 @@ async function Br() {
 								x: c[0],
 								y: c[1]
 							},
-							thickness: ue,
-							color: F
+							thickness: de,
+							color: P
 						});
 					});
-					let l = e.identifier || "?", u = Math.max(5, 12 * S), d = D.widthOfTextAtSize(l, u), f = t ? Math.max(I * 4, w.tpRadius + u) : I * 4, p = zr(a[0] + o[0] * f, a[1] + o[1] * f, o[0], o[1], d, u, 0, N, { allowNegative: !1 });
-					se(p.box), A.forEach((e) => {
+					let l = e.identifier || "?", u = Math.max(5, 12 * S), d = D.widthOfTextAtSize(l, u), f = t ? Math.max(F * 4, w.tpRadius + u) : F * 4, p = zr(a[0] + o[0] * f, a[1] + o[1] * f, o[0], o[1], d, u, 0, M, { allowNegative: !1 });
+					ce(p.box), k.forEach((e) => {
 						e.page.drawText(l, {
 							x: p.x,
 							y: p.y,
 							size: u,
 							font: e.fontBold,
-							color: F
+							color: P
 						});
 					});
 				}
 				if (!t && _.headingArrows && i && n !== null && r !== null && e.metadata.headingDeg.value !== null && e.metadata.headingReference.value === "true" && e.metadata.headingReference.reliable) {
 					let t = e.metadata.headingDeg.value * Math.PI / 180, a = C(n + 300 * Math.cos(t) / 6371008.8 * (180 / Math.PI), r + 300 * Math.sin(t) / (6371008.8 * Math.cos(n * Math.PI / 180)) * (180 / Math.PI));
-					A.forEach((e) => {
+					k.forEach((e) => {
 						e.page.drawLine({
 							start: {
 								x: i[0],
@@ -2472,20 +2478,20 @@ async function Br() {
 								y: a[1]
 							},
 							thickness: Math.max(.8, 1.2 * S),
-							color: F
+							color: P
 						});
 					});
 				}
 				if (_.includeInCrop) {
 					let e = [a];
 					_.exactDots && e.push(i), e.filter(Boolean).forEach(([e, t]) => {
-						M(e - I * 2, t - I * 2), M(e + I * 2, t + I * 2);
+						j(e - F * 2, t - F * 2), j(e + F * 2, t + F * 2);
 					});
 				}
 			}
 			if (_.legend && T.length > 0) {
-				let e = Math.min(Math.max(0, j.minX), Math.max(0, v - 120)), t = j.minY - 26 - 6, n = t >= 0 ? t : Math.min(Math.max(0, y - 26), Math.max(0, j.maxY + 6)), r = e + 8, i = n + 13;
-				A.forEach((t) => {
+				let e = Math.min(Math.max(0, A.minX), Math.max(0, v - 120)), t = A.minY - 26 - 6, n = t >= 0 ? t : Math.min(Math.max(0, y - 26), Math.max(0, A.maxY + 6)), r = e + 8, i = n + 13;
+				k.forEach((t) => {
 					t.page.drawRectangle({
 						x: e,
 						y: n,
@@ -2505,46 +2511,46 @@ async function Br() {
 							y: i + 6
 						},
 						thickness: 2,
-						color: F
+						color: P
 					}), t.page.drawText("Accepted photo solution", {
 						x: r + 10,
 						y: i - 3,
 						size: 7,
 						font: t.fontBold,
-						color: F
+						color: P
 					});
-				}), _.includeInCrop && (M(e, n), M(e + 120, n + 26));
+				}), _.includeInCrop && (j(e, n), j(e + 120, n + 26));
 			}
-			let de = await h.save(), fe = await m.save(), L = await o.load(d), [R] = L.getPages(), [pe] = await L.embedPdf(de, [0]);
-			R.drawPage(pe, {
+			let fe = await h.save(), pe = await m.save(), I = await o.load(d), [L] = I.getPages(), [me] = await I.embedPdf(fe, [0]);
+			L.drawPage(me, {
 				x: 0,
 				y: 0,
 				width: v,
 				height: y
 			});
-			let me = await L.save();
+			let he = await I.save();
 			e.signal.throwIfAborted();
-			let he = null, ge = null, z = null, _e = null;
-			if (Object.values(j).every(Number.isFinite)) {
-				let e = 10 * _t, [t, n, i, s] = [
-					Math.max(0, j.minX - e),
-					Math.max(0, j.minY - e),
-					Math.min(v, j.maxX + e),
-					Math.min(y, j.maxY + e)
+			let ge = null, _e = null, R = null, ve = null;
+			if (Object.values(A).every(Number.isFinite)) {
+				let e = 10 * vt, [t, n, i, s] = [
+					Math.max(0, A.minX - e),
+					Math.max(0, A.minY - e),
+					Math.min(v, A.maxX + e),
+					Math.min(y, A.maxY + e)
 				];
 				if (i > t + 1 && s > n + 1) {
-					let e = i - t, c = s - n, l = r(e, c, [210 * _t, 297 * _t]), u = async (r) => {
+					let e = i - t, c = s - n, l = r(e, c, [210 * vt, 297 * vt]), u = async (r) => {
 						let i = await o.create(), [a] = await i.embedPdf(r, [0]);
 						return i.addPage([l.width, l.height]).drawPage(a, {
 							x: -t + (l.width - e) / 2,
 							y: -n + (l.height - c) / 2
 						}), i.save();
 					};
-					[he, ge, z] = await Promise.all([
-						u(fe),
-						u(me),
+					[ge, _e, R] = await Promise.all([
+						u(pe),
+						u(he),
 						u(d)
-					]), _e = {
+					]), ve = {
 						imageUrl: a.previewUrl,
 						tileSet: a.previewTiles,
 						pageWidth: v,
@@ -2555,7 +2561,7 @@ async function Br() {
 							maxX: i,
 							maxY: s
 						},
-						route: P.map(({ name: e, pdf: [t, n] }) => ({
+						route: N.map(({ name: e, pdf: [t, n] }) => ({
 							x: t,
 							y: n,
 							label: e
@@ -2564,7 +2570,7 @@ async function Br() {
 							if (!e.analysis) return [];
 							let [t, n] = C(e.analysis.closestLatitude, e.analysis.closestLongitude);
 							if (![t, n].every(Number.isFinite)) return [];
-							let r = P[e.analysis.legIndex]?.pdf, i = P[e.analysis.legIndex + 1]?.pdf;
+							let r = N[e.analysis.legIndex]?.pdf, i = N[e.analysis.legIndex + 1]?.pdf;
 							if (!r || !i) return [];
 							let a = Math.hypot(i[0] - r[0], i[1] - r[1]);
 							return a <= 1e-6 ? [] : [{
@@ -2576,18 +2582,18 @@ async function Br() {
 								showTick: !Yn(e)
 							}];
 						})
-					}, ae = {
+					}, oe = {
 						available: !0,
-						widthMm: l.width / _t,
-						heightMm: l.height / _t,
+						widthMm: l.width / vt,
+						heightMm: l.height / vt,
 						format: l.format,
 						scale: "100%"
 					};
 				}
 			}
-			he && ge && z && _e ? (G.textContent = "Judge Solutions (PDF)", G.onclick = null, Gn("pdf", Un(he), "judge_solution_map.pdf", G), K("map", "ok", `${T.length} accepted photo(s); ${ee.length} positioned on map`), Gn("overlay", Un(ge), "competitor_route_map.pdf", on), on.style.display = "inline-flex", K("overlay", "ok", "route-only PDF ready"), Gn("cropped", Un(z), "empty_map.pdf", sn), sn.style.display = "inline-flex", K("crop", "ok", "clean base-map PDF ready"), dr(_e)) : (K("map", "manual-review", "no valid crop bounds"), K("overlay", "manual-review", "no valid crop bounds"), K("crop", "manual-review", "no valid crop bounds"), K("preview", "manual-review", "not available without crop bounds"));
+			ge && _e && R && ve ? (W.textContent = "Judge Solutions (PDF)", W.onclick = null, Gn("pdf", Un(ge), "judge_solution_map.pdf", W), K("map", "ok", `${T.length} accepted photo(s); ${ee.length} positioned on map`), Gn("overlay", Un(_e), "competitor_route_map.pdf", sn), sn.style.display = "inline-flex", K("overlay", "ok", "route-only PDF ready"), Gn("cropped", Un(R), "empty_map.pdf", cn), cn.style.display = "inline-flex", K("crop", "ok", "clean base-map PDF ready"), dr(ve)) : (K("map", "manual-review", "no valid crop bounds"), K("overlay", "manual-review", "no valid crop bounds"), K("crop", "manual-review", "no valid crop bounds"), K("preview", "manual-review", "not available without crop bounds"));
 		} else {
-			if (!kt.checked) throw Error("Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.");
+			if (!At.checked) throw Error("Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.");
 			if (Mn && (Mn.hidden = !1), await or(), !q) throw Error("Interactive map unavailable.");
 			J.forEach((e) => {
 				e.remove();
@@ -2687,30 +2693,30 @@ async function Br() {
 				typeof requestAnimationFrame == "function" ? requestAnimationFrame(e) : setTimeout(e, 16);
 			})(() => {
 				q && (q.invalidateSize(), i());
-			}), G.textContent = "Print Map to PDF", G.removeAttribute("download"), G.href = "#", G.onclick = (e) => {
+			}), W.textContent = "Print Map to PDF", W.removeAttribute("download"), W.href = "#", W.onclick = (e) => {
 				e.preventDefault(), window.print();
 			}, K("map", "manual-review", "interactive OSM print view"), K("overlay", "manual-review", "included in interactive view"), K("crop", "manual-review", "not available for OSM"), K("preview", "manual-review", "interactive map is the preview");
 		}
-		W && (W.hidden = !1), En.hidden = !1, qn(), e.signal.throwIfAborted();
-		let oe = Me(w), j = Ne(w);
-		Gn("photoAnalysis", URL.createObjectURL(new Blob([oe], { type: "text/csv;charset=utf-8" })), "photo_analysis.csv", ln), Gn("photoKey", URL.createObjectURL(new Blob([j], { type: "text/csv;charset=utf-8" })), "photo_overlay_key.csv", un), ln.style.display = "inline-flex", un.style.display = "inline-flex", K("data", "ok", "CSV files ready; summary pending"), K("handout", "processing", "preparing photos");
+		U && (U.hidden = !1), En.hidden = !1, qn(), e.signal.throwIfAborted();
+		let se = Ne(w), A = Pe(w);
+		Gn("photoAnalysis", URL.createObjectURL(new Blob([se], { type: "text/csv;charset=utf-8" })), "photo_analysis.csv", un), Gn("photoKey", URL.createObjectURL(new Blob([A], { type: "text/csv;charset=utf-8" })), "photo_overlay_key.csv", dn), un.style.display = "inline-flex", dn.style.display = "inline-flex", K("data", "ok", "CSV files ready; summary pending"), K("handout", "processing", "preparing photos");
 		try {
 			Q(`Preparing ${T.length} accepted photo${T.length === 1 ? "" : "s"} for the judge handout...`);
 			let n = [];
 			for (let t of T) e.signal.throwIfAborted(), n.push({
 				record: t,
-				jpeg: await Ee(t.file, t.metadata.orientation.value ?? 1, 1600)
+				jpeg: await De(t.file, t.metadata.orientation.value ?? 1, 1600)
 			}), await new Promise((e) => setTimeout(e, 0));
 			let r = await Wn(t, "the photo handout font", e.signal), { buildPhotoHandout: i } = await import("./photo-handout-ChmKS3ns.js");
-			Gn("photoHandout", Un(await i(n, E, r, C)), "judge_photo_handout.pdf", dn), dn.style.display = "inline-flex", K("handout", "ok", "PDF ready");
+			Gn("photoHandout", Un(await i(n, E, r, C)), "judge_photo_handout.pdf", fn), fn.style.display = "inline-flex", K("handout", "ok", "PDF ready");
 		} catch (t) {
 			if (e.signal.aborted) throw t;
 			let n = t instanceof Error ? t.message : String(t);
 			i.push(`photo handout: ${n}`), K("handout", "failed", n);
 		}
-		let M = {
+		let j = {
 			schemaVersion: 4,
-			appVersion: it,
+			appVersion: at,
 			generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
 			speedLabel: o.label,
 			speedKnots: o.knots,
@@ -2720,7 +2726,7 @@ async function Br() {
 				key: n,
 				label: a.label,
 				edition: a.edition,
-				file: A || null,
+				file: k || null,
 				transform: a.type === "pdf" ? a.transform : null,
 				validityReviewRequired: a.requiresValidityReview,
 				scaleDenominator: a.scaleDenominator
@@ -2732,11 +2738,11 @@ async function Br() {
 			})),
 			legs: O,
 			waypointTimes: Object.fromEntries(Array.from(te.entries()).map(([e, t]) => [e, Rr(t)])),
-			minuteMarkers: k,
+			minuteMarkers: ae,
 			minuteInterval: s,
 			takeoffToSp: c,
 			totalMinutes: ne,
-			cropped: ae,
+			cropped: oe,
 			compliance: {
 				rulebook: "Pravilnik Rally Letenja za Prvenstvo Slovenije, corrected August 2023",
 				automatedStatus: d.status,
@@ -2744,47 +2750,47 @@ async function Br() {
 				checks: d.checks,
 				manualChecks: d.manualChecks
 			},
-			photos: Pe(w, f),
+			photos: Fe(w, f),
 			warnings: a.requiresValidityReview ? [`Confirm that ${a.label} (${a.edition} edition) is current and event-approved.`] : []
 		};
-		Gn("summary", URL.createObjectURL(new Blob([JSON.stringify(M, null, 2)], { type: "application/json" })), "route_summary.json", cn), cn.style.display = "inline-flex", K("data", "ok", "CSV and JSON ready"), W && (W.hidden = !1), Hn(Mt, O.map((e) => [
+		Gn("summary", URL.createObjectURL(new Blob([JSON.stringify(j, null, 2)], { type: "application/json" })), "route_summary.json", ln), ln.style.display = "inline-flex", K("data", "ok", "CSV and JSON ready"), U && (U.hidden = !1), Hn(Nt, O.map((e) => [
 			e.id,
 			e.distanceNm.toFixed(2),
 			e.distanceKm.toFixed(2),
 			e.bearingDeg.toString().padStart(3, "0")
-		])), Hn(Nt, Array.from(te.entries()).map(([e, t]) => [e, Rr(t)])), Pt.textContent = `${M.speedLabel} - ${M.totalDistanceNm.toFixed(2)} NM (${M.totalDistanceKm.toFixed(2)} km) course - ${a.label}`, er(d), jt && (jt.hidden = !1), Mn && (Mn.hidden = a.type === "pdf"), Tn && (Dn ? Tn.hidden = !0 : (Tn.remove(), Dn = !0)), En.hidden = !1, qn();
-		let N = d.status !== "ok" || f.status === "against-rules" ? "against-rules" : f.status === "manual-review" ? "manual-review" : "ok", P = w.filter((e) => e.exceptionAccepted).length;
-		Q(i.length ? `Generated with partial failures: ${i.join(" | ")}. Completed downloads remain available.` : N === "against-rules" ? `Generated: Against the rules · ${d.violations.length + f.violationCount} automated violation(s)${P ? `; ${P} photo exception(s) accepted by the judge` : ""}. Review the retained findings.` : N === "manual-review" ? `Generated: Manual review required · no automated violation was found, but ${f.warningCount} photo/judge review item(s) remain.` : "Generated: OK for automated checks. Complete the listed manual judge checks.", N === "ok" && i.length === 0 ? "success" : "warning");
+		])), Hn(Pt, Array.from(te.entries()).map(([e, t]) => [e, Rr(t)])), Ft.textContent = `${j.speedLabel} - ${j.totalDistanceNm.toFixed(2)} NM (${j.totalDistanceKm.toFixed(2)} km) course - ${a.label}`, er(d), Mt && (Mt.hidden = !1), Mn && (Mn.hidden = a.type === "pdf"), Tn && (Dn ? Tn.hidden = !0 : (Tn.remove(), Dn = !0)), En.hidden = !1, qn();
+		let M = d.status !== "ok" || f.status === "against-rules" ? "against-rules" : f.status === "manual-review" ? "manual-review" : "ok", N = w.filter((e) => e.exceptionAccepted).length;
+		Q(i.length ? `Generated with partial failures: ${i.join(" | ")}. Completed downloads remain available.` : M === "against-rules" ? `Generated: Against the rules · ${d.violations.length + f.violationCount} automated violation(s)${N ? `; ${N} photo exception(s) accepted by the judge` : ""}. Review the retained findings.` : M === "manual-review" ? `Generated: Manual review required · no automated violation was found, but ${f.warningCount} photo/judge review item(s) remain.` : "Generated: OK for automated checks. Complete the listed manual judge checks.", M === "ok" && i.length === 0 ? "success" : "warning");
 	} catch (t) {
 		console.error(t);
 		let n = e.signal.aborted;
-		Q(n ? "Generation cancelled. Any completed downloads remain available." : `Error: ${t instanceof Error ? t.message : String(t)}`), (!W || W.hidden) && (En.hidden = !0), Tn && !Dn && (Tn.hidden = !1), qn();
+		Q(n ? "Generation cancelled. Any completed downloads remain available." : `Error: ${t instanceof Error ? t.message : String(t)}`), (!U || U.hidden) && (En.hidden = !0), Tn && !Dn && (Tn.hidden = !1), qn();
 	} finally {
-		hn === e && (hn = null), vn(!1), Ct.classList.remove("is-loading"), Ct.innerHTML = a;
+		hn === e && (hn = null), vn(!1), wt.classList.remove("is-loading"), wt.innerHTML = a;
 	}
 }
-Ct.addEventListener("click", Br), wt.addEventListener("click", () => {
-	hn?.abort("Cancelled by the user."), mn?.abort("Cancelled by the user.");
-}), Qt.addEventListener("click", kr), nn && nn.addEventListener("input", (e) => {
+wt.addEventListener("click", Br), Tt.addEventListener("click", () => {
+	hn?.abort("Cancelled by the user."), G?.abort("Cancelled by the user.");
+}), $t.addEventListener("click", kr), rn && rn.addEventListener("input", (e) => {
 	let t = e.target;
 	t.id === "locationSearch" && (Rn.search = t.value.trim()), t.id === "locationTypeFilter" && (Rn.type = t.value), t.id === "locationCountryFilter" && (Rn.country = t.value), Dr();
-}), an.addEventListener("click", () => {
+}), on.addEventListener("click", () => {
 	Ln?.records.filter(Er).forEach((e) => {
 		Or(e.name, e.lat, e.lon);
 	});
-}), rn.addEventListener("click", (e) => {
+}), an.addEventListener("click", (e) => {
 	let t = e.target;
 	if (t.tagName === "BUTTON" && t.dataset.name) {
 		let { name: e, lat: n, lon: r, id: i, type: a } = t.dataset, o = (a || "").toLowerCase();
 		Or(i && (o.includes("aerodrome") || o.includes("heliport")) ? i.toUpperCase() : e, parseFloat(n), parseFloat(r));
 	}
-}), At.forEach((e) => {
+}), jt.forEach((e) => {
 	e.addEventListener("click", () => {
 		ur(e.dataset.mapKey);
 	});
-}), kt.addEventListener("change", () => sr()), window.addEventListener("beforeunload", () => {
-	Object.values(fn).forEach((e) => {
+}), At.addEventListener("change", () => sr()), window.addEventListener("beforeunload", () => {
+	Object.values(pn).forEach((e) => {
 		e && URL.revokeObjectURL(e);
-	}), pn && URL.revokeObjectURL(pn);
-}), Q(""), ur(H), Zn.analyze(br(Xt.value));
+	}), mn && URL.revokeObjectURL(mn);
+}), Q(""), ur(V), Zn.analyze(br(Zt.value));
 //#endregion

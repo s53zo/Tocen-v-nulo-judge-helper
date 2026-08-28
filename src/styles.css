@@ -85,19 +85,20 @@ header p {
 }
 
 main {
-  padding: 2rem;
+  padding: clamp(0.85rem, 1.5vw, 1.5rem);
 }
 
 .desk-layout {
   display: grid;
-  grid-template-columns: 430px 1fr;
-  gap: 2rem;
-  max-width: 1600px;
+  grid-template-columns: 320px minmax(0, 1fr) 340px;
+  gap: 1rem;
+  max-width: 2100px;
   margin: 0 auto;
   align-items: flex-start;
 }
 
 .control-panel,
+.photo-panel,
 .results-panel {
   min-width: 0;
   background: var(--color-panel-bg);
@@ -106,17 +107,21 @@ main {
   box-shadow: var(--shadow);
 }
 
-.control-panel {
+.control-panel,
+.results-panel {
   position: sticky;
-  top: 96px;
+  top: 84px;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .panel-content {
-  padding: 1.75rem;
+  padding: 1.25rem;
 }
 
 .control-group + .control-group {
-  margin-top: 2rem;
+  margin-top: 1.35rem;
 }
 
 .control-group h2 {
@@ -178,14 +183,14 @@ main {
 
 .map-preset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
   margin-top: 0.5rem;
 }
 
 @media (min-width: 960px) {
   .map-preset-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 
@@ -193,8 +198,8 @@ main {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
+  gap: 0.15rem;
+  padding: 0.65rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: #f8faf9;
@@ -267,7 +272,7 @@ select:focus {
 }
 
 textarea {
-  min-height: 220px;
+  min-height: 185px;
   font-family: var(--font-mono);
   resize: vertical;
 }
@@ -319,6 +324,24 @@ textarea {
   }
 }
 
+.control-panel .input-row-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.control-panel label {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.control-panel input[type="text"],
+.control-panel input[type="number"],
+.control-panel input[type="search"],
+.control-panel textarea,
+.control-panel select {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.86rem;
+}
+
 .status {
   margin-top: 1rem;
   padding: 0.75rem 0.95rem;
@@ -335,6 +358,25 @@ textarea {
   display: flex;
   gap: 0.65rem;
   align-items: center;
+}
+
+.generation-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 1rem -1.25rem -1.25rem;
+  padding: 0.85rem 1.25rem 1rem;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.generation-dock .status {
+  margin-top: 0.65rem;
+  max-height: 8rem;
+  overflow: auto;
 }
 
 .artifact-statuses {
@@ -788,6 +830,20 @@ th:not(:first-child) {
   background: #edf7f3;
 }
 
+.photo-workflow > h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.photo-panel {
+  min-height: calc(100vh - 100px);
+}
+
+.photo-workflow > .privacy-note {
+  margin-bottom: 0.85rem;
+}
+
 .photo-dropzone {
   display: grid;
   place-items: center;
@@ -879,7 +935,7 @@ th:not(:first-child) {
 
 .photo-findings,
 .photo-card-findings {
-  max-height: 180px;
+  max-height: 140px;
   overflow: auto;
   margin: 0.6rem 0;
   padding-left: 1.2rem;
@@ -889,22 +945,25 @@ th:not(:first-child) {
 
 .photo-list {
   display: grid;
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .photo-card {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 0.9rem;
-  padding: 0.8rem;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.7rem;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: white;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .photo-thumbnail {
-  width: 150px;
-  height: 105px;
+  width: 120px;
+  height: 96px;
   object-fit: contain;
   background: #eef0f1;
   border-radius: 5px;
@@ -919,6 +978,11 @@ th:not(:first-child) {
   overflow-wrap: anywhere;
 }
 
+.photo-card-heading strong {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
 .photo-order-controls {
   margin-top: 0;
 }
@@ -929,7 +993,7 @@ th:not(:first-child) {
 
 .photo-field-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
   margin-top: 0.7rem;
 }
@@ -955,13 +1019,54 @@ th:not(:first-child) {
   font-size: 0.78rem;
 }
 
-@media (max-width: 1080px) {
+.photo-metadata-details {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid #e7eaec;
+}
+
+.photo-metadata-summary {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.photo-metadata-details[open] .photo-metadata-summary {
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 1379px) {
+  .desk-layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .control-panel,
+  .results-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .results-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1050px) {
   .desk-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .control-panel {
+  .control-panel,
+  .results-panel {
     position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .results-panel {
+    grid-column: auto;
   }
 }
 
@@ -976,7 +1081,7 @@ th:not(:first-child) {
 
   .panel-content,
   .results-inner {
-    padding: 1.5rem;
+    padding: 1rem;
   }
 
   .photo-card {
@@ -984,16 +1089,21 @@ th:not(:first-child) {
   }
   .photo-thumbnail {
     width: 100%;
-    height: 180px;
+    height: 140px;
   }
-  .photo-field-grid,
   .check-grid {
     grid-template-columns: 1fr;
+  }
+
+  .generation-dock {
+    margin: 1rem -1rem -1rem;
+    padding: 0.8rem 1rem;
   }
 }
 
 @media print {
   .control-panel,
+  .photo-panel,
   header,
   .results-placeholder,
   .download-actions,

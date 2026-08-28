@@ -816,6 +816,13 @@ export class PhotoWorkflow {
         'Keeps all violations in the audit record and accepts this photo for judging output.';
       const grid = document.createElement('div');
       grid.className = 'photo-field-grid';
+      const metadataDetails = document.createElement('details');
+      metadataDetails.className = 'photo-metadata-details';
+      const metadataSummary = document.createElement('summary');
+      metadataSummary.className = 'photo-metadata-summary';
+      metadataSummary.textContent = 'Camera metadata & source';
+      const metadataGrid = document.createElement('div');
+      metadataGrid.className = 'photo-field-grid';
       const numericInput = (label: string, field: string, value: number | null) =>
         input(
           label,
@@ -849,14 +856,16 @@ export class PhotoWorkflow {
           record.id,
           legOptions
         ),
+        numericInput('Task/object latitude', 'taskLatitude', record.taskLatitude.value),
+        numericInput('Task/object longitude', 'taskLongitude', record.taskLongitude.value)
+      );
+      metadataGrid.append(
         numericInput('Latitude', 'latitude', record.metadata.latitude.value),
         numericInput('Longitude', 'longitude', record.metadata.longitude.value),
         numericInput('Heading (°)', 'headingDeg', record.metadata.headingDeg.value),
         numericInput('Altitude AGL (ft)', 'altitudeAglFt', record.metadata.altitudeAglFt.value),
         numericInput('35 mm equiv. focal (mm)', 'focalLength35Mm', record.metadata.focalLength35Mm.value),
-        input('Capture time', record.metadata.captureTime.value ?? '', 'captureTime', record.id),
-        numericInput('Task/object latitude', 'taskLatitude', record.taskLatitude.value),
-        numericInput('Task/object longitude', 'taskLongitude', record.taskLongitude.value)
+        input('Capture time', record.metadata.captureTime.value ?? '', 'captureTime', record.id)
       );
       const provenance = document.createElement('p');
       provenance.className = 'photo-provenance';
@@ -867,6 +876,7 @@ export class PhotoWorkflow {
         ? `; original EXIF GPS: ${record.originalMetadata.latitude.value}, ${record.originalMetadata.longitude.value}`
         : '';
       provenance.textContent = `${record.width}×${record.height}px · Position: ${record.metadata.latitude.source}/${record.metadata.longitude.source}${originalPosition}; EXIF altitude: ${record.metadata.gpsAltitudeMslM.value ?? 'missing'} m MSL; camera: ${[record.metadata.cameraMake.value, record.metadata.cameraModel.value].filter(Boolean).join(' ') || 'missing'}; orientation: ${record.metadata.orientation.value ?? 'missing'}.`;
+      metadataDetails.append(metadataSummary, metadataGrid, provenance);
       const metrics = document.createElement('p');
       metrics.className = 'photo-metrics';
       metrics.textContent = record.analysis
@@ -883,8 +893,8 @@ export class PhotoWorkflow {
         const error = document.createElement('p');
         error.className = 'danger-text';
         error.textContent = `Metadata error: ${record.importError}`;
-        body.append(heading, status, exceptionButton, error, grid, provenance, metrics, issueList);
-      } else body.append(heading, status, exceptionButton, grid, provenance, metrics, issueList);
+        body.append(heading, status, exceptionButton, error, grid, metrics, issueList, metadataDetails);
+      } else body.append(heading, status, exceptionButton, grid, metrics, issueList, metadataDetails);
       article.append(image, body);
       fragment.appendChild(article);
     }

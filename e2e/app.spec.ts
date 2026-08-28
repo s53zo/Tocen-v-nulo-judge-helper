@@ -295,6 +295,16 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   await page.goto('/');
   await page.locator('#loadPhotoExample').click();
   await expect(page.locator('.photo-card')).toHaveCount(29, { timeout: 120_000 });
+  const reviewLayout = await page.evaluate(() => ({
+    controlWidth: document.querySelector('.control-panel')?.getBoundingClientRect().width ?? 0,
+    photoWidth: document.querySelector('.photo-panel')?.getBoundingClientRect().width ?? 0,
+    photoColumns: getComputedStyle(document.querySelector('.photo-list') as HTMLElement)
+      .gridTemplateColumns.split(' ')
+      .filter(Boolean).length,
+  }));
+  expect(reviewLayout.photoWidth).toBeGreaterThan(reviewLayout.controlWidth * 2);
+  expect(reviewLayout.photoColumns).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('.photo-metadata-details').first()).not.toHaveAttribute('open', '');
   const enrouteCard = page
     .locator('.photo-card')
     .filter({
