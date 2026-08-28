@@ -14,7 +14,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Configurable minute markers and overlay styling
 - Calibrated PDF maps plus consent-gated OpenStreetMap
 - Marked, overlay-only, and true-scale cropped PDF downloads (A4 when the footprint fits, custom size otherwise)
-- Memory-bounded cropped previews generated from calibrated low-resolution WebP maps, never from the full chart PDF
+- Native-detail cropped previews assembled from calibrated 1,024 px WebP tiles, never by decoding the whole chart
 - Unicode waypoint labels in generated PDFs
 - Searchable location library
 - Explicit chart-edition warnings
@@ -23,6 +23,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Route projection, along-track/lateral distance, leg assignment, camera-heading comparison, and post-control spacing
 - En-route, correct/false control, sign-task, and reference classifications with waypoint linking
 - Per-photo and route-wide `OK for automated checks`, `Against the rules`, or `Manual review required` findings
+- Auditable per-photo judge exceptions that retain every original violation in the UI, CSV, JSON, and handout
 - Separate camera and task/object positions, conservative ambiguous-leg handling, and manual leg overrides
 - Per-artifact progress, cancellation, and partial-success handling so an optional handout/preview failure does not discard maps
 - `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, and print-ready `photo_handout.pdf`
@@ -51,7 +52,7 @@ src/domain.ts           Route, bearing, speed, and timing calculations
 src/csv.ts              Standards-aware CSV parser
 src/data-url.ts         CSP-safe decoder for bundled data URL assets
 src/maps.ts             Map-preset validation
-src/map-preview.ts      Bounded calibrated raster-preview renderer
+src/map-preview.ts      Bounded high-resolution tiled preview renderer
 src/map-presets.json    Versioned map metadata and calibration
 src/styles.css          Application styles
 src/photo-metadata.ts   EXIF normalization and metadata provenance
@@ -82,13 +83,15 @@ After every successful generation, the app evaluates the calculable requirements
 
 Every finding records the rule, measured value, permitted value, stable photo ID, and affected photo. Camera GPS is not substituted for task/object coordinates. Unreliable or unavailable task position, GPS, AGL, heading reference, focal length, or false-object coordinates produce `Manual review required`; the app does not guess or silently discard a photo. Magnetic or reference-less headings are not compared automatically with true route bearings. EXIF GPS altitude remains labelled MSL and is never treated as AGL.
 
+A judge may use **Accept exception** on an against-rules photo. This is an explicit waiver for using that photo in the output, not a compliance result: the badge continues to say that the photo is against the rules, all findings remain visible, and the acceptance flag and timestamp are exported.
+
 The historical example intentionally demonstrates discrepancies: it contains 20 en-route photos (over the maximum of 12), several post-control tasks inside 1 NM, unreliable repeated EXIF GPS, no camera heading or AGL, and a 6 mm-equivalent lens. Its GPX-interpolated example coordinates are stored as explicit overrides so the original EXIF remains auditable.
 
 The result is deliberately limited to checks supported by reliable inputs. Every competition photo retains an explicit judge-content review finding for requirements that metadata cannot prove. An “OK for automated checks” result is not approval, certification, or a replacement for a judge. Landing, control-point descriptions, timed-control designation, task correctness/visibility, presentation, GPS logging, chart approval, weather, airspace, and VFR requirements still require manual confirmation.
 
 ## Resource limits and artifact behavior
 
-Photo import is limited to 60 files, 25 MB per file, 250 MB total source data, and 50 megapixels per image. Browser thumbnails are capped at 480 px and handout images at 1,600 px. Preview map assets are capped at 3 MB, while rendered previews are capped at 1,800 px and 3 megapixels with a 15-second deadline. Only one full PDF chart buffer is retained.
+Photo import is limited to 60 files, 25 MB per file, 250 MB total source data, and 50 megapixels per image. Browser thumbnails are capped at 480 px and handout images at 1,600 px. High-resolution map tiles are individually capped at 3 MB; a preview loads at most 128 tiles/40 MB and renders at up to 4,096 px or 12 megapixels with a 30-second deadline. Only intersecting tiles are decoded in four-tile batches, and only one full PDF chart buffer is retained.
 
 Map, overlay, crop, preview, CSV/JSON, and handout results have independent status indicators. Preview and handout failures preserve completed map downloads. Cancelling stops fetch/background stages at the next safe interruption point; long synchronous PDF operations may finish their current step before the browser can process cancellation.
 

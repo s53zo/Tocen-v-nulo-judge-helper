@@ -388,6 +388,8 @@ export class PhotoWorkflow {
       analysis: null,
       taskAnalysis: null,
       findings: [],
+      exceptionAccepted: false,
+      exceptionAcceptedAt: null,
       isExample: Boolean(item),
       fieldErrors: {},
       fieldDrafts: {},
@@ -624,6 +626,16 @@ export class PhotoWorkflow {
     } else if (action === 'down' && index < this.records.length - 1) {
       [this.records[index], this.records[index + 1]] = [this.records[index + 1], this.records[index]];
       this.onMessage(`Moved ${this.records[index + 1].fileName} down.`, 'neutral');
+    } else if (action === 'accept-exception') {
+      const record = this.records[index];
+      record.exceptionAccepted = !record.exceptionAccepted;
+      record.exceptionAcceptedAt = record.exceptionAccepted ? new Date().toISOString() : null;
+      this.onMessage(
+        record.exceptionAccepted
+          ? `Accepted ${record.fileName} as a documented judging exception; its violations remain recorded.`
+          : `Removed the judging exception from ${record.fileName}.`,
+        record.exceptionAccepted ? 'warning' : 'neutral'
+      );
     }
     this.records.forEach((record, order) => {
       record.order = order;
@@ -772,12 +784,36 @@ export class PhotoWorkflow {
       status.className = 'photo-status';
       const hasViolation = record.findings.some((finding) => finding.severity === 'violation');
       const hasWarning = record.findings.some((finding) => finding.severity === 'warning');
-      status.dataset.tone = hasViolation ? 'fail' : hasWarning ? 'review' : 'ok';
+      if (!hasViolation && record.exceptionAccepted) {
+        record.exceptionAccepted = false;
+        record.exceptionAcceptedAt = null;
+      }
+      status.dataset.tone = hasViolation
+        ? record.exceptionAccepted
+          ? 'accepted'
+          : 'fail'
+        : hasWarning
+          ? 'review'
+          : 'ok';
       status.textContent = hasViolation
-        ? 'Against the rules'
+        ? record.exceptionAccepted
+          ? 'Accepted exception · still against the rules'
+          : 'Against the rules'
         : hasWarning
           ? 'Manual review required'
           : 'OK for automated checks';
+      const exceptionButton = document.createElement('button');
+      exceptionButton.type = 'button';
+      exceptionButton.className = 'btn btn-small photo-exception-button';
+      exceptionButton.dataset.action = 'accept-exception';
+      exceptionButton.dataset.photoId = record.id;
+      exceptionButton.textContent = record.exceptionAccepted
+        ? 'Revoke accepted exception'
+        : 'Accept exception';
+      exceptionButton.hidden = !hasViolation;
+      exceptionButton.setAttribute('aria-pressed', String(record.exceptionAccepted));
+      exceptionButton.title =
+        'Keeps all violations in the audit record and accepts this photo for judging output.';
       const grid = document.createElement('div');
       grid.className = 'photo-field-grid';
       const numericInput = (label: string, field: string, value: number | null) =>
@@ -840,15 +876,15 @@ export class PhotoWorkflow {
       issueList.className = 'photo-card-findings';
       for (const finding of record.findings.filter((item) => item.severity !== 'pass')) {
         const item = document.createElement('li');
-        item.textContent = `${finding.rule}: ${finding.measured}; permitted ${finding.permitted}.`;
+        item.textContent = `${finding.rule}: ${finding.measured}; permitted ${finding.permitted}.${record.exceptionAccepted && finding.severity === 'violation' ? ' Accepted as a judge exception; violation retained.' : ''}`;
         issueList.appendChild(item);
       }
       if (record.importError) {
         const error = document.createElement('p');
         error.className = 'danger-text';
         error.textContent = `Metadata error: ${record.importError}`;
-        body.append(heading, status, error, grid, provenance, metrics, issueList);
-      } else body.append(heading, status, grid, provenance, metrics, issueList);
+        body.append(heading, status, exceptionButton, error, grid, provenance, metrics, issueList);
+      } else body.append(heading, status, exceptionButton, grid, provenance, metrics, issueList);
       article.append(image, body);
       fragment.appendChild(article);
     }
@@ -876,7 +912,11 @@ export class PhotoWorkflow {
     const findingFragment = document.createDocumentFragment();
     for (const finding of this.compliance.findings.filter((item) => item.severity !== 'pass')) {
       const item = document.createElement('li');
-      item.textContent = `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.`;
+      const accepted =
+        finding.photoId !== null &&
+        finding.severity === 'violation' &&
+        this.records.some((record) => record.id === finding.photoId && record.exceptionAccepted);
+      item.textContent = `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.${accepted ? ' Accepted as a judge exception; violation retained.' : ''}`;
       findingFragment.appendChild(item);
     }
     this.findings.replaceChildren(findingFragment);

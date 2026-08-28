@@ -96,7 +96,7 @@ async function s(s, c, l, u) {
 				font: f,
 				color: n(.08, .26, .2)
 			});
-			let C = b.findings.some((e) => e.severity === "violation") ? "AGAINST THE RULES" : b.findings.some((e) => e.severity === "warning") ? "MANUAL REVIEW" : "OK";
+			let C = b.findings.some((e) => e.severity === "violation") ? b.exceptionAccepted ? "ACCEPTED EXCEPTION — VIOLATIONS RETAINED" : "AGAINST THE RULES" : b.findings.some((e) => e.severity === "warning") ? "MANUAL REVIEW" : "OK";
 			o(a, f, `${b.identifier || "?"} · ${b.classification}${b.linkedWaypoint ? ` · ${b.linkedWaypoint}` : ""} · ${C} · ${b.fileName}`, 20, y - 13, r[0] - 40, 8, n(.12, .15, .18), 2);
 		}
 		a.drawText(`Page ${d.getPageCount()}`, {
@@ -125,8 +125,8 @@ async function s(s, c, l, u) {
 		}, t = e(), i = r[1] - 94;
 		for (let a of c.findings.filter((e) => e.severity !== "pass")) {
 			i < 58 && (t = e(), i = r[1] - 94);
-			let s = o(t, f, `${a.rule} · ${a.affected}: ${a.measured}; permitted ${a.permitted}.`, 20, i, r[0] - 40, 8, n(.12, .15, .18), 3);
-			i -= Math.max(30, s * 11 + 8);
+			let c = s.some(({ record: e }) => e.id === a.photoId && e.exceptionAccepted && a.severity === "violation"), l = o(t, f, `${a.rule} · ${a.affected}: ${a.measured}; permitted ${a.permitted}.${c ? " ACCEPTED JUDGE EXCEPTION; VIOLATION RETAINED." : ""}`, 20, i, r[0] - 40, 8, n(.12, .15, .18), 3);
+			i -= Math.max(30, l * 11 + 8);
 		}
 	}
 	return d.getPageCount() === 0 && d.addPage(r).drawText("No photos were selected.", {

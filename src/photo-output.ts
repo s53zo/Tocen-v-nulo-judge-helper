@@ -59,6 +59,8 @@ export const PHOTO_ANALYSIS_COLUMNS = [
   'task_route_position',
   'estimated_route_sequence',
   'status',
+  'exception_accepted',
+  'exception_accepted_at',
   'finding_codes',
   'finding_details',
 ] as const;
@@ -130,6 +132,8 @@ export function photoAnalysisRows(photos: PhotoRecord[]): Record<string, unknown
     task_route_position: photo.taskAnalysis?.routePosition,
     estimated_route_sequence: routeSequence.get(photo.id),
     status: photoStatus(photo),
+    exception_accepted: photo.exceptionAccepted,
+    exception_accepted_at: photo.exceptionAcceptedAt,
     finding_codes: photo.findings
       .filter((finding) => finding.severity !== 'pass')
       .map((finding) => finding.code)
@@ -191,7 +195,7 @@ export function photoOverlayKeyCsv(photos: PhotoRecord[]): string {
 
 export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplianceSummary) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: compliance.status,
     counts: {
       photos: photos.length,
@@ -199,6 +203,7 @@ export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplia
       routeTasks: compliance.routeTaskCount,
       violations: compliance.violationCount,
       warnings: compliance.warningCount,
+      acceptedExceptions: photos.filter((photo) => photo.exceptionAccepted).length,
     },
     photos: photos.map((photo) => ({
       id: photo.id,
@@ -215,6 +220,8 @@ export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplia
       cameraAnalysis: photo.analysis,
       taskAnalysis: photo.taskAnalysis,
       status: photoStatus(photo),
+      exceptionAccepted: photo.exceptionAccepted,
+      exceptionAcceptedAt: photo.exceptionAcceptedAt,
       findings: photo.findings,
     })),
     findings: compliance.findings,

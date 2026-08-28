@@ -7,6 +7,14 @@
     "fileName": "00_VFRspredaj_25_SC_WEB_flat.pdf",
     "assetPath": "maps/00_VFRspredaj_25_SC_WEB_flat.pdf",
     "previewAssetPath": "maps/previews/vfr.webp",
+    "previewTiles": {
+      "basePath": "maps/previews/vfr-hq/",
+      "width": 10102,
+      "height": 7002,
+      "tileSize": 1024,
+      "columns": 10,
+      "rows": 7
+    },
     "baseWidth": 2862,
     "baseHeight": 1985,
     "scaleDenominator": 250000,
@@ -24,6 +32,14 @@
     "fileName": "1 200k original karta.pdf",
     "assetPath": "maps/1 200k original karta.pdf",
     "previewAssetPath": "maps/previews/legacy.webp",
+    "previewTiles": {
+      "basePath": "maps/previews/legacy-hq/",
+      "width": 3357,
+      "height": 2374,
+      "tileSize": 1024,
+      "columns": 4,
+      "rows": 3
+    },
     "baseWidth": 1191,
     "baseHeight": 842,
     "scaleDenominator": 200000,
@@ -41,6 +57,14 @@
     "fileName": "P25004BR.pdf",
     "assetPath": "maps/P25004BR.pdf",
     "previewAssetPath": "maps/previews/p250.webp",
+    "previewTiles": {
+      "basePath": "maps/previews/p250-hq/",
+      "width": 11890,
+      "height": 8410,
+      "tileSize": 1024,
+      "columns": 12,
+      "rows": 9
+    },
     "baseWidth": 11890,
     "baseHeight": 8410,
     "scaleDenominator": 250000,

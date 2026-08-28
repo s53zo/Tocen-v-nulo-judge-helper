@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePreviewGeometry, waitForAbortSignal } from '../src/map-preview';
+import { computePreviewGeometry, tilesForGeometry, waitForAbortSignal } from '../src/map-preview';
 
 describe('bounded map preview geometry', () => {
   it('maps a PDF crop into the top-left raster coordinate system', () => {
@@ -37,6 +37,28 @@ describe('bounded map preview geometry', () => {
     expect(() =>
       computePreviewGeometry(2000, 1000, 1000, 500, { minX: -1, minY: 0, maxX: 100, maxY: 100 })
     ).toThrow('within');
+  });
+
+  it('loads only tiles intersecting the high-resolution crop', () => {
+    const geometry = computePreviewGeometry(4096, 3072, 1000, 750, {
+      minX: 250,
+      minY: 250,
+      maxX: 750,
+      maxY: 500,
+    });
+    expect(
+      tilesForGeometry(geometry, {
+        baseUrl: 'https://example.test/tiles/',
+        width: 4096,
+        height: 3072,
+        tileSize: 1024,
+        columns: 4,
+        rows: 3,
+      })
+    ).toEqual([
+      { column: 1, row: 1 },
+      { column: 2, row: 1 },
+    ]);
   });
 
   it('rejects a pending preview stage when it is cancelled', async () => {

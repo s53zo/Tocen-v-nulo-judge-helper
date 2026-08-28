@@ -6,18 +6,19 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "status", "counts", "photos", "findings"],
   "properties": {
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "status": { "enum": ["ok", "against-rules", "manual-review"] },
     "counts": {
       "type": "object",
-      "required": ["photos", "enroutePhotos", "routeTasks", "violations", "warnings"],
+      "required": ["photos", "enroutePhotos", "routeTasks", "violations", "warnings", "acceptedExceptions"],
       "additionalProperties": false,
       "properties": {
         "photos": { "type": "integer", "minimum": 0 },
         "enroutePhotos": { "type": "integer", "minimum": 0 },
         "routeTasks": { "type": "integer", "minimum": 0 },
         "violations": { "type": "integer", "minimum": 0 },
-        "warnings": { "type": "integer", "minimum": 0 }
+        "warnings": { "type": "integer", "minimum": 0 },
+        "acceptedExceptions": { "type": "integer", "minimum": 0 }
       }
     },
     "photos": { "type": "array", "items": { "$ref": "#/$defs/photo" } },
@@ -50,7 +51,7 @@
     },
     "photo": {
       "type": "object",
-      "required": ["id", "order", "identifier", "fileName", "fileSize", "contentHash", "classification", "cameraMetadata", "originalMetadata", "taskPosition", "status", "findings"],
+      "required": ["id", "order", "identifier", "fileName", "fileSize", "contentHash", "classification", "cameraMetadata", "originalMetadata", "taskPosition", "status", "exceptionAccepted", "exceptionAcceptedAt", "findings"],
       "properties": {
         "id": { "type": "string" },
         "order": { "type": "integer", "minimum": 1 },
@@ -73,6 +74,8 @@
         "cameraAnalysis": { "type": ["object", "null"] },
         "taskAnalysis": { "type": ["object", "null"] },
         "status": { "enum": ["ok", "against-rules", "manual-review"] },
+        "exceptionAccepted": { "type": "boolean" },
+        "exceptionAcceptedAt": { "type": ["string", "null"], "format": "date-time" },
         "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
       }
     }

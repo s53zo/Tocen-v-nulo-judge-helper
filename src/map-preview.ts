@@ -1,4 +1,5 @@
 import { choosePreviewScale } from './crop';
+import type { PreviewTileSet } from './maps';
 
 export interface PdfCropBounds {
   minX: number;
@@ -25,7 +26,8 @@ export interface PreviewGeometry {
 }
 
 export interface MapPreviewOptions {
-  imageUrl: string;
+  imageUrl?: string;
+  tileSet?: PreviewTileSet;
   pageWidth: number;
   pageHeight: number;
   crop: PdfCropBounds;
@@ -35,11 +37,15 @@ export interface MapPreviewOptions {
   maximumBytes?: number;
   maximumEdge?: number;
   maximumPixels?: number;
+  maximumTiles?: number;
+  maximumTotalTileBytes?: number;
 }
 
 const DEFAULT_MAXIMUM_BYTES = 3_000_000;
-const DEFAULT_MAXIMUM_EDGE = 1800;
-const DEFAULT_MAXIMUM_PIXELS = 3_000_000;
+const DEFAULT_MAXIMUM_EDGE = 4096;
+const DEFAULT_MAXIMUM_PIXELS = 12_000_000;
+const DEFAULT_MAXIMUM_TILES = 128;
+const DEFAULT_MAXIMUM_TOTAL_TILE_BYTES = 40_000_000;
 
 export function waitForAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
@@ -106,7 +112,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, signal?: AbortSignal): Promise<
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error('Could not encode the map preview.'))),
         'image/jpeg',
-        0.86
+        0.93
       );
     }),
     signal
@@ -117,7 +123,7 @@ async function loadImage(
   url: string,
   signal: AbortSignal | undefined,
   maximumBytes: number
-): Promise<HTMLImageElement> {
+): Promise<{ image: HTMLImageElement; bytes: number }> {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Preview map returned ${response.status}.`);
   const declaredBytes = Number(response.headers.get('content-length'));
@@ -132,9 +138,104 @@ async function loadImage(
     image.decoding = 'async';
     image.src = objectUrl;
     await waitForAbortSignal(image.decode(), signal);
-    return image;
+    return { image, bytes: blob.size };
   } finally {
     URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export interface PreviewTileCoordinate {
+  column: number;
+  row: number;
+}
+
+export function tilesForGeometry(
+  geometry: PreviewGeometry,
+  tileSet: PreviewTileSet
+): PreviewTileCoordinate[] {
+  const firstColumn = Math.max(0, Math.floor(geometry.sourceX / tileSet.tileSize));
+  const lastColumn = Math.min(
+    tileSet.columns - 1,
+    Math.ceil((geometry.sourceX + geometry.sourceWidth) / tileSet.tileSize) - 1
+  );
+  const firstRow = Math.max(0, Math.floor(geometry.sourceY / tileSet.tileSize));
+  const lastRow = Math.min(
+    tileSet.rows - 1,
+    Math.ceil((geometry.sourceY + geometry.sourceHeight) / tileSet.tileSize) - 1
+  );
+  const tiles: PreviewTileCoordinate[] = [];
+  for (let row = firstRow; row <= lastRow; row += 1) {
+    for (let column = firstColumn; column <= lastColumn; column += 1) tiles.push({ column, row });
+  }
+  return tiles;
+}
+
+async function drawTileSet(
+  context: CanvasRenderingContext2D,
+  geometry: PreviewGeometry,
+  tileSet: PreviewTileSet,
+  signal: AbortSignal | undefined,
+  maximumTileBytes: number,
+  maximumTiles: number,
+  maximumTotalBytes: number
+): Promise<void> {
+  const tiles = tilesForGeometry(geometry, tileSet);
+  if (tiles.length > maximumTiles) {
+    throw new Error(`High-resolution preview requires ${tiles.length} tiles; limit is ${maximumTiles}.`);
+  }
+  let totalBytes = 0;
+  const scaleX = geometry.outputWidth / geometry.sourceWidth;
+  const scaleY = geometry.outputHeight / geometry.sourceHeight;
+  for (let batchStart = 0; batchStart < tiles.length; batchStart += 4) {
+    signal?.throwIfAborted();
+    const batch = tiles.slice(batchStart, batchStart + 4);
+    const loaded = await Promise.all(
+      batch.map(async ({ column, row }) => ({
+        column,
+        row,
+        ...(await loadImage(
+          new URL(`${column}-${row}.webp`, tileSet.baseUrl).href,
+          signal,
+          maximumTileBytes
+        )),
+      }))
+    );
+    for (const { column, row, image, bytes } of loaded) {
+      try {
+        totalBytes += bytes;
+        if (totalBytes > maximumTotalBytes) {
+          throw new Error(`High-resolution preview exceeds the ${maximumTotalBytes} byte budget.`);
+        }
+        const tileX = column * tileSet.tileSize;
+        const tileY = row * tileSet.tileSize;
+        const intersectionX = Math.max(tileX, geometry.sourceX);
+        const intersectionY = Math.max(tileY, geometry.sourceY);
+        const intersectionRight = Math.min(
+          tileX + image.naturalWidth,
+          geometry.sourceX + geometry.sourceWidth
+        );
+        const intersectionBottom = Math.min(
+          tileY + image.naturalHeight,
+          geometry.sourceY + geometry.sourceHeight
+        );
+        if (intersectionRight <= intersectionX || intersectionBottom <= intersectionY) continue;
+        const width = intersectionRight - intersectionX;
+        const height = intersectionBottom - intersectionY;
+        context.drawImage(
+          image,
+          intersectionX - tileX,
+          intersectionY - tileY,
+          width,
+          height,
+          (intersectionX - geometry.sourceX) * scaleX,
+          (intersectionY - geometry.sourceY) * scaleY,
+          width * scaleX,
+          height * scaleY
+        );
+      } finally {
+        image.removeAttribute('src');
+      }
+    }
   }
 }
 
@@ -147,11 +248,18 @@ function mapPoint(point: PreviewPoint, crop: PdfCropBounds, geometry: PreviewGeo
 
 export async function renderBoundedMapPreview(options: MapPreviewOptions): Promise<Blob> {
   const maximumBytes = options.maximumBytes ?? DEFAULT_MAXIMUM_BYTES;
-  const image = await loadImage(options.imageUrl, options.signal, maximumBytes);
+  if (!options.tileSet && !options.imageUrl) throw new Error('A preview image or tile set is required.');
+  let fallbackImage: HTMLImageElement | null = null;
+  const imageDimensions = options.tileSet
+    ? [options.tileSet.width, options.tileSet.height]
+    : await loadImage(options.imageUrl as string, options.signal, maximumBytes).then(({ image }) => {
+        fallbackImage = image;
+        return [image.naturalWidth, image.naturalHeight];
+      });
   options.signal?.throwIfAborted();
   const geometry = computePreviewGeometry(
-    image.naturalWidth,
-    image.naturalHeight,
+    imageDimensions[0],
+    imageDimensions[1],
     options.pageWidth,
     options.pageHeight,
     options.crop,
@@ -163,17 +271,32 @@ export async function renderBoundedMapPreview(options: MapPreviewOptions): Promi
   canvas.height = geometry.outputHeight;
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('Canvas rendering is unavailable.');
-  context.drawImage(
-    image,
-    geometry.sourceX,
-    geometry.sourceY,
-    geometry.sourceWidth,
-    geometry.sourceHeight,
-    0,
-    0,
-    geometry.outputWidth,
-    geometry.outputHeight
-  );
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (options.tileSet) {
+    await drawTileSet(
+      context,
+      geometry,
+      options.tileSet,
+      options.signal,
+      maximumBytes,
+      options.maximumTiles ?? DEFAULT_MAXIMUM_TILES,
+      options.maximumTotalTileBytes ?? DEFAULT_MAXIMUM_TOTAL_TILE_BYTES
+    );
+  } else {
+    context.drawImage(
+      fallbackImage as HTMLImageElement,
+      geometry.sourceX,
+      geometry.sourceY,
+      geometry.sourceWidth,
+      geometry.sourceHeight,
+      0,
+      0,
+      geometry.outputWidth,
+      geometry.outputHeight
+    );
+    fallbackImage?.removeAttribute('src');
+  }
 
   if (options.route.length > 1) {
     context.save();

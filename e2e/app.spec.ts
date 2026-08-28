@@ -18,13 +18,22 @@ async function downloadBytes(page, selector: string): Promise<Buffer> {
   return readFile(path as string);
 }
 
+async function expectSummarySchemas(summary): Promise<void> {
+  const [routeSchema, photoSchema] = await Promise.all(
+    ['route-summary.schema.json', 'photo-summary.schema.json'].map(async (name) =>
+      JSON.parse(await readFile(new URL(`../schemas/${name}`, import.meta.url), 'utf8'))
+    )
+  );
+  const ajv = new Ajv2020({ strict: true, formats: { 'date-time': true } });
+  const validateRoute = ajv.compile(routeSchema);
+  const validatePhotos = ajv.compile(photoSchema);
+  expect(validateRoute(summary), JSON.stringify(validateRoute.errors)).toBe(true);
+  expect(validatePhotos(summary.photos), JSON.stringify(validatePhotos.errors)).toBe(true);
+}
+
 async function expectStructuredDownloads(page): Promise<void> {
   const summary = JSON.parse((await downloadBytes(page, '#downloadSummary')).toString());
-  const routeSchema = JSON.parse(
-    await readFile(new URL('../schemas/route-summary.schema.json', import.meta.url), 'utf8')
-  );
-  const validate = new Ajv2020({ strict: true, formats: { 'date-time': true } }).compile(routeSchema);
-  expect(validate(summary), JSON.stringify(validate.errors)).toBe(true);
+  await expectSummarySchemas(summary);
   const header = (await downloadBytes(page, '#downloadPhotoAnalysis')).toString().split(/\r?\n/, 1)[0];
   expect(header).toContain('identifier,file_name,classification');
   expect(header).toContain('task_latitude');
@@ -115,8 +124,10 @@ async function generateAndVerify(page, mapKey: 'vfr' | 'p250', browserName: stri
   await expect(page.locator('[data-artifact="preview"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('#croppedPreviewImage')).toHaveJSProperty('complete', true);
   expect(
-    await page.locator('#croppedPreviewImage').evaluate((image: HTMLImageElement) => image.naturalWidth)
-  ).toBeGreaterThan(0);
+    await page
+      .locator('#croppedPreviewImage')
+      .evaluate((image: HTMLImageElement) => Math.max(image.naturalWidth, image.naturalHeight))
+  ).toBeGreaterThan(1800);
   await expectPdfBlob(page, '#downloadPdf');
   await expectPdfBlob(page, '#downloadOverlay');
   await expectPdfBlob(page, '#downloadCropped');
@@ -168,7 +179,7 @@ test('OSM requires explicit third-party tile consent', async ({ page }) => {
 });
 
 test('preview failure preserves successful map downloads', async ({ page }) => {
-  await page.route('**/maps/previews/*.webp', (route) => route.abort());
+  await page.route('**/maps/previews/**/*.webp', (route) => route.abort());
   await page.goto('/');
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
@@ -284,11 +295,24 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   await page.goto('/');
   await page.locator('#loadPhotoExample').click();
   await expect(page.locator('.photo-card')).toHaveCount(29, { timeout: 120_000 });
+  const exceptionButton = page.locator('.photo-exception-button:visible').first();
+  await expect(exceptionButton).toBeVisible();
+  await exceptionButton.click();
+  await expect(page.locator('.photo-status[data-tone="accepted"]')).toHaveCount(1);
   await page.locator('[data-map-key="p250"]').click();
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 120_000 });
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="preview"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="handout"]')).toHaveAttribute('data-state', 'ok');
+  const summary = JSON.parse((await downloadBytes(page, '#downloadSummary')).toString());
+  await expectSummarySchemas(summary);
+  expect(summary.photos.counts.acceptedExceptions).toBe(1);
+  expect(
+    summary.photos.photos.some(
+      (photo: { exceptionAccepted: boolean; findings: Array<{ severity: string }> }) =>
+        photo.exceptionAccepted && photo.findings.some((finding) => finding.severity === 'violation')
+    )
+  ).toBe(true);
   await expectPdfBlob(page, '#downloadPhotoHandout');
 });

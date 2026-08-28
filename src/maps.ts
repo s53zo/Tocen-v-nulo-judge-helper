@@ -1,5 +1,14 @@
 export type ControlPoint = [name: string, latitude: number, longitude: number, x: number, y: number];
 
+export interface PreviewTileSet {
+  baseUrl: string;
+  width: number;
+  height: number;
+  tileSize: number;
+  columns: number;
+  rows: number;
+}
+
 export interface PdfMapPreset {
   label: string;
   type: 'pdf';
@@ -10,6 +19,7 @@ export interface PdfMapPreset {
   url: string;
   previewAssetPath: string;
   previewUrl: string;
+  previewTiles: PreviewTileSet;
   baseWidth: number;
   baseHeight: number;
   scaleDenominator: number;
@@ -63,7 +73,9 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
       preset.type !== 'pdf' ||
       typeof preset.fileName !== 'string' ||
       typeof preset.assetPath !== 'string' ||
-      typeof preset.previewAssetPath !== 'string'
+      typeof preset.previewAssetPath !== 'string' ||
+      !preset.previewTiles ||
+      typeof preset.previewTiles !== 'object'
     ) {
       throw new Error(`PDF map preset ${id} is incomplete.`);
     }
@@ -75,6 +87,10 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
     if (transform === 'tfw' && (!preset.tfw || typeof preset.tfw !== 'object')) {
       throw new Error(`TFW map preset ${id} is missing its world-file parameters.`);
     }
+    const rawTiles = preset.previewTiles as Record<string, unknown>;
+    if (typeof rawTiles.basePath !== 'string') {
+      throw new Error(`PDF map preset ${id} is missing its high-resolution preview tile path.`);
+    }
     presets[id] = {
       ...(preset as unknown as Omit<PdfMapPreset, 'url'>),
       type: 'pdf',
@@ -84,6 +100,14 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
       scaleDenominator: positiveNumber(preset.scaleDenominator, `${id}.scaleDenominator`),
       url: new URL(preset.assetPath, baseUrl).href,
       previewUrl: new URL(preset.previewAssetPath, baseUrl).href,
+      previewTiles: {
+        baseUrl: new URL(rawTiles.basePath, baseUrl).href,
+        width: positiveNumber(rawTiles.width, `${id}.previewTiles.width`),
+        height: positiveNumber(rawTiles.height, `${id}.previewTiles.height`),
+        tileSize: positiveNumber(rawTiles.tileSize, `${id}.previewTiles.tileSize`),
+        columns: positiveNumber(rawTiles.columns, `${id}.previewTiles.columns`),
+        rows: positiveNumber(rawTiles.rows, `${id}.previewTiles.rows`),
+      },
     };
   }
   if (!presets.vfr) throw new Error('The default VFR map preset is missing.');

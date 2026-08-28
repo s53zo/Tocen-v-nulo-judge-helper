@@ -9,6 +9,7 @@ describe('map preset validation', () => {
     if (presets.vfr.type === 'pdf') {
       expect(presets.vfr.url).toBe('https://example.test/app/maps/00_VFRspredaj_25_SC_WEB_flat.pdf');
       expect(presets.vfr.previewUrl).toBe('https://example.test/app/maps/previews/vfr.webp');
+      expect(presets.vfr.previewTiles.baseUrl).toBe('https://example.test/app/maps/previews/vfr-hq/');
     }
   });
 
@@ -23,6 +24,14 @@ describe('map preset validation', () => {
             fileName: 'map.pdf',
             assetPath: 'map.pdf',
             previewAssetPath: 'map.webp',
+            previewTiles: {
+              basePath: 'tiles/',
+              width: 100,
+              height: 100,
+              tileSize: 50,
+              columns: 2,
+              rows: 2,
+            },
             baseWidth: 100,
             baseHeight: 100,
             scaleDenominator: 250000,

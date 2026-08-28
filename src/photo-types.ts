@@ -91,6 +91,8 @@ export interface PhotoRecord {
   analysis: PhotoRouteAnalysis | null;
   taskAnalysis: PhotoRouteAnalysis | null;
   findings: PhotoFinding[];
+  exceptionAccepted: boolean;
+  exceptionAcceptedAt: string | null;
   isExample: boolean;
   fieldErrors?: Record<string, string>;
   fieldDrafts?: Record<string, string>;

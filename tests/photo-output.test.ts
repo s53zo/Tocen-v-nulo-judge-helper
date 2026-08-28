@@ -48,7 +48,7 @@ describe('photo outputs', () => {
       },
     ] as unknown as PhotoRecord[];
     expect(photoAnalysisCsv(records)).toContain('"one,""two"".jpg"');
-    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(2);
+    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(3);
   });
 
   it('neutralizes spreadsheet formulas while leaving numeric values numeric', () => {
@@ -83,6 +83,35 @@ describe('photo outputs', () => {
     expect(csv).toContain("'+SUM(1,1)");
     expect(csv).toContain("'=HYPERLINK");
     expect(csv).toContain('-46');
+  });
+
+  it('exports accepted exceptions without hiding violations', () => {
+    const record = {
+      id: 'photo-1',
+      order: 0,
+      fileName: 'accepted.jpg',
+      fileSize: 10,
+      contentHash: 'hash',
+      identifier: 'A',
+      classification: 'enroute',
+      linkedWaypoint: null,
+      originalMetadata: {},
+      metadata: {},
+      analysis: null,
+      taskAnalysis: null,
+      taskLatitude: { value: null, source: 'missing' },
+      taskLongitude: { value: null, source: 'missing' },
+      exceptionAccepted: true,
+      exceptionAcceptedAt: '2026-08-28T08:00:00.000Z',
+      findings: [{ severity: 'violation', code: 'test' }],
+    } as unknown as PhotoRecord;
+    const summary = photoSummaryJson([record], { ...compliance, status: 'against-rules', violationCount: 1 });
+    expect(summary.counts.acceptedExceptions).toBe(1);
+    expect(summary.photos[0]).toMatchObject({
+      status: 'against-rules',
+      exceptionAccepted: true,
+    });
+    expect(summary.photos[0].findings).toHaveLength(1);
   });
 
   it('defines transforms for all eight EXIF orientations', () => {

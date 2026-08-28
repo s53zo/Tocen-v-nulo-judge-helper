@@ -130,7 +130,9 @@ export async function buildPhotoHandout(
           color: rgb(0.08, 0.26, 0.2),
         });
         const status = record.findings.some((finding) => finding.severity === 'violation')
-          ? 'AGAINST THE RULES'
+          ? record.exceptionAccepted
+            ? 'ACCEPTED EXCEPTION — VIOLATIONS RETAINED'
+            : 'AGAINST THE RULES'
           : record.findings.some((finding) => finding.severity === 'warning')
             ? 'MANUAL REVIEW'
             : 'OK';
@@ -178,10 +180,14 @@ export async function buildPhotoHandout(
         page = addSummaryPage();
         y = A4[1] - 94;
       }
+      const accepted = photos.some(
+        ({ record }) =>
+          record.id === finding.photoId && record.exceptionAccepted && finding.severity === 'violation'
+      );
       const lines = drawWrapped(
         page,
         font,
-        `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.`,
+        `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.${accepted ? ' ACCEPTED JUDGE EXCEPTION; VIOLATION RETAINED.' : ''}`,
         margin,
         y,
         A4[0] - margin * 2,

@@ -91,6 +91,8 @@ function photo(index: number, overrides: Partial<PhotoRecord> = {}): PhotoRecord
       manuallySelectedLeg: false,
     },
     findings: [],
+    exceptionAccepted: false,
+    exceptionAcceptedAt: null,
     isExample: false,
     ...overrides,
   };

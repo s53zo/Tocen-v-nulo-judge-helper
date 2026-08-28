@@ -26,7 +26,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -41,7 +41,7 @@ const MINUTE_LABEL_OFFSET_MULTIPLIER = 4.0;
 const TP_LABEL_OFFSET_FACTOR = 0.35;
 const DEFAULT_TAKEOFF_TO_SP_MIN = 4.0;
 const MM_TO_PT = 72 / 25.4;
-const PREVIEW_STEP_TIMEOUT_MS = 15000;
+const PREVIEW_STEP_TIMEOUT_MS = 30000;
 const LABEL_COLLISION_MARGIN = 3.0;
 const LABEL_DISTANCE_STEP = 5.0;
 const MAX_LABEL_ADJUST_STEPS = 12;
@@ -580,7 +580,7 @@ async function renderCroppedPreview(options) {
     croppedPreviewLink.href = previewUrl;
     croppedPreviewLink.setAttribute('aria-disabled', 'false');
     croppedPreviewMessage.textContent =
-      'Bounded preview generated from the calibrated low-resolution map. Download the cropped PDF for print detail.';
+      'High-resolution preview generated from native-detail map tiles. The cropped PDF remains the print master.';
     setArtifactState('preview', 'ok', 'ready');
     return true;
   } catch (error) {
@@ -1965,6 +1965,7 @@ async function generate() {
           };
           previewOptions = {
             imageUrl: mapConfig.previewUrl,
+            tileSet: mapConfig.previewTiles,
             pageWidth,
             pageHeight,
             crop: { minX, minY, maxX, maxY },
@@ -2360,11 +2361,12 @@ async function generate() {
         : photoCompliance.status === 'manual-review'
           ? 'manual-review'
           : 'ok';
+    const acceptedExceptionCount = generationPhotos.filter((photo) => photo.exceptionAccepted).length;
     setStatus(
       artifactFailures.length
         ? `Generated with partial failures: ${artifactFailures.join(' | ')}. Completed downloads remain available.`
         : generatedStatus === 'against-rules'
-          ? `Generated: Against the rules · ${compliance.violations.length + photoCompliance.violationCount} automated violation(s). Review the affected route and photo findings.`
+          ? `Generated: Against the rules · ${compliance.violations.length + photoCompliance.violationCount} automated violation(s)${acceptedExceptionCount ? `; ${acceptedExceptionCount} photo exception(s) accepted by the judge` : ''}. Review the retained findings.`
           : generatedStatus === 'manual-review'
             ? `Generated: Manual review required · no automated violation was found, but ${photoCompliance.warningCount} photo/judge review item(s) remain.`
             : 'Generated: OK for automated checks. Complete the listed manual judge checks.',

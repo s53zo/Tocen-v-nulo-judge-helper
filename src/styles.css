@@ -865,6 +865,18 @@ th:not(:first-child) {
   color: #8a1c1c;
 }
 
+.photo-status[data-tone="accepted"] {
+  background: #e8e0f5;
+  color: #56327d;
+}
+
+.photo-exception-button {
+  display: block;
+  margin-top: 0.55rem;
+  border-color: #74519a;
+  color: #56327d;
+}
+
 .photo-findings,
 .photo-card-findings {
   max-height: 180px;
