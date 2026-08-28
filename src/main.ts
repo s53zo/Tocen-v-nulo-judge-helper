@@ -27,7 +27,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -1256,6 +1256,7 @@ async function generate() {
     const handoutOptions = { ...photoWorkflow.handoutOptions };
     const generationPhotos = [...photoWorkflow.records];
     const judgePhotos = generationPhotos.filter(isPhotoAcceptedForJudge);
+    const positionedJudgePhotos = judgePhotos.filter((photo) => photo.analysis !== null);
     const judgePhotoCompliance = evaluatePhotoCompliance(judgePhotos, points);
     controller.signal.throwIfAborted();
     const metersPerMinute = speed.metersPerSecond * 60;
@@ -1770,10 +1771,6 @@ async function generate() {
             -(legEnd[1] - legStart[1]) / legLength,
             (legEnd[0] - legStart[0]) / legLength,
           ];
-          const insideWaypoint = projected.some(
-            ({ pdf: [x, y] }) => Math.hypot(projectedCamera[0] - x, projectedCamera[1] - y) <= ds.tpRadius
-          );
-          if (insideWaypoint) continue;
           const tickStart = [
             projectedCamera[0] - perpendicular[0] * photoTickHalf,
             projectedCamera[1] - perpendicular[1] * photoTickHalf,
@@ -1951,9 +1948,6 @@ async function generate() {
               if (!photo.analysis) return [];
               const [x, y] = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
               if (![x, y].every(Number.isFinite)) return [];
-              if (projected.some(({ pdf }) => Math.hypot(x - pdf[0], y - pdf[1]) <= ds.tpRadius)) {
-                return [];
-              }
               const legStart = projected[photo.analysis.legIndex]?.pdf;
               const legEnd = projected[photo.analysis.legIndex + 1]?.pdf;
               if (!legStart || !legEnd) return [];
@@ -1988,7 +1982,11 @@ async function generate() {
           'judge_solution_map.pdf',
           downloadPdfLink
         );
-        setArtifactState('map', 'ok', `${judgePhotos.length} accepted photo solution(s)`);
+        setArtifactState(
+          'map',
+          'ok',
+          `${judgePhotos.length} accepted photo(s); ${positionedJudgePhotos.length} positioned on map`
+        );
         setDownloadUrl(
           'overlay',
           createPdfObjectUrl(competitorCroppedBytes),
