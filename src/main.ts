@@ -27,7 +27,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -359,6 +359,11 @@ function effectiveTaskCoordinates(photo, points): [number, number] | null {
     ([name]) => name.trim().toUpperCase() === photo.linkedWaypoint.trim().toUpperCase()
   );
   return linked ? [linked[1], linked[2]] : null;
+}
+
+function isRouteControlPhoto(photo): boolean {
+  const waypoint = (photo.linkedWaypoint || photo.identifier).trim().toUpperCase();
+  return waypoint === 'SP' || waypoint === 'FP' || Boolean(waypoint && /^TP\d+$/.test(waypoint));
 }
 
 function textNodeElement(text: string): HTMLElement {
@@ -1725,6 +1730,7 @@ async function generate() {
       const photoTickHalf = Math.max(5, 7 * scaleAvg);
       const photoLineWidth = Math.max(1.2, 2.6 * scaleAvg);
       for (const photo of judgePhotos) {
+        const routeControlPhoto = isRouteControlPhoto(photo);
         const latitude = photo.metadata.latitude.value;
         const longitude = photo.metadata.longitude.value;
         const cameraExact =
@@ -1733,6 +1739,7 @@ async function generate() {
           ? projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude)
           : null;
         if (
+          !routeControlPhoto &&
           photoLayerOptions.connectors &&
           cameraExact &&
           projectedCamera &&
@@ -1779,18 +1786,22 @@ async function generate() {
             projectedCamera[0] + perpendicular[0] * photoTickHalf,
             projectedCamera[1] + perpendicular[1] * photoTickHalf,
           ];
-          solutionTargets.forEach((target) => {
-            target.page.drawLine({
-              start: { x: tickStart[0], y: tickStart[1] },
-              end: { x: tickEnd[0], y: tickEnd[1] },
-              thickness: photoLineWidth,
-              color: photoColor,
+          if (!routeControlPhoto) {
+            solutionTargets.forEach((target) => {
+              target.page.drawLine({
+                start: { x: tickStart[0], y: tickStart[1] },
+                end: { x: tickEnd[0], y: tickEnd[1] },
+                thickness: photoLineWidth,
+                color: photoColor,
+              });
             });
-          });
+          }
           const label = photo.identifier || '?';
           const fontSize = Math.max(5, 12 * scaleAvg);
           const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
-          const labelOffset = photoTickHalf * 4;
+          const labelOffset = routeControlPhoto
+            ? Math.max(photoTickHalf * 4, ds.tpRadius + fontSize)
+            : photoTickHalf * 4;
           const adjusted = adjustLabelPosition(
             projectedCamera[0] + perpendicular[0] * labelOffset,
             projectedCamera[1] + perpendicular[1] * labelOffset,
@@ -1814,6 +1825,7 @@ async function generate() {
           });
         }
         if (
+          !routeControlPhoto &&
           photoLayerOptions.headingArrows &&
           cameraExact &&
           latitude !== null &&
@@ -1960,6 +1972,7 @@ async function generate() {
                   label: photo.identifier || '?',
                   color: '#7331a5',
                   tickVector: [-(legEnd[1] - legStart[1]) / length, (legEnd[0] - legStart[0]) / length],
+                  showTick: !isRouteControlPhoto(photo),
                 },
               ];
             }),
