@@ -2399,16 +2399,16 @@ async function zr() {
 			}
 			let se = s(.45, .12, .66), L = Math.max(5, 7 * S), ce = Math.max(1.2, 2.6 * S);
 			for (let e of T) {
-				let t = e.metadata.latitude.value, n = e.metadata.longitude.value, r = t === null || n === null ? null : C(t, n), i = Jn(e, l), a = i ? C(i[0], i[1]) : null, o = e.taskAnalysis ? C(e.taskAnalysis.closestLatitude, e.taskAnalysis.closestLongitude) : null;
-				if (_.connectors && a && o && Math.hypot(a[0] - o[0], a[1] - o[1]) > 1 && ie.forEach((e) => {
+				let t = e.metadata.latitude.value, n = e.metadata.longitude.value, r = t === null || n === null ? null : C(t, n), i = e.analysis ? C(e.analysis.closestLatitude, e.analysis.closestLongitude) : null;
+				if (_.connectors && r && i && Math.hypot(r[0] - i[0], r[1] - i[1]) > 1 && ie.forEach((e) => {
 					e.page.drawLine({
 						start: {
-							x: a[0],
-							y: a[1]
+							x: r[0],
+							y: r[1]
 						},
 						end: {
-							x: o[0],
-							y: o[1]
+							x: i[0],
+							y: i[1]
 						},
 						thickness: Math.max(.6, S),
 						color: se,
@@ -2424,19 +2424,19 @@ async function zr() {
 						borderColor: s(1, 1, 1),
 						borderWidth: .8
 					});
-				}), _.projectedMarkers && o && e.taskAnalysis) {
-					let t = I[e.taskAnalysis.legIndex]?.pdf, n = I[e.taskAnalysis.legIndex + 1]?.pdf;
+				}), _.projectedMarkers && i && e.analysis) {
+					let t = I[e.analysis.legIndex]?.pdf, n = I[e.analysis.legIndex + 1]?.pdf;
 					if (!t || !n) continue;
 					let r = Math.hypot(n[0] - t[0], n[1] - t[1]);
 					if (r <= 1e-6) continue;
-					let i = [-(n[1] - t[1]) / r, (n[0] - t[0]) / r];
-					if (I.some(({ pdf: [e, t] }) => Math.hypot(o[0] - e, o[1] - t) <= w.tpRadius)) continue;
-					let a = [o[0] - i[0] * L, o[1] - i[1] * L], s = [o[0] + i[0] * L, o[1] + i[1] * L];
+					let a = [-(n[1] - t[1]) / r, (n[0] - t[0]) / r];
+					if (I.some(({ pdf: [e, t] }) => Math.hypot(i[0] - e, i[1] - t) <= w.tpRadius)) continue;
+					let o = [i[0] - a[0] * L, i[1] - a[1] * L], s = [i[0] + a[0] * L, i[1] + a[1] * L];
 					ie.forEach((e) => {
 						e.page.drawLine({
 							start: {
-								x: a[0],
-								y: a[1]
+								x: o[0],
+								y: o[1]
 							},
 							end: {
 								x: s[0],
@@ -2446,7 +2446,7 @@ async function zr() {
 							color: se
 						});
 					});
-					let c = e.identifier || "?", l = Math.max(5, 12 * S), u = D.widthOfTextAtSize(c, l), d = L * 4, f = Rr(o[0] + i[0] * d, o[1] + i[1] * d, i[0], i[1], u, l, 0, P, { allowNegative: !1 });
+					let c = e.identifier || "?", l = Math.max(5, 12 * S), u = D.widthOfTextAtSize(c, l), d = L * 4, f = Rr(i[0] + a[0] * d, i[1] + a[1] * d, a[0], a[1], u, l, 0, P, { allowNegative: !1 });
 					F(f.box), ie.forEach((e) => {
 						e.page.drawText(c, {
 							x: f.x,
@@ -2475,8 +2475,8 @@ async function zr() {
 					});
 				}
 				if (_.includeInCrop) {
-					let e = [o];
-					_.exactDots && e.push(r), _.connectors && e.push(a), e.filter(Boolean).forEach(([e, t]) => {
+					let e = [i];
+					_.exactDots && e.push(r), e.filter(Boolean).forEach(([e, t]) => {
 						N(e - L * 2, t - L * 2), N(e + L * 2, t + L * 2);
 					});
 				}
@@ -2559,10 +2559,10 @@ async function zr() {
 							label: e
 						})),
 						photos: T.flatMap((e) => {
-							if (!e.taskAnalysis) return [];
-							let [t, n] = C(e.taskAnalysis.closestLatitude, e.taskAnalysis.closestLongitude);
+							if (!e.analysis) return [];
+							let [t, n] = C(e.analysis.closestLatitude, e.analysis.closestLongitude);
 							if (![t, n].every(Number.isFinite) || I.some(({ pdf: e }) => Math.hypot(t - e[0], n - e[1]) <= w.tpRadius)) return [];
-							let r = I[e.taskAnalysis.legIndex]?.pdf, i = I[e.taskAnalysis.legIndex + 1]?.pdf;
+							let r = I[e.analysis.legIndex]?.pdf, i = I[e.analysis.legIndex + 1]?.pdf;
 							if (!r || !i) return [];
 							let a = Math.hypot(i[0] - r[0], i[1] - r[1]);
 							return a <= 1e-6 ? [] : [{

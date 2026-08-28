@@ -1728,21 +1728,19 @@ async function generate() {
         const longitude = photo.metadata.longitude.value;
         const cameraExact =
           latitude === null || longitude === null ? null : projectToPdf(latitude, longitude);
-        const taskCoordinates = effectiveTaskCoordinates(photo, points);
-        const taskExact = taskCoordinates ? projectToPdf(taskCoordinates[0], taskCoordinates[1]) : null;
-        const projectedTask = photo.taskAnalysis
-          ? projectToPdf(photo.taskAnalysis.closestLatitude, photo.taskAnalysis.closestLongitude)
+        const projectedCamera = photo.analysis
+          ? projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude)
           : null;
         if (
           photoLayerOptions.connectors &&
-          taskExact &&
-          projectedTask &&
-          Math.hypot(taskExact[0] - projectedTask[0], taskExact[1] - projectedTask[1]) > 1
+          cameraExact &&
+          projectedCamera &&
+          Math.hypot(cameraExact[0] - projectedCamera[0], cameraExact[1] - projectedCamera[1]) > 1
         ) {
           solutionTargets.forEach((target) => {
             target.page.drawLine({
-              start: { x: taskExact[0], y: taskExact[1] },
-              end: { x: projectedTask[0], y: projectedTask[1] },
+              start: { x: cameraExact[0], y: cameraExact[1] },
+              end: { x: projectedCamera[0], y: projectedCamera[1] },
               thickness: Math.max(0.6, scaleAvg),
               color: photoColor,
               opacity: 0.65,
@@ -1762,9 +1760,9 @@ async function generate() {
             });
           });
         }
-        if (photoLayerOptions.projectedMarkers && projectedTask && photo.taskAnalysis) {
-          const legStart = projected[photo.taskAnalysis.legIndex]?.pdf;
-          const legEnd = projected[photo.taskAnalysis.legIndex + 1]?.pdf;
+        if (photoLayerOptions.projectedMarkers && projectedCamera && photo.analysis) {
+          const legStart = projected[photo.analysis.legIndex]?.pdf;
+          const legEnd = projected[photo.analysis.legIndex + 1]?.pdf;
           if (!legStart || !legEnd) continue;
           const legLength = Math.hypot(legEnd[0] - legStart[0], legEnd[1] - legStart[1]);
           if (legLength <= 1e-6) continue;
@@ -1773,16 +1771,16 @@ async function generate() {
             (legEnd[0] - legStart[0]) / legLength,
           ];
           const insideWaypoint = projected.some(
-            ({ pdf: [x, y] }) => Math.hypot(projectedTask[0] - x, projectedTask[1] - y) <= ds.tpRadius
+            ({ pdf: [x, y] }) => Math.hypot(projectedCamera[0] - x, projectedCamera[1] - y) <= ds.tpRadius
           );
           if (insideWaypoint) continue;
           const tickStart = [
-            projectedTask[0] - perpendicular[0] * photoTickHalf,
-            projectedTask[1] - perpendicular[1] * photoTickHalf,
+            projectedCamera[0] - perpendicular[0] * photoTickHalf,
+            projectedCamera[1] - perpendicular[1] * photoTickHalf,
           ];
           const tickEnd = [
-            projectedTask[0] + perpendicular[0] * photoTickHalf,
-            projectedTask[1] + perpendicular[1] * photoTickHalf,
+            projectedCamera[0] + perpendicular[0] * photoTickHalf,
+            projectedCamera[1] + perpendicular[1] * photoTickHalf,
           ];
           solutionTargets.forEach((target) => {
             target.page.drawLine({
@@ -1797,8 +1795,8 @@ async function generate() {
           const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
           const labelOffset = photoTickHalf * 4;
           const adjusted = adjustLabelPosition(
-            projectedTask[0] + perpendicular[0] * labelOffset,
-            projectedTask[1] + perpendicular[1] * labelOffset,
+            projectedCamera[0] + perpendicular[0] * labelOffset,
+            projectedCamera[1] + perpendicular[1] * labelOffset,
             perpendicular[0],
             perpendicular[1],
             width,
@@ -1845,9 +1843,8 @@ async function generate() {
           });
         }
         if (photoLayerOptions.includeInCrop) {
-          const cropPoints = [projectedTask];
+          const cropPoints = [projectedCamera];
           if (photoLayerOptions.exactDots) cropPoints.push(cameraExact);
-          if (photoLayerOptions.connectors) cropPoints.push(taskExact);
           cropPoints.filter(Boolean).forEach(([x, y]) => {
             expandBounds(x - photoTickHalf * 2, y - photoTickHalf * 2);
             expandBounds(x + photoTickHalf * 2, y + photoTickHalf * 2);
@@ -1951,17 +1948,14 @@ async function generate() {
             crop: { minX, minY, maxX, maxY },
             route: projected.map(({ name, pdf: [x, y] }) => ({ x, y, label: name })),
             photos: judgePhotos.flatMap((photo) => {
-              if (!photo.taskAnalysis) return [];
-              const [x, y] = projectToPdf(
-                photo.taskAnalysis.closestLatitude,
-                photo.taskAnalysis.closestLongitude
-              );
+              if (!photo.analysis) return [];
+              const [x, y] = projectToPdf(photo.analysis.closestLatitude, photo.analysis.closestLongitude);
               if (![x, y].every(Number.isFinite)) return [];
               if (projected.some(({ pdf }) => Math.hypot(x - pdf[0], y - pdf[1]) <= ds.tpRadius)) {
                 return [];
               }
-              const legStart = projected[photo.taskAnalysis.legIndex]?.pdf;
-              const legEnd = projected[photo.taskAnalysis.legIndex + 1]?.pdf;
+              const legStart = projected[photo.analysis.legIndex]?.pdf;
+              const legEnd = projected[photo.analysis.legIndex + 1]?.pdf;
               if (!legStart || !legEnd) return [];
               const length = Math.hypot(legEnd[0] - legStart[0], legEnd[1] - legStart[1]);
               if (length <= 1e-6) return [];

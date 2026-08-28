@@ -305,22 +305,6 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   const enrouteId = await enrouteCard.getAttribute('data-photo-id');
   expect(enrouteId).not.toBeNull();
   const liveEnrouteCard = () => page.locator(`.photo-card[data-photo-id="${enrouteId}"]`);
-  const cameraLatitude = await enrouteCard.locator('[data-field="latitude"]').inputValue();
-  const cameraLongitude = await enrouteCard.locator('[data-field="longitude"]').inputValue();
-  await liveEnrouteCard()
-    .locator('[data-field="taskLatitude"]')
-    .evaluate((input: HTMLInputElement, value) => {
-      input.value = value;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    }, cameraLatitude);
-  await expect(liveEnrouteCard().locator('[data-field="taskLatitude"]')).toHaveValue(cameraLatitude);
-  await liveEnrouteCard()
-    .locator('[data-field="taskLongitude"]')
-    .evaluate((input: HTMLInputElement, value) => {
-      input.value = value;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    }, cameraLongitude);
-  await expect(liveEnrouteCard().locator('[data-field="taskLongitude"]')).toHaveValue(cameraLongitude);
   const exceptionButton = liveEnrouteCard().locator('.photo-exception-button:visible');
   await expect(exceptionButton).toBeVisible();
   await exceptionButton.click();
