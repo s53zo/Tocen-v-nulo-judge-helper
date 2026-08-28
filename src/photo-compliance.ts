@@ -3,6 +3,10 @@ import type { PhotoComplianceSummary, PhotoFinding, PhotoRecord } from './photo-
 
 const NM_M = 1852;
 
+export function isPhotoAcceptedForJudge(photo: PhotoRecord): boolean {
+  return photo.exceptionAccepted || !photo.findings.some((finding) => finding.severity === 'violation');
+}
+
 export type WaypointRole = 'start' | 'turning-point' | 'control-point' | 'finish';
 
 export function waypointRole(point: Waypoint, index: number, points: Waypoint[]): WaypointRole {

@@ -155,11 +155,11 @@ FP,46.608093,16.234769</textarea>
             <details class="photo-options">
               <summary>Map layers and handout options</summary>
               <div class="check-grid">
-                <label><input id="photoExactDots" type="checkbox" checked> Exact GPS dots</label>
+                <label><input id="photoExactDots" type="checkbox"> Exact GPS dots</label>
                 <label><input id="photoProjectedMarkers" type="checkbox" checked> Route-projected markers</label>
-                <label><input id="photoHeadingArrows" type="checkbox" checked> Heading arrows</label>
-                <label><input id="photoConnectors" type="checkbox" checked> GPS-to-route connectors</label>
-                <label><input id="photoLegend" type="checkbox" checked> Photo legend</label>
+                <label><input id="photoHeadingArrows" type="checkbox"> Heading arrows</label>
+                <label><input id="photoConnectors" type="checkbox"> GPS-to-route connectors</label>
+                <label><input id="photoLegend" type="checkbox"> Photo legend</label>
                 <label><input id="photoCropBounds" type="checkbox" checked> Include photos in crop bounds</label>
                 <label>Split handout at
                   <select id="handoutSplit">
@@ -212,26 +212,26 @@ FP,46.608093,16.234769</textarea>
             <div class="results-group">
               <h2>Downloads</h2>
               <div class="download-actions" id="outputs" hidden>
-                <a id="downloadPdf" href="#" class="btn btn-ghost">Marked Map (PDF)</a>
-                <a id="downloadOverlay" href="#" class="btn btn-ghost">Overlay Only</a>
-                <a id="downloadCropped" href="#" class="btn btn-ghost">Cropped Map (PDF)</a>
+                <a id="downloadPdf" href="#" class="btn btn-ghost">Judge Solutions (PDF)</a>
+                <a id="downloadOverlay" href="#" class="btn btn-ghost">Competitor Route (PDF)</a>
+                <a id="downloadCropped" href="#" class="btn btn-ghost">Empty Map (PDF)</a>
                 <a id="downloadSummary" href="#" class="btn btn-ghost">Summary (JSON)</a>
                 <a id="downloadPhotoAnalysis" href="#" class="btn btn-ghost">Photo Analysis (CSV)</a>
                 <a id="downloadPhotoKey" href="#" class="btn btn-ghost">Photo Overlay Key (CSV)</a>
-                <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Photo Handout (PDF)</a>
+                <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Judge Photo Handout (PDF)</a>
               </div>
               <ul id="artifactStatuses" class="artifact-statuses" aria-live="polite">
-                <li data-artifact="map">Map: not started</li>
-                <li data-artifact="overlay">Overlay: not started</li>
-                <li data-artifact="crop">Crop: not started</li>
+                <li data-artifact="map">Judge map: not started</li>
+                <li data-artifact="overlay">Competitor route: not started</li>
+                <li data-artifact="crop">Empty map: not started</li>
                 <li data-artifact="preview">Preview: not started</li>
                 <li data-artifact="data">CSV/JSON: not started</li>
-                <li data-artifact="handout">Handout: not started</li>
+                <li data-artifact="handout">Judge photo handout: not started</li>
               </ul>
             </div>
 
             <div class="results-group" id="croppedPreviewContainer" hidden>
-              <h2>Preview</h2>(ctrl/cmd + click to open in new tab)
+              <h2>Judge Solution Preview</h2>(ctrl/cmd + click to open in new tab)
               <a id="croppedPreviewLink" class="preview-image-link" href="#" target="_blank" rel="noopener" aria-disabled="true" aria-label="Open cropped preview in a new tab" title="Open the cropped preview in a new tab">
                 <img id="croppedPreviewImage" class="preview-image" alt="Cropped map preview is being generated" />
               </a>

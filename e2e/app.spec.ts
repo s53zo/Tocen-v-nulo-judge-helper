@@ -295,7 +295,33 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   await page.goto('/');
   await page.locator('#loadPhotoExample').click();
   await expect(page.locator('.photo-card')).toHaveCount(29, { timeout: 120_000 });
-  const exceptionButton = page.locator('.photo-exception-button:visible').first();
+  const enrouteCard = page
+    .locator('.photo-card')
+    .filter({
+      has: page.locator('[data-field="classification"] option:checked', { hasText: 'En-route photo' }),
+    })
+    .first();
+  await expect(enrouteCard).toBeVisible();
+  const enrouteId = await enrouteCard.getAttribute('data-photo-id');
+  expect(enrouteId).not.toBeNull();
+  const liveEnrouteCard = () => page.locator(`.photo-card[data-photo-id="${enrouteId}"]`);
+  const cameraLatitude = await enrouteCard.locator('[data-field="latitude"]').inputValue();
+  const cameraLongitude = await enrouteCard.locator('[data-field="longitude"]').inputValue();
+  await liveEnrouteCard()
+    .locator('[data-field="taskLatitude"]')
+    .evaluate((input: HTMLInputElement, value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, cameraLatitude);
+  await expect(liveEnrouteCard().locator('[data-field="taskLatitude"]')).toHaveValue(cameraLatitude);
+  await liveEnrouteCard()
+    .locator('[data-field="taskLongitude"]')
+    .evaluate((input: HTMLInputElement, value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, cameraLongitude);
+  await expect(liveEnrouteCard().locator('[data-field="taskLongitude"]')).toHaveValue(cameraLongitude);
+  const exceptionButton = liveEnrouteCard().locator('.photo-exception-button:visible');
   await expect(exceptionButton).toBeVisible();
   await exceptionButton.click();
   await expect(page.locator('.photo-status[data-tone="accepted"]')).toHaveCount(1);
@@ -314,5 +340,13 @@ test('full historical example generates all artifacts', async ({ page, browserNa
         photo.exceptionAccepted && photo.findings.some((finding) => finding.severity === 'violation')
     )
   ).toBe(true);
+  const judgeMap = await downloadBytes(page, '#downloadPdf');
+  const competitorMap = await downloadBytes(page, '#downloadOverlay');
+  const emptyMap = await downloadBytes(page, '#downloadCropped');
+  for (const pdf of [judgeMap, competitorMap, emptyMap]) {
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  }
+  expect(judgeMap.equals(competitorMap)).toBe(false);
+  expect(competitorMap.equals(emptyMap)).toBe(false);
   await expectPdfBlob(page, '#downloadPhotoHandout');
 });

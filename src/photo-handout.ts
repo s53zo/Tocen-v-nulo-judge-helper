@@ -72,11 +72,11 @@ export async function buildPhotoHandout(
   const font = await document.embedFont(fontBytes, { subset: true });
   const sections = [
     {
-      title: `Photos before ${options.splitWaypoint}`,
+      title: `Judge solutions before ${options.splitWaypoint}`,
       items: photos.filter(({ record }) => splitIndex(record, options.splitAfterM) === 0),
     },
     {
-      title: `Photos after ${options.splitWaypoint}`,
+      title: `Judge solutions after ${options.splitWaypoint}`,
       items: photos.filter(({ record }) => splitIndex(record, options.splitAfterM) === 1),
     },
   ].filter((section) => section.items.length > 0);
@@ -160,7 +160,7 @@ export async function buildPhotoHandout(
   if (options.includeSummary) {
     const addSummaryPage = () => {
       const page = document.addPage(A4);
-      page.drawText('Photo compliance summary', {
+      page.drawText('Judge photo solution summary', {
         x: margin,
         y: A4[1] - 42,
         size: 18,

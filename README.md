@@ -13,7 +13,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Nautical-mile totals and leg distances alongside metric values
 - Configurable minute markers and overlay styling
 - Calibrated PDF maps plus consent-gated OpenStreetMap
-- Marked, overlay-only, and true-scale cropped PDF downloads (A4 when the footprint fits, custom size otherwise)
+- Three matched true-scale map handouts: judge solutions, competitor route, and an empty base map
 - Native-detail cropped previews assembled from calibrated 1,024 px WebP tiles, never by decoding the whole chart
 - Unicode waypoint labels in generated PDFs
 - Searchable location library
@@ -26,7 +26,7 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Auditable per-photo judge exceptions that retain every original violation in the UI, CSV, JSON, and handout
 - Separate camera and task/object positions, conservative ambiguous-leg handling, and manual leg overrides
 - Per-artifact progress, cancellation, and partial-success handling so an optional handout/preview failure does not discard maps
-- `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, and print-ready `photo_handout.pdf`
+- `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, and an accepted-photo-only judge handout
 - An opt-in 29-photo historical TVN 2025 example recovered from the original workflow
 
 ## Development
@@ -84,6 +84,8 @@ After every successful generation, the app evaluates the calculable requirements
 Every finding records the rule, measured value, permitted value, stable photo ID, and affected photo. Camera GPS is not substituted for task/object coordinates. Unreliable or unavailable task position, GPS, AGL, heading reference, focal length, or false-object coordinates produce `Manual review required`; the app does not guess or silently discard a photo. Magnetic or reference-less headings are not compared automatically with true route bearings. EXIF GPS altitude remains labelled MSL and is never treated as AGL.
 
 A judge may use **Accept exception** on an against-rules photo. This is an explicit waiver for using that photo in the output, not a compliance result: the badge continues to say that the photo is against the rules, all findings remain visible, and the acceptance flag and timestamp are exported.
+
+The judge solution map contains the route plus photos that have no automated violation or have an explicit accepted exception. The competitor map contains the route, hollow circular SP/TP/FP markers, labels, timing, and bearings but no photo answers. The empty map uses the identical crop without any generated markings. Photo answers follow the historical Python convention: a violet tick perpendicular to the assigned route leg with its alphabetical label; classification squares and diamonds are not used.
 
 The historical example intentionally demonstrates discrepancies: it contains 20 en-route photos (over the maximum of 12), several post-control tasks inside 1 NM, unreliable repeated EXIF GPS, no camera heading or AGL, and a 6 mm-equivalent lens. Its GPX-interpolated example coordinates are stored as explicit overrides so the original EXIF remains auditable.
 

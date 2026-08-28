@@ -14,6 +14,7 @@ export interface PreviewPoint {
   label?: string;
   color?: string;
   warning?: boolean;
+  tickVector?: [number, number];
 }
 
 export interface PreviewGeometry {
@@ -335,19 +336,25 @@ export async function renderBoundedMapPreview(options: MapPreviewOptions): Promi
 
   for (const point of options.photos) {
     const [x, y] = mapPoint(point, options.crop, geometry);
-    context.fillStyle = point.color ?? '#7331a5';
-    context.strokeStyle = point.warning ? '#d00000' : '#fff';
-    context.lineWidth = point.warning ? 3 : 2;
+    const rawVector = point.tickVector ?? [0, 1];
+    const vectorLength = Math.hypot(rawVector[0], rawVector[1]) || 1;
+    const tickVector = [rawVector[0] / vectorLength, -rawVector[1] / vectorLength];
+    const tickHalf = Math.max(8, geometry.outputWidth / 180);
+    context.strokeStyle = point.color ?? '#7331a5';
+    context.lineWidth = Math.max(3, geometry.outputWidth / 700);
+    context.lineCap = 'butt';
     context.beginPath();
-    context.arc(x, y, Math.max(5, geometry.outputWidth / 240), 0, Math.PI * 2);
-    context.fill();
+    context.moveTo(x - tickVector[0] * tickHalf, y - tickVector[1] * tickHalf);
+    context.lineTo(x + tickVector[0] * tickHalf, y + tickVector[1] * tickHalf);
     context.stroke();
     if (point.label) {
+      const labelX = x + tickVector[0] * tickHalf * 4;
+      const labelY = y + tickVector[1] * tickHalf * 4;
       context.lineWidth = 3;
       context.strokeStyle = '#fff';
-      context.strokeText(point.label, x + 8, y - 6);
+      context.strokeText(point.label, labelX, labelY);
       context.fillStyle = point.color ?? '#7331a5';
-      context.fillText(point.label, x + 8, y - 6);
+      context.fillText(point.label, labelX, labelY);
     }
   }
 

@@ -17,6 +17,7 @@ import {
 import rawMapPresets from './map-presets.json';
 import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
 import { loadMapPresets } from './maps';
+import { evaluatePhotoCompliance, isPhotoAcceptedForJudge } from './photo-compliance';
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PhotoWorkflow } from './photo-workflow';
@@ -26,7 +27,7 @@ const APP_BASE_URL = new URL('./', document.baseURI);
 const assetUrl = (path) => new URL(path, APP_BASE_URL).href;
 
 const MAP_PRESETS = loadMapPresets(rawMapPresets, APP_BASE_URL);
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const DEFAULT_MAP_KEY = 'vfr';
 let selectedMapKey = DEFAULT_MAP_KEY;
 const ROUTE_WIDTH_SCALE = 2.5;
@@ -123,7 +124,15 @@ function setArtifactState(artifact: string, state: ArtifactState, detail: string
   const item = artifactStatuses.querySelector<HTMLElement>(`[data-artifact="${artifact}"]`);
   if (!item) return;
   item.dataset.state = state;
-  const label = artifact === 'data' ? 'CSV/JSON' : artifact[0].toUpperCase() + artifact.slice(1);
+  const labels: Record<string, string> = {
+    map: 'Judge map',
+    overlay: 'Competitor route',
+    crop: 'Empty map',
+    preview: 'Preview',
+    data: 'CSV/JSON',
+    handout: 'Judge photo handout',
+  };
+  const label = labels[artifact] ?? artifact;
   item.textContent = `${label}: ${detail}`;
 }
 
@@ -576,11 +585,11 @@ async function renderCroppedPreview(options) {
     croppedPreviewImage.src = previewUrl;
     await waitForAbortSignal(croppedPreviewImage.decode(), controller.signal);
     croppedPreviewImage.hidden = false;
-    croppedPreviewImage.alt = 'Preview of the cropped true-scale route map';
+    croppedPreviewImage.alt = 'Preview of the true-scale judge solution map';
     croppedPreviewLink.href = previewUrl;
     croppedPreviewLink.setAttribute('aria-disabled', 'false');
     croppedPreviewMessage.textContent =
-      'High-resolution preview generated from native-detail map tiles. The cropped PDF remains the print master.';
+      'High-resolution judge-solution preview generated from native-detail map tiles. Use the three PDFs for print.';
     setArtifactState('preview', 'ok', 'ready');
     return true;
   } catch (error) {
@@ -1246,6 +1255,8 @@ async function generate() {
     const photoLayerOptions = { ...photoWorkflow.layerOptions };
     const handoutOptions = { ...photoWorkflow.handoutOptions };
     const generationPhotos = [...photoWorkflow.records];
+    const judgePhotos = generationPhotos.filter(isPhotoAcceptedForJudge);
+    const judgePhotoCompliance = evaluatePhotoCompliance(judgePhotos, points);
     controller.signal.throwIfAborted();
     const metersPerMinute = speed.metersPerSecond * 60;
     const waypointTimes = computeWaypointTimes(route, points, takeoffToSp, metersPerMinute);
@@ -1313,6 +1324,7 @@ async function generate() {
         { page: overlayPage, fontBold: overlayFontBold },
         { page, fontBold: baseFontBold },
       ];
+      const solutionTargets = [{ page, fontBold: baseFontBold }];
 
       const colors = { route: rgb(0.82, 0, 0), heading: rgb(1, 0, 0), minute: rgb(0.05, 0.15, 0.4) };
       const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
@@ -1658,230 +1670,8 @@ async function generate() {
         });
       });
 
-      const photoColors = {
-        enroute: rgb(0.45, 0.12, 0.66),
-        'control-correct': rgb(0.05, 0.48, 0.25),
-        'control-false': rgb(0.92, 0.42, 0.04),
-        'sign-task': rgb(0.05, 0.35, 0.72),
-        reference: rgb(0.35, 0.38, 0.4),
-      };
-      const photoMarkerSize = Math.max(5, 7 * scaleAvg);
-      const drawPhotoSymbol = (target, x, y, classification, color, warning) => {
-        const borderColor = warning ? rgb(0.8, 0.02, 0.02) : color;
-        if (classification === 'enroute') {
-          target.page.drawLine({
-            start: { x: x - photoMarkerSize, y },
-            end: { x: x + photoMarkerSize, y },
-            thickness: 2,
-            color: borderColor,
-          });
-          target.page.drawLine({
-            start: { x, y: y - photoMarkerSize },
-            end: { x, y: y + photoMarkerSize },
-            thickness: 2,
-            color: borderColor,
-          });
-        } else if (classification === 'control-correct') {
-          target.page.drawRectangle({
-            x: x - photoMarkerSize,
-            y: y - photoMarkerSize,
-            width: photoMarkerSize * 2,
-            height: photoMarkerSize * 2,
-            borderWidth: warning ? 2.5 : 1.8,
-            borderColor,
-            color: rgb(1, 1, 1),
-            opacity: 0.88,
-          });
-        } else if (classification === 'control-false') {
-          const vertices = [
-            [x, y + photoMarkerSize],
-            [x + photoMarkerSize, y],
-            [x, y - photoMarkerSize],
-            [x - photoMarkerSize, y],
-          ];
-          vertices.forEach((start, index) => {
-            target.page.drawLine({
-              start: { x: start[0], y: start[1] },
-              end: { x: vertices[(index + 1) % 4][0], y: vertices[(index + 1) % 4][1] },
-              thickness: warning ? 2.5 : 1.8,
-              color: borderColor,
-            });
-          });
-        } else if (classification === 'sign-task') {
-          const vertices = [
-            [x, y + photoMarkerSize],
-            [x + photoMarkerSize, y - photoMarkerSize],
-            [x - photoMarkerSize, y - photoMarkerSize],
-          ];
-          vertices.forEach((start, index) => {
-            target.page.drawLine({
-              start: { x: start[0], y: start[1] },
-              end: { x: vertices[(index + 1) % 3][0], y: vertices[(index + 1) % 3][1] },
-              thickness: warning ? 2.5 : 1.8,
-              color: borderColor,
-            });
-          });
-        } else {
-          target.page.drawCircle({
-            x,
-            y,
-            size: photoMarkerSize,
-            borderWidth: warning ? 2.5 : 1.8,
-            borderColor,
-          });
-        }
-      };
-      for (const photo of generationPhotos) {
-        const latitude = photo.metadata.latitude.value;
-        const longitude = photo.metadata.longitude.value;
-        const cameraExact =
-          latitude === null || longitude === null ? null : projectToPdf(latitude, longitude);
-        const taskCoordinates = effectiveTaskCoordinates(photo, points);
-        const taskExact = taskCoordinates ? projectToPdf(taskCoordinates[0], taskCoordinates[1]) : null;
-        const projectedTask = photo.taskAnalysis
-          ? projectToPdf(photo.taskAnalysis.closestLatitude, photo.taskAnalysis.closestLongitude)
-          : null;
-        const color = photoColors[photo.classification];
-        const hasViolation = photo.findings.some((finding) => finding.severity === 'violation');
-        if (
-          photoLayerOptions.connectors &&
-          taskExact &&
-          projectedTask &&
-          Math.hypot(taskExact[0] - projectedTask[0], taskExact[1] - projectedTask[1]) > 1
-        ) {
-          drawTargets.forEach((target) => {
-            target.page.drawLine({
-              start: { x: taskExact[0], y: taskExact[1] },
-              end: { x: projectedTask[0], y: projectedTask[1] },
-              thickness: Math.max(0.6, scaleAvg),
-              color,
-              opacity: 0.65,
-              dashArray: [3, 3],
-            });
-          });
-        }
-        if (photoLayerOptions.exactDots && cameraExact) {
-          drawTargets.forEach((target) => {
-            target.page.drawCircle({
-              x: cameraExact[0],
-              y: cameraExact[1],
-              size: Math.max(2.3, 3 * scaleAvg),
-              color,
-              borderColor: hasViolation ? rgb(0.8, 0.02, 0.02) : rgb(1, 1, 1),
-              borderWidth: 0.8,
-            });
-          });
-        }
-        if (photoLayerOptions.projectedMarkers && taskExact) {
-          drawTargets.forEach((target) => {
-            drawPhotoSymbol(target, taskExact[0], taskExact[1], photo.classification, color, hasViolation);
-          });
-          const label = photo.identifier || '?';
-          const fontSize = Math.max(5, 9 * scaleAvg);
-          const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
-          const adjusted = adjustLabelPosition(
-            taskExact[0] + photoMarkerSize * 1.5,
-            taskExact[1] + photoMarkerSize,
-            1,
-            1,
-            width,
-            fontSize,
-            0,
-            placedLabelBoxes,
-            { allowNegative: false }
-          );
-          registerLabelBox(adjusted.box);
-          drawTargets.forEach((target) => {
-            target.page.drawText(label, {
-              x: adjusted.x,
-              y: adjusted.y,
-              size: fontSize,
-              font: target.fontBold,
-              color,
-            });
-          });
-        }
-        if (
-          photoLayerOptions.headingArrows &&
-          cameraExact &&
-          latitude !== null &&
-          longitude !== null &&
-          photo.metadata.headingDeg.value !== null &&
-          photo.metadata.headingReference.value === 'true' &&
-          photo.metadata.headingReference.reliable
-        ) {
-          const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
-          const distanceM = 300;
-          const headingLat = latitude + ((distanceM * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
-          const headingLon =
-            longitude +
-            ((distanceM * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
-              (180 / Math.PI);
-          const endpoint = projectToPdf(headingLat, headingLon);
-          drawTargets.forEach((target) => {
-            target.page.drawLine({
-              start: { x: cameraExact[0], y: cameraExact[1] },
-              end: { x: endpoint[0], y: endpoint[1] },
-              thickness: Math.max(0.8, 1.2 * scaleAvg),
-              color,
-            });
-          });
-        }
-        if (photoLayerOptions.includeInCrop) {
-          [cameraExact, taskExact, projectedTask].filter(Boolean).forEach(([x, y]) => {
-            expandBounds(x - photoMarkerSize * 2, y - photoMarkerSize * 2);
-            expandBounds(x + photoMarkerSize * 2, y + photoMarkerSize * 2);
-          });
-        }
-      }
-      if (photoLayerOptions.legend && generationPhotos.length > 0) {
-        const legendItems = [
-          ['enroute', 'En-route'],
-          ['control-correct', 'Correct CP'],
-          ['control-false', 'False CP'],
-          ['sign-task', 'Sign task'],
-          ['reference', 'Reference'],
-        ];
-        const lineHeight = 12;
-        const legendWidth = 105;
-        const legendHeight = legendItems.length * lineHeight + 14;
-        const legendLeft = Math.min(Math.max(0, bounds.minX), Math.max(0, pageWidth - legendWidth));
-        const belowRoute = bounds.minY - legendHeight - 6;
-        const legendBottom =
-          belowRoute >= 0
-            ? belowRoute
-            : Math.min(Math.max(0, pageHeight - legendHeight), Math.max(0, bounds.maxY + 6));
-        const legendX = legendLeft + 8;
-        const legendY = legendBottom + 7;
-        drawTargets.forEach((target) => {
-          target.page.drawRectangle({
-            x: legendLeft,
-            y: legendBottom,
-            width: legendWidth,
-            height: legendHeight,
-            color: rgb(1, 1, 1),
-            opacity: 0.88,
-            borderColor: rgb(0.55, 0.58, 0.6),
-            borderWidth: 0.6,
-          });
-          legendItems.forEach(([classification, label], index) => {
-            const y = legendY + (legendItems.length - 1 - index) * lineHeight;
-            drawPhotoSymbol(target, legendX, y + 2, classification, photoColors[classification], false);
-            target.page.drawText(label, {
-              x: legendX + 12,
-              y,
-              size: 7,
-              font: target.fontBold,
-              color: photoColors[classification],
-            });
-          });
-        });
-        if (photoLayerOptions.includeInCrop) {
-          expandBounds(legendLeft, legendBottom);
-          expandBounds(legendLeft + legendWidth, legendBottom + legendHeight);
-        }
-      }
-
+      // Place route headings before judge-only photo labels so both map editions
+      // share identical route geometry while photo labels avoid route text.
       for (let i = 0; i < route.legs.length; i++) {
         const start = projected[i].pdf;
         const end = projected[i + 1].pdf;
@@ -1928,10 +1718,200 @@ async function generate() {
         });
       }
 
-      const overlayOnlyBytes = await overlayDoc.save();
+      // Match the historical Python handout: every accepted photo solution is a
+      // single violet tick perpendicular to its assigned route leg, with a label.
+      const photoColor = rgb(0.45, 0.12, 0.66);
+      const photoTickHalf = Math.max(5, 7 * scaleAvg);
+      const photoLineWidth = Math.max(1.2, 2.6 * scaleAvg);
+      for (const photo of judgePhotos) {
+        const latitude = photo.metadata.latitude.value;
+        const longitude = photo.metadata.longitude.value;
+        const cameraExact =
+          latitude === null || longitude === null ? null : projectToPdf(latitude, longitude);
+        const taskCoordinates = effectiveTaskCoordinates(photo, points);
+        const taskExact = taskCoordinates ? projectToPdf(taskCoordinates[0], taskCoordinates[1]) : null;
+        const projectedTask = photo.taskAnalysis
+          ? projectToPdf(photo.taskAnalysis.closestLatitude, photo.taskAnalysis.closestLongitude)
+          : null;
+        if (
+          photoLayerOptions.connectors &&
+          taskExact &&
+          projectedTask &&
+          Math.hypot(taskExact[0] - projectedTask[0], taskExact[1] - projectedTask[1]) > 1
+        ) {
+          solutionTargets.forEach((target) => {
+            target.page.drawLine({
+              start: { x: taskExact[0], y: taskExact[1] },
+              end: { x: projectedTask[0], y: projectedTask[1] },
+              thickness: Math.max(0.6, scaleAvg),
+              color: photoColor,
+              opacity: 0.65,
+              dashArray: [3, 3],
+            });
+          });
+        }
+        if (photoLayerOptions.exactDots && cameraExact) {
+          solutionTargets.forEach((target) => {
+            target.page.drawCircle({
+              x: cameraExact[0],
+              y: cameraExact[1],
+              size: Math.max(2.3, 3 * scaleAvg),
+              color: photoColor,
+              borderColor: rgb(1, 1, 1),
+              borderWidth: 0.8,
+            });
+          });
+        }
+        if (photoLayerOptions.projectedMarkers && projectedTask && photo.taskAnalysis) {
+          const legStart = projected[photo.taskAnalysis.legIndex]?.pdf;
+          const legEnd = projected[photo.taskAnalysis.legIndex + 1]?.pdf;
+          if (!legStart || !legEnd) continue;
+          const legLength = Math.hypot(legEnd[0] - legStart[0], legEnd[1] - legStart[1]);
+          if (legLength <= 1e-6) continue;
+          const perpendicular = [
+            -(legEnd[1] - legStart[1]) / legLength,
+            (legEnd[0] - legStart[0]) / legLength,
+          ];
+          const insideWaypoint = projected.some(
+            ({ pdf: [x, y] }) => Math.hypot(projectedTask[0] - x, projectedTask[1] - y) <= ds.tpRadius
+          );
+          if (insideWaypoint) continue;
+          const tickStart = [
+            projectedTask[0] - perpendicular[0] * photoTickHalf,
+            projectedTask[1] - perpendicular[1] * photoTickHalf,
+          ];
+          const tickEnd = [
+            projectedTask[0] + perpendicular[0] * photoTickHalf,
+            projectedTask[1] + perpendicular[1] * photoTickHalf,
+          ];
+          solutionTargets.forEach((target) => {
+            target.page.drawLine({
+              start: { x: tickStart[0], y: tickStart[1] },
+              end: { x: tickEnd[0], y: tickEnd[1] },
+              thickness: photoLineWidth,
+              color: photoColor,
+            });
+          });
+          const label = photo.identifier || '?';
+          const fontSize = Math.max(5, 12 * scaleAvg);
+          const width = overlayFontBold.widthOfTextAtSize(label, fontSize);
+          const labelOffset = photoTickHalf * 4;
+          const adjusted = adjustLabelPosition(
+            projectedTask[0] + perpendicular[0] * labelOffset,
+            projectedTask[1] + perpendicular[1] * labelOffset,
+            perpendicular[0],
+            perpendicular[1],
+            width,
+            fontSize,
+            0,
+            placedLabelBoxes,
+            { allowNegative: false }
+          );
+          registerLabelBox(adjusted.box);
+          solutionTargets.forEach((target) => {
+            target.page.drawText(label, {
+              x: adjusted.x,
+              y: adjusted.y,
+              size: fontSize,
+              font: target.fontBold,
+              color: photoColor,
+            });
+          });
+        }
+        if (
+          photoLayerOptions.headingArrows &&
+          cameraExact &&
+          latitude !== null &&
+          longitude !== null &&
+          photo.metadata.headingDeg.value !== null &&
+          photo.metadata.headingReference.value === 'true' &&
+          photo.metadata.headingReference.reliable
+        ) {
+          const radians = (photo.metadata.headingDeg.value * Math.PI) / 180;
+          const distanceM = 300;
+          const headingLat = latitude + ((distanceM * Math.cos(radians)) / 6371008.8) * (180 / Math.PI);
+          const headingLon =
+            longitude +
+            ((distanceM * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
+              (180 / Math.PI);
+          const endpoint = projectToPdf(headingLat, headingLon);
+          solutionTargets.forEach((target) => {
+            target.page.drawLine({
+              start: { x: cameraExact[0], y: cameraExact[1] },
+              end: { x: endpoint[0], y: endpoint[1] },
+              thickness: Math.max(0.8, 1.2 * scaleAvg),
+              color: photoColor,
+            });
+          });
+        }
+        if (photoLayerOptions.includeInCrop) {
+          const cropPoints = [projectedTask];
+          if (photoLayerOptions.exactDots) cropPoints.push(cameraExact);
+          if (photoLayerOptions.connectors) cropPoints.push(taskExact);
+          cropPoints.filter(Boolean).forEach(([x, y]) => {
+            expandBounds(x - photoTickHalf * 2, y - photoTickHalf * 2);
+            expandBounds(x + photoTickHalf * 2, y + photoTickHalf * 2);
+          });
+        }
+      }
+      if (photoLayerOptions.legend && judgePhotos.length > 0) {
+        const legendWidth = 120;
+        const legendHeight = 26;
+        const legendLeft = Math.min(Math.max(0, bounds.minX), Math.max(0, pageWidth - legendWidth));
+        const belowRoute = bounds.minY - legendHeight - 6;
+        const legendBottom =
+          belowRoute >= 0
+            ? belowRoute
+            : Math.min(Math.max(0, pageHeight - legendHeight), Math.max(0, bounds.maxY + 6));
+        const legendX = legendLeft + 8;
+        const legendY = legendBottom + legendHeight / 2;
+        solutionTargets.forEach((target) => {
+          target.page.drawRectangle({
+            x: legendLeft,
+            y: legendBottom,
+            width: legendWidth,
+            height: legendHeight,
+            color: rgb(1, 1, 1),
+            opacity: 0.88,
+            borderColor: rgb(0.55, 0.58, 0.6),
+            borderWidth: 0.6,
+          });
+          target.page.drawLine({
+            start: { x: legendX, y: legendY - 6 },
+            end: { x: legendX, y: legendY + 6 },
+            thickness: 2,
+            color: photoColor,
+          });
+          target.page.drawText('Accepted photo solution', {
+            x: legendX + 10,
+            y: legendY - 3,
+            size: 7,
+            font: target.fontBold,
+            color: photoColor,
+          });
+        });
+        if (photoLayerOptions.includeInCrop) {
+          expandBounds(legendLeft, legendBottom);
+          expandBounds(legendLeft + legendWidth, legendBottom + legendHeight);
+        }
+      }
+
+      const routeOverlayBytes = await overlayDoc.save();
       const markedBytes = await pdfDoc.save();
+      const competitorDoc = await PDFDocument.load(mapBytes);
+      const [competitorPage] = competitorDoc.getPages();
+      const [embeddedRouteOverlay] = await competitorDoc.embedPdf(routeOverlayBytes, [0]);
+      competitorPage.drawPage(embeddedRouteOverlay, {
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+      });
+      const competitorBytes = await competitorDoc.save();
       controller.signal.throwIfAborted();
-      let croppedBytes = null;
+      let judgeCroppedBytes = null;
+      let competitorCroppedBytes = null;
+      let emptyCroppedBytes = null;
       let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
         const m = 10 * MM_TO_PT;
@@ -1948,21 +1928,21 @@ async function generate() {
             210 * MM_TO_PT,
             297 * MM_TO_PT,
           ]);
-          const cropDoc = await PDFDocument.create();
-          const [embedded] = await cropDoc.embedPdf(markedBytes, [0]);
-          const cropPage = cropDoc.addPage([targetPage.width, targetPage.height]);
-          cropPage.drawPage(embedded, {
-            x: -minX + (targetPage.width - contentWidth) / 2,
-            y: -minY + (targetPage.height - contentHeight) / 2,
-          });
-          croppedBytes = await cropDoc.save();
-          const previewPhotoColors = {
-            enroute: '#7331a5',
-            'control-correct': '#0d7a40',
-            'control-false': '#eb6b0a',
-            'sign-task': '#0d59b8',
-            reference: '#596166',
+          const cropPdf = async (sourceBytes) => {
+            const cropDoc = await PDFDocument.create();
+            const [embedded] = await cropDoc.embedPdf(sourceBytes, [0]);
+            const cropPage = cropDoc.addPage([targetPage.width, targetPage.height]);
+            cropPage.drawPage(embedded, {
+              x: -minX + (targetPage.width - contentWidth) / 2,
+              y: -minY + (targetPage.height - contentHeight) / 2,
+            });
+            return cropDoc.save();
           };
+          [judgeCroppedBytes, competitorCroppedBytes, emptyCroppedBytes] = await Promise.all([
+            cropPdf(markedBytes),
+            cropPdf(competitorBytes),
+            cropPdf(mapBytes),
+          ]);
           previewOptions = {
             imageUrl: mapConfig.previewUrl,
             tileSet: mapConfig.previewTiles,
@@ -1970,18 +1950,28 @@ async function generate() {
             pageHeight,
             crop: { minX, minY, maxX, maxY },
             route: projected.map(({ name, pdf: [x, y] }) => ({ x, y, label: name })),
-            photos: generationPhotos.flatMap((photo) => {
-              const task = effectiveTaskCoordinates(photo, points);
-              if (!task) return [];
-              const [x, y] = projectToPdf(task[0], task[1]);
+            photos: judgePhotos.flatMap((photo) => {
+              if (!photo.taskAnalysis) return [];
+              const [x, y] = projectToPdf(
+                photo.taskAnalysis.closestLatitude,
+                photo.taskAnalysis.closestLongitude
+              );
               if (![x, y].every(Number.isFinite)) return [];
+              if (projected.some(({ pdf }) => Math.hypot(x - pdf[0], y - pdf[1]) <= ds.tpRadius)) {
+                return [];
+              }
+              const legStart = projected[photo.taskAnalysis.legIndex]?.pdf;
+              const legEnd = projected[photo.taskAnalysis.legIndex + 1]?.pdf;
+              if (!legStart || !legEnd) return [];
+              const length = Math.hypot(legEnd[0] - legStart[0], legEnd[1] - legStart[1]);
+              if (length <= 1e-6) return [];
               return [
                 {
                   x,
                   y,
                   label: photo.identifier || '?',
-                  color: previewPhotoColors[photo.classification],
-                  warning: photo.findings.some((finding) => finding.severity === 'violation'),
+                  color: '#7331a5',
+                  tickVector: [-(legEnd[1] - legStart[1]) / length, (legEnd[0] - legStart[0]) / length],
                 },
               ];
             }),
@@ -1995,22 +1985,36 @@ async function generate() {
           };
         }
       }
-      setDownloadUrl('pdf', createPdfObjectUrl(markedBytes), 'route_marked.pdf', downloadPdfLink);
-      setArtifactState('map', 'ok', 'marked PDF ready');
-      setDownloadUrl(
-        'overlay',
-        createPdfObjectUrl(overlayOnlyBytes),
-        'route_overlay.pdf',
-        downloadOverlayLink
-      );
-      downloadOverlayLink.style.display = 'inline-flex';
-      setArtifactState('overlay', 'ok', 'overlay PDF ready');
-      if (croppedBytes && previewOptions) {
-        setDownloadUrl('cropped', createPdfObjectUrl(croppedBytes), 'route_cropped.pdf', downloadCroppedLink);
+      if (judgeCroppedBytes && competitorCroppedBytes && emptyCroppedBytes && previewOptions) {
+        downloadPdfLink.textContent = 'Judge Solutions (PDF)';
+        downloadPdfLink.onclick = null;
+        setDownloadUrl(
+          'pdf',
+          createPdfObjectUrl(judgeCroppedBytes),
+          'judge_solution_map.pdf',
+          downloadPdfLink
+        );
+        setArtifactState('map', 'ok', `${judgePhotos.length} accepted photo solution(s)`);
+        setDownloadUrl(
+          'overlay',
+          createPdfObjectUrl(competitorCroppedBytes),
+          'competitor_route_map.pdf',
+          downloadOverlayLink
+        );
+        downloadOverlayLink.style.display = 'inline-flex';
+        setArtifactState('overlay', 'ok', 'route-only PDF ready');
+        setDownloadUrl(
+          'cropped',
+          createPdfObjectUrl(emptyCroppedBytes),
+          'empty_map.pdf',
+          downloadCroppedLink
+        );
         downloadCroppedLink.style.display = 'inline-flex';
-        setArtifactState('crop', 'ok', 'true-scale PDF ready');
+        setArtifactState('crop', 'ok', 'clean base-map PDF ready');
         void renderCroppedPreview(previewOptions);
       } else {
+        setArtifactState('map', 'manual-review', 'no valid crop bounds');
+        setArtifactState('overlay', 'manual-review', 'no valid crop bounds');
         setArtifactState('crop', 'manual-review', 'no valid crop bounds');
         setArtifactState('preview', 'manual-review', 'not available without crop bounds');
       }
@@ -2230,10 +2234,10 @@ async function generate() {
     setArtifactState('handout', 'processing', 'preparing photos');
     try {
       setStatus(
-        `Preparing ${generationPhotos.length} photo${generationPhotos.length === 1 ? '' : 's'} for the handout...`
+        `Preparing ${judgePhotos.length} accepted photo${judgePhotos.length === 1 ? '' : 's'} for the judge handout...`
       );
       const handoutPhotos = [];
-      for (const record of generationPhotos) {
+      for (const record of judgePhotos) {
         controller.signal.throwIfAborted();
         handoutPhotos.push({
           record,
@@ -2249,14 +2253,14 @@ async function generate() {
       const { buildPhotoHandout } = await import('./photo-handout');
       const handoutBytes = await buildPhotoHandout(
         handoutPhotos,
-        photoCompliance,
+        judgePhotoCompliance,
         handoutFontBytes,
         handoutOptions
       );
       setDownloadUrl(
         'photoHandout',
         createPdfObjectUrl(handoutBytes),
-        'photo_handout.pdf',
+        'judge_photo_handout.pdf',
         downloadPhotoHandoutLink
       );
       downloadPhotoHandoutLink.style.display = 'inline-flex';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Waypoint } from '../src/domain';
-import { evaluatePhotoCompliance } from '../src/photo-compliance';
+import { evaluatePhotoCompliance, isPhotoAcceptedForJudge } from '../src/photo-compliance';
 import { missingValue, type PhotoMetadata, type PhotoRecord, sourcedValue } from '../src/photo-types';
 
 const points: Waypoint[] = [
@@ -99,6 +99,18 @@ function photo(index: number, overrides: Partial<PhotoRecord> = {}): PhotoRecord
 }
 
 describe('photo compliance', () => {
+  it('includes compliant photos and documented exceptions in judge solutions', () => {
+    const compliant = photo(1);
+    compliant.findings = [];
+    const rejected = photo(2);
+    rejected.findings = [{ severity: 'violation' } as never];
+    const accepted = photo(3, { exceptionAccepted: true });
+    accepted.findings = [{ severity: 'violation' } as never];
+    expect(isPhotoAcceptedForJudge(compliant)).toBe(true);
+    expect(isPhotoAcceptedForJudge(rejected)).toBe(false);
+    expect(isPhotoAcceptedForJudge(accepted)).toBe(true);
+  });
+
   it('enforces 12 en-route photos and 15 route tasks', () => {
     expect(
       evaluatePhotoCompliance(

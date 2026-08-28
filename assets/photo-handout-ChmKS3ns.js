@@ -47,10 +47,10 @@ async function s(s, c, l, u) {
 	let d = await t.create();
 	d.registerFontkit(e);
 	let f = await d.embedFont(l, { subset: !0 }), p = [{
-		title: `Photos before ${u.splitWaypoint}`,
+		title: `Judge solutions before ${u.splitWaypoint}`,
 		items: s.filter(({ record: e }) => a(e, u.splitAfterM) === 0)
 	}, {
-		title: `Photos after ${u.splitWaypoint}`,
+		title: `Judge solutions after ${u.splitWaypoint}`,
 		items: s.filter(({ record: e }) => a(e, u.splitAfterM) === 1)
 	}].filter((e) => e.items.length > 0), m = (r[1] - 40 - 38 - 14) / 2;
 	for (let e of p) for (let t = 0; t < e.items.length; t += 2) {
@@ -110,7 +110,7 @@ async function s(s, c, l, u) {
 	if (u.includeSummary) {
 		let e = () => {
 			let e = d.addPage(r);
-			return e.drawText("Photo compliance summary", {
+			return e.drawText("Judge photo solution summary", {
 				x: 20,
 				y: r[1] - 42,
 				size: 18,
