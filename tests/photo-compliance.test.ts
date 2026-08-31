@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Waypoint } from '../src/domain';
-import { evaluatePhotoCompliance, isPhotoAcceptedForJudge } from '../src/photo-compliance';
+import {
+  evaluatePhotoCompliance,
+  findingPresentation,
+  isPhotoAcceptedForJudge,
+} from '../src/photo-compliance';
 import { missingValue, type PhotoMetadata, type PhotoRecord, sourcedValue } from '../src/photo-types';
 
 const points: Waypoint[] = [
@@ -111,6 +115,25 @@ describe('photo compliance', () => {
     expect(isPhotoAcceptedForJudge(accepted)).toBe(true);
   });
 
+  it('accepts generated planning imagery under the normal compliance checks', () => {
+    const generated = photo(4, {
+      generatedOrthophoto: {
+        provider: 'GURS',
+        layer: 'DOF025',
+        targetLabel: 'BRIDGE',
+        requestedAt: '2026-08-31T08:00:00.000Z',
+        coverageWidthM: 100,
+        coverageHeightM: 70,
+        modeledAltitudeM: 100,
+        modeledFocalLength35Mm: 60,
+        modeledDepressionDeg: 45,
+        attribution: 'GURS',
+      },
+    });
+    generated.findings = [];
+    expect(isPhotoAcceptedForJudge(generated)).toBe(true);
+  });
+
   it('enforces 12 en-route photos and 15 route tasks', () => {
     expect(
       evaluatePhotoCompliance(
@@ -175,7 +198,7 @@ describe('photo compliance', () => {
     if (!baseAnalysis) throw new Error('Test fixture analysis is missing.');
     const invalid = photo(1, {
       metadata: metadata({ agl: 499, focal: 71, heading: 180 }),
-      analysis: { ...baseAnalysis, lateralDistanceM: 301, headingDifferenceDeg: 90 },
+      analysis: { ...baseAnalysis, lateralDistanceM: 501, headingDifferenceDeg: 90 },
     });
     const result = evaluatePhotoCompliance([invalid], points);
     for (const code of ['route-axis-distance', 'camera-angle', 'capture-altitude', 'focal-length']) {
@@ -185,12 +208,23 @@ describe('photo compliance', () => {
     expect(evaluatePhotoCompliance([unknown], points).status).toBe('manual-review');
   });
 
+  it('retains focal discrepancies as audit evidence without rejecting the photo', () => {
+    const record = photo(1, { metadata: metadata({ agl: 750, focal: 6, heading: 90 }) });
+    const result = evaluatePhotoCompliance([record], points);
+    const focal = result.findings.find((finding) => finding.code === 'focal-length');
+    expect(focal?.severity).toBe('violation');
+    expect(focal && findingPresentation(focal)).toBe('audit');
+    expect(result.violationCount).toBe(0);
+    record.findings = result.findings.filter((finding) => finding.photoId === record.id);
+    expect(isPhotoAcceptedForJudge(record)).toBe(true);
+  });
+
   it('accepts inclusive measurement boundaries', () => {
     const baseAnalysis = photo(1).analysis;
     if (!baseAnalysis) throw new Error('Test fixture analysis is missing.');
     const lowBoundary = photo(1, {
       metadata: metadata({ agl: 500, focal: 50, heading: 135 }),
-      analysis: { ...baseAnalysis, lateralDistanceM: 300, headingDifferenceDeg: 45 },
+      analysis: { ...baseAnalysis, lateralDistanceM: 500, headingDifferenceDeg: 45 },
     });
     const highBoundary = photo(2, { metadata: metadata({ agl: 1000, focal: 70, heading: 90 }) });
     expect(evaluatePhotoCompliance([lowBoundary, highBoundary], points).violationCount).toBe(0);

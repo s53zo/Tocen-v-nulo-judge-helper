@@ -69,6 +69,29 @@ export interface PhotoFinding {
   permitted: string;
 }
 
+export interface GeneratedOrthophotoInfo {
+  provider: 'GURS';
+  layer: 'DOF025';
+  targetLabel: string;
+  requestedAt: string;
+  coverageWidthM: number;
+  coverageHeightM: number;
+  modeledAltitudeM: number;
+  modeledFocalLength35Mm: number;
+  modeledDepressionDeg: number;
+  attribution: string;
+  targetSource?: {
+    provider: 'OpenStreetMap';
+    elementId: string;
+    category: string;
+    featureType: string;
+    name: string | null;
+    score: number;
+    attribution: string;
+    selectionSalt?: string;
+  };
+}
+
 export interface PhotoRecord {
   id: string;
   file: File;
@@ -82,6 +105,8 @@ export interface PhotoRecord {
   metadata: PhotoMetadata;
   classification: PhotoClassification;
   identifier: string;
+  identifierMixSalt?: string;
+  identifierMixAlgorithm?: string;
   linkedWaypoint: string | null;
   taskLatitude: SourcedValue<number>;
   taskLongitude: SourcedValue<number>;
@@ -94,6 +119,7 @@ export interface PhotoRecord {
   exceptionAccepted: boolean;
   exceptionAcceptedAt: string | null;
   isExample: boolean;
+  generatedOrthophoto?: GeneratedOrthophotoInfo;
   fieldErrors?: Record<string, string>;
   fieldDrafts?: Record<string, string>;
 }

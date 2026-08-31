@@ -1,6 +1,13 @@
 import { buildRoute, type Waypoint } from './domain';
+import {
+  GURS_DOF025_ATTRIBUTION,
+  type OrthophotoCaptureModel,
+  type OrthophotoTarget,
+  orthophotoCoverage,
+  orthophotoRequestUrl,
+} from './orthophoto';
 import { analyzePhotoPosition } from './photo-analysis';
-import { evaluatePhotoCompliance } from './photo-compliance';
+import { evaluatePhotoCompliance, findingPresentation, operationalFindingCounts } from './photo-compliance';
 import { preparePhotoJpeg } from './photo-image';
 import {
   applyManualValue,
@@ -17,6 +24,7 @@ import {
   type PhotoComplianceSummary,
   type PhotoMetadata,
   type PhotoRecord,
+  sourcedValue,
 } from './photo-types';
 
 export interface PhotoLayerOptions {
@@ -36,6 +44,10 @@ export interface PhotoHandoutOptions {
 
 interface ImportOverride {
   item?: ExamplePhotoManifestItem;
+  orthophoto?: {
+    target: OrthophotoTarget;
+    model: OrthophotoCaptureModel;
+  };
 }
 
 const CLASS_LABELS: Record<PhotoClassification, string> = {
@@ -45,6 +57,7 @@ const CLASS_LABELS: Record<PhotoClassification, string> = {
   'sign-task': 'Sign task',
   reference: 'Reference only',
 };
+const ORTHOPHOTO_BATCH_TIMEOUT_MS = 120_000;
 
 export const PHOTO_IMPORT_LIMITS = {
   maximumCount: 60,
@@ -53,6 +66,12 @@ export const PHOTO_IMPORT_LIMITS = {
   maximumMegapixels: 50,
   thumbnailEdge: 480,
 } as const;
+
+export interface OrthophotoImportResult {
+  importedTargets: OrthophotoTarget[];
+  failedTargets: Array<{ target: OrthophotoTarget; error: string }>;
+  cancelled: boolean;
+}
 
 function required<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -98,6 +117,60 @@ export function alphabeticIdentifier(index: number): string {
     value = Math.floor(value / 26);
   }
   return result;
+}
+
+export function mixedRouteIndices(count: number, random: () => number = Math.random): number[] {
+  if (!Number.isInteger(count) || count < 0) throw new Error('Photo count must be a non-negative integer.');
+  const indices = Array.from({ length: count }, (_, index) => index);
+  for (let index = indices.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(random() * (index + 1));
+    [indices[index], indices[target]] = [indices[target], indices[index]];
+  }
+  const revealsForwardOrder = indices.every((value, index) => value === index);
+  const revealsReverseOrder = indices.every((value, index) => value === count - index - 1);
+  if (count === 2 && revealsForwardOrder) return [1, 0];
+  if (count >= 3 && (revealsForwardOrder || revealsReverseOrder)) {
+    const offset = Math.ceil(count / 2);
+    return indices.map((_, index) => (index + offset) % count);
+  }
+  return indices;
+}
+
+export function createIdentifierMixRandom(salt: string): () => number {
+  let seed = 0x811c9dc5;
+  for (const character of salt) {
+    seed ^= character.charCodeAt(0);
+    seed = Math.imul(seed, 0x01000193);
+  }
+  return () => {
+    seed += 0x6d2b79f5;
+    let value = seed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function identifierMixSalt(): string {
+  return Array.from(crypto.getRandomValues(new Uint32Array(2)), (value) =>
+    value.toString(16).padStart(8, '0')
+  ).join('');
+}
+
+function routePosition(photo: PhotoRecord): number | null {
+  return photo.taskAnalysis?.alongRouteM ?? photo.analysis?.alongRouteM ?? null;
+}
+
+export function lettersRevealRouteOrder(photos: PhotoRecord[]): boolean {
+  if (photos.length < 2) return false;
+  const routeOrdered = [...photos].sort(
+    (left, right) => (routePosition(left) ?? 0) - (routePosition(right) ?? 0)
+  );
+  return routeOrdered.every(
+    (photo, index) =>
+      index === 0 ||
+      photo.identifier.localeCompare(routeOrdered[index - 1].identifier, 'en', { sensitivity: 'base' }) > 0
+  );
 }
 
 function emptyMetadata(note: string): PhotoMetadata {
@@ -157,13 +230,170 @@ export function applyPhotoClassification(
   return { ...record, classification, linkedWaypoint };
 }
 
-function imageDimensions(url: string): Promise<[number, number]> {
+export function jpegDimensions(buffer: ArrayBuffer): [number, number] | null {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const startOfFrameMarkers = new Set([
+    0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+  ]);
+  let offset = 2;
+  while (offset + 3 < bytes.length) {
+    while (offset < bytes.length && bytes[offset] !== 0xff) offset += 1;
+    while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+    if (offset >= bytes.length) break;
+    const marker = bytes[offset];
+    offset += 1;
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 1 >= bytes.length) break;
+    const length = (bytes[offset] << 8) | bytes[offset + 1];
+    if (length < 2 || offset + length > bytes.length) break;
+    if (startOfFrameMarkers.has(marker) && length >= 7) {
+      const height = (bytes[offset + 3] << 8) | bytes[offset + 4];
+      const width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+      return width > 0 && height > 0 ? [width, height] : null;
+    }
+    offset += length;
+  }
+  return null;
+}
+
+function abortMessage(signal: AbortSignal): Error {
+  return new Error(signal.reason instanceof Error ? signal.reason.message : 'Operation cancelled.');
+}
+
+function withAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(abortMessage(signal));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortMessage(signal));
+    signal.addEventListener('abort', abort, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+function imageDimensions(url: string, signal?: AbortSignal): Promise<[number, number]> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve([image.naturalWidth, image.naturalHeight]);
-    image.onerror = () => reject(new Error('The JPEG could not be decoded.'));
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const abort = () => {
+      image.src = '';
+      cleanup();
+      reject(signal ? abortMessage(signal) : new Error('Operation cancelled.'));
+    };
+    image.onload = () => {
+      cleanup();
+      resolve([image.naturalWidth, image.naturalHeight]);
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error('The JPEG could not be decoded.'));
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) return abort();
     image.src = url;
   });
+}
+
+async function imageDetailMetrics(
+  blob: Blob,
+  signal?: AbortSignal
+): Promise<{ standardDeviation: number; edgeMean: number }> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      const cleanup = () => signal?.removeEventListener('abort', abort);
+      const abort = () => {
+        element.src = '';
+        cleanup();
+        reject(signal ? abortMessage(signal) : new Error('Operation cancelled.'));
+      };
+      element.onload = () => {
+        cleanup();
+        resolve(element);
+      };
+      element.onerror = () => {
+        cleanup();
+        reject(new Error('The DOF025 crop could not be decoded.'));
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) return abort();
+      element.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('The browser could not inspect the DOF025 crop.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const grayscale = new Float32Array(canvas.width * canvas.height);
+    let sum = 0;
+    for (let index = 0; index < grayscale.length; index += 1) {
+      const offset = index * 4;
+      const value = pixels[offset] * 0.299 + pixels[offset + 1] * 0.587 + pixels[offset + 2] * 0.114;
+      grayscale[index] = value;
+      sum += value;
+    }
+    const mean = sum / grayscale.length;
+    let squaredDifference = 0;
+    let edgeSum = 0;
+    let edgeCount = 0;
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const index = y * canvas.width + x;
+        squaredDifference += (grayscale[index] - mean) ** 2;
+        if (x > 0) {
+          edgeSum += Math.abs(grayscale[index] - grayscale[index - 1]);
+          edgeCount += 1;
+        }
+        if (y > 0) {
+          edgeSum += Math.abs(grayscale[index] - grayscale[index - canvas.width]);
+          edgeCount += 1;
+        }
+      }
+    }
+    return {
+      standardDeviation: Math.sqrt(squaredDifference / grayscale.length),
+      edgeMean: edgeCount ? edgeSum / edgeCount : 0,
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function boundedResponseBlob(
+  response: Response,
+  maximumBytes: number,
+  signal: AbortSignal
+): Promise<Blob> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    throw new Error(`GURS WMS response exceeds the ${Math.round(maximumBytes / 1024 / 1024)} MB limit.`);
+  }
+  if (!response.body) {
+    const blob = await response.blob();
+    if (blob.size > maximumBytes) throw new Error('GURS WMS response exceeds the image byte limit.');
+    return blob;
+  }
+  const reader = response.body.getReader();
+  const chunks: ArrayBuffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      if (signal.aborted) throw abortMessage(signal);
+      const { done, value } = await withAbort(reader.read(), signal);
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumBytes) throw new Error('GURS WMS response exceeds the image byte limit.');
+      chunks.push(value.slice().buffer);
+    }
+  } finally {
+    if (signal.aborted || total > maximumBytes) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+  return new Blob(chunks, { type: response.headers.get('content-type') ?? '' });
 }
 
 function input(
@@ -228,13 +458,19 @@ export class PhotoWorkflow {
   private readonly empty = required<HTMLElement>('photoEmpty');
   private readonly progress = required<HTMLProgressElement>('photoProgress');
   private readonly progressText = required<HTMLElement>('photoProgressText');
+  private readonly cancelImportButton = required<HTMLButtonElement>('cancelPhotoImport');
   private readonly input = required<HTMLInputElement>('photoFiles');
   private readonly drop = required<HTMLElement>('photoDropzone');
   private readonly status = required<HTMLElement>('photoComplianceStatus');
   private readonly findings = required<HTMLElement>('photoFindings');
+  private readonly auditDetails = required<HTMLDetailsElement>('photoAuditDetails');
+  private readonly auditSummary = required<HTMLElement>('photoAuditSummary');
+  private readonly auditFindings = required<HTMLElement>('photoAuditFindings');
   private readonly loadExampleButton = required<HTMLButtonElement>('loadPhotoExample');
+  private readonly mixLettersButton = required<HTMLButtonElement>('mixPhotoLetters');
   private importing = false;
   private externallyBusy = false;
+  private activeImportController: AbortController | null = null;
 
   get isBusy(): boolean {
     return this.importing || this.externallyBusy;
@@ -244,6 +480,7 @@ export class PhotoWorkflow {
     this.externallyBusy = busy;
     this.input.disabled = busy || this.importing;
     this.loadExampleButton.disabled = busy || this.importing;
+    this.mixLettersButton.disabled = busy || this.importing;
     this.drop.setAttribute('aria-disabled', String(busy));
     if (busy) {
       this.list
@@ -259,6 +496,9 @@ export class PhotoWorkflow {
   constructor(
     private readonly onMessage: (message: string, tone?: 'neutral' | 'success' | 'warning' | 'error') => void
   ) {
+    this.cancelImportButton.addEventListener('click', () => {
+      this.activeImportController?.abort(new Error('Photo import cancelled by the user.'));
+    });
     this.input.addEventListener('change', () => void this.importFiles(Array.from(this.input.files ?? [])));
     this.drop.addEventListener('dragover', (event) => {
       event.preventDefault();
@@ -273,6 +513,8 @@ export class PhotoWorkflow {
     this.list.addEventListener('click', (event) => this.handleClick(event));
     this.list.addEventListener('change', (event) => this.handleChange(event));
     this.loadExampleButton.addEventListener('click', () => void this.loadExample());
+    this.mixLettersButton.addEventListener('click', () => this.mixEnrouteIdentifiers());
+    required<HTMLSelectElement>('handoutSplit').addEventListener('change', () => this.analyze(this.route));
     this.render();
   }
 
@@ -302,10 +544,68 @@ export class PhotoWorkflow {
     };
   }
 
+  private mixEnrouteIdentifiers(announce = true): boolean {
+    const enroute = this.records.filter((record) => record.classification === 'enroute');
+    if (enroute.length === 0) {
+      if (announce) this.onMessage('There are no en-route photos to mix.', 'warning');
+      return false;
+    }
+    if (enroute.length > 26) {
+      if (announce) this.onMessage('A maximum of 26 unique single-letter identifiers can be mixed.', 'error');
+      return false;
+    }
+    const splitAfterM = this.handoutOptions.splitAfterM;
+    if (splitAfterM === null || enroute.some((record) => routePosition(record) === null)) {
+      if (announce) {
+        this.onMessage(
+          'Choose a valid internal split and provide reliable route positions before mixing letters.',
+          'warning'
+        );
+      }
+      return false;
+    }
+    const routeOrdered = [...enroute].sort(
+      (left, right) => (routePosition(left) ?? 0) - (routePosition(right) ?? 0)
+    );
+    const groups = [
+      routeOrdered.filter((record) => (routePosition(record) ?? 0) <= splitAfterM),
+      routeOrdered.filter((record) => (routePosition(record) ?? 0) > splitAfterM),
+    ];
+    if (groups.some((group) => group.length === 0)) {
+      if (announce)
+        this.onMessage('The selected split must leave en-route photos in both route parts.', 'warning');
+      return false;
+    }
+    const mixSalt = identifierMixSalt();
+    const random = createIdentifierMixRandom(mixSalt);
+    let letterOffset = 0;
+    for (const group of groups) {
+      const mixedIndices = mixedRouteIndices(group.length, random);
+      mixedIndices.forEach((recordIndex, letterIndex) => {
+        const record = group[recordIndex];
+        record.identifier = alphabeticIdentifier(letterOffset + letterIndex);
+        record.identifierMixSalt = mixSalt;
+        record.identifierMixAlgorithm = 'fnv1a-mulberry32-fisher-yates-v1';
+        delete record.fieldErrors?.identifier;
+        delete record.fieldDrafts?.identifier;
+      });
+      letterOffset += group.length;
+    }
+    this.analyze(this.route);
+    if (announce) {
+      this.onMessage(
+        `Mixed ${enroute.length} en-route photo letters independently before and after ${this.handoutOptions.splitWaypoint}.`,
+        'success'
+      );
+    }
+    return true;
+  }
+
   private async importOne(
     file: File,
     override: ImportOverride = {},
-    existingRecords = this.records
+    existingRecords = this.records,
+    signal?: AbortSignal
   ): Promise<PhotoRecord | null> {
     if (!/^image\/jpeg$/i.test(file.type) && !/\.jpe?g$/i.test(file.name)) {
       this.onMessage(`Skipped ${file.name}: only JPEG photos are supported.`, 'warning');
@@ -317,6 +617,14 @@ export class PhotoWorkflow {
       );
     }
     const buffer = await file.arrayBuffer();
+    if (signal?.aborted) throw abortMessage(signal);
+    const encodedDimensions = jpegDimensions(buffer);
+    if (
+      encodedDimensions &&
+      (encodedDimensions[0] * encodedDimensions[1]) / 1_000_000 > PHOTO_IMPORT_LIMITS.maximumMegapixels
+    ) {
+      throw new Error(`${file.name} exceeds the ${PHOTO_IMPORT_LIMITS.maximumMegapixels} megapixel limit.`);
+    }
     const hash = await hashArrayBufferSha256(buffer);
     if (isDuplicatePhoto(file, hash, existingRecords)) {
       this.onMessage(`Skipped duplicate photo: ${file.name}.`, 'warning');
@@ -330,19 +638,20 @@ export class PhotoWorkflow {
     try {
       const sourceUrl = URL.createObjectURL(file);
       try {
-        [width, height] = await imageDimensions(sourceUrl);
+        [width, height] = await imageDimensions(sourceUrl, signal);
       } finally {
         URL.revokeObjectURL(sourceUrl);
       }
       if ((width * height) / 1_000_000 > PHOTO_IMPORT_LIMITS.maximumMegapixels) {
         throw new Error(`${file.name} exceeds the ${PHOTO_IMPORT_LIMITS.maximumMegapixels} megapixel limit.`);
       }
-      metadata = await extractPhotoMetadata(file, buffer);
-      const thumbnail = await preparePhotoJpeg(
-        file,
-        metadata.orientation.value ?? 1,
-        PHOTO_IMPORT_LIMITS.thumbnailEdge
+      metadata = await withAbort(extractPhotoMetadata(file, buffer), signal);
+      if (signal?.aborted) throw abortMessage(signal);
+      const thumbnail = await withAbort(
+        preparePhotoJpeg(file, metadata.orientation.value ?? 1, PHOTO_IMPORT_LIMITS.thumbnailEdge),
+        signal
       );
+      if (signal?.aborted) throw abortMessage(signal);
       previewUrl = URL.createObjectURL(new Blob([Uint8Array.from(thumbnail).buffer], { type: 'image/jpeg' }));
     } catch (error) {
       importError = error instanceof Error ? error.message : String(error);
@@ -366,6 +675,21 @@ export class PhotoWorkflow {
         note: 'Interpolated from the original example GPX track.',
       };
     }
+    const orthophoto = override.orthophoto;
+    if (orthophoto) {
+      const sourceNote = 'Centre of the requested GURS DOF025 crop; not camera EXIF.';
+      metadata.latitude = sourcedValue(orthophoto.target.latitude, 'manual', true, sourceNote);
+      metadata.longitude = sourcedValue(orthophoto.target.longitude, 'manual', true, sourceNote);
+      metadata.focalLength35Mm = sourcedValue(
+        orthophoto.model.focalLength35Mm,
+        'manual',
+        true,
+        'Synthetic coverage model, not camera EXIF.'
+      );
+      metadata.cameraMake = sourcedValue('GURS', 'manual', true);
+      metadata.cameraModel = sourcedValue('DOF025 orthophoto', 'manual', true);
+    }
+    const coverage = orthophoto ? orthophotoCoverage(orthophoto.model) : null;
     return {
       id: randomId(),
       file,
@@ -377,11 +701,15 @@ export class PhotoWorkflow {
       height,
       originalMetadata,
       metadata,
-      classification: item?.classification ?? inferred.classification,
+      classification: orthophoto ? 'enroute' : (item?.classification ?? inferred.classification),
       identifier: item?.identifier ?? alphabeticIdentifier(existingRecords.length),
       linkedWaypoint: item?.linkedWaypoint ?? inferred.linkedWaypoint,
-      taskLatitude: missingValue('Task/object latitude has not been supplied.'),
-      taskLongitude: missingValue('Task/object longitude has not been supplied.'),
+      taskLatitude: orthophoto
+        ? sourcedValue(orthophoto.target.latitude, 'manual', true, 'Centre of the DOF025 crop.')
+        : missingValue('Task/object latitude has not been supplied.'),
+      taskLongitude: orthophoto
+        ? sourcedValue(orthophoto.target.longitude, 'manual', true, 'Centre of the DOF025 crop.')
+        : missingValue('Task/object longitude has not been supplied.'),
       manualLegIndex: null,
       order: existingRecords.length,
       importError,
@@ -391,9 +719,164 @@ export class PhotoWorkflow {
       exceptionAccepted: false,
       exceptionAcceptedAt: null,
       isExample: Boolean(item),
+      ...(orthophoto && coverage
+        ? {
+            generatedOrthophoto: {
+              provider: 'GURS' as const,
+              layer: 'DOF025' as const,
+              targetLabel: orthophoto.target.label,
+              requestedAt: new Date().toISOString(),
+              coverageWidthM: coverage.widthM,
+              coverageHeightM: coverage.heightM,
+              modeledAltitudeM: orthophoto.model.altitudeM,
+              modeledFocalLength35Mm: orthophoto.model.focalLength35Mm,
+              modeledDepressionDeg: orthophoto.model.depressionDeg,
+              attribution: GURS_DOF025_ATTRIBUTION,
+              ...(orthophoto.target.source ? { targetSource: orthophoto.target.source } : {}),
+            },
+          }
+        : {}),
       fieldErrors: {},
       fieldDrafts: {},
     };
+  }
+
+  async importOrthophotoTargets(
+    targets: OrthophotoTarget[],
+    model: OrthophotoCaptureModel
+  ): Promise<OrthophotoImportResult> {
+    const emptyResult = (): OrthophotoImportResult => ({
+      importedTargets: [],
+      failedTargets: [],
+      cancelled: false,
+    });
+    if (targets.length === 0) return emptyResult();
+    if (this.isBusy) {
+      this.onMessage('Another photo operation is already in progress.', 'warning');
+      return emptyResult();
+    }
+    if (this.records.length + targets.length > PHOTO_IMPORT_LIMITS.maximumCount) {
+      this.onMessage(`Error: a maximum of ${PHOTO_IMPORT_LIMITS.maximumCount} photos is allowed.`, 'error');
+      return emptyResult();
+    }
+    const coverage = orthophotoCoverage(model);
+    const batchController = new AbortController();
+    const batchTimeout = window.setTimeout(
+      () => batchController.abort(new Error('DOF025 batch exceeded two minutes.')),
+      ORTHOPHOTO_BATCH_TIMEOUT_MS
+    );
+    this.activeImportController = batchController;
+    this.setImporting(true);
+    this.progress.hidden = false;
+    this.progress.max = targets.length;
+    this.progress.value = 0;
+    const importedTargets: OrthophotoTarget[] = [];
+    const failedTargets: Array<{ target: OrthophotoTarget; error: string }> = [];
+    let cancelled = false;
+    let importedBytes = this.records.reduce((total, record) => total + record.fileSize, 0);
+    try {
+      for (const [index, target] of targets.entries()) {
+        if (batchController.signal.aborted) {
+          cancelled = true;
+          break;
+        }
+        this.progressText.textContent = `Requesting DOF025 crop ${index + 1} of ${targets.length}: ${target.label}`;
+        const itemController = new AbortController();
+        const abortItem = () => itemController.abort(batchController.signal.reason);
+        batchController.signal.addEventListener('abort', abortItem, { once: true });
+        const timeout = window.setTimeout(
+          () => itemController.abort(new Error('DOF025 import timed out after 30 seconds.')),
+          30_000
+        );
+        try {
+          const response = await fetch(orthophotoRequestUrl(target.latitude, target.longitude, coverage), {
+            signal: itemController.signal,
+          });
+          if (!response.ok) throw new Error(`GURS WMS returned HTTP ${response.status}`);
+          const remainingBytes = PHOTO_IMPORT_LIMITS.maximumTotalBytes - importedBytes;
+          if (remainingBytes <= 0) throw new Error('The total photo byte limit has been reached.');
+          const blob = await boundedResponseBlob(
+            response,
+            Math.min(PHOTO_IMPORT_LIMITS.maximumFileBytes, remainingBytes),
+            itemController.signal
+          );
+          if (!/^image\/jpeg(?:;|$)/i.test(blob.type)) {
+            throw new Error(`GURS WMS returned ${blob.type || 'an unknown content type'} instead of JPEG`);
+          }
+          const signature = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+          if (signature[0] !== 0xff || signature[1] !== 0xd8) {
+            throw new Error('GURS WMS response does not contain JPEG bytes.');
+          }
+          const detail = await imageDetailMetrics(blob, itemController.signal);
+          if (detail.standardDeviation < 4 && detail.edgeMean < 2) {
+            throw new Error('DOF025 crop is nearly uniform and has too little visible detail.');
+          }
+          const safeLabel = target.label.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40) || 'TARGET';
+          const file = new File(
+            [blob],
+            `DOF025_${safeLabel}_${target.latitude.toFixed(6)}_${target.longitude.toFixed(6)}.jpg`,
+            { type: 'image/jpeg' }
+          );
+          const record = await this.importOne(
+            file,
+            { orthophoto: { target, model } },
+            this.records,
+            itemController.signal
+          );
+          if (record) {
+            this.records.push(record);
+            importedTargets.push(target);
+            importedBytes += file.size;
+          } else {
+            throw new Error('The crop was not imported, usually because it duplicates an existing photo.');
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (batchController.signal.aborted) {
+            failedTargets.push({ target, error: message });
+            cancelled = true;
+            break;
+          }
+          failedTargets.push({ target, error: message });
+        } finally {
+          window.clearTimeout(timeout);
+          batchController.signal.removeEventListener('abort', abortItem);
+        }
+        this.progress.value = index + 1;
+      }
+      if (cancelled) {
+        const accounted = new Set([
+          ...importedTargets.map((target) => target.label),
+          ...failedTargets.map(({ target }) => target.label),
+        ]);
+        for (const target of targets) {
+          if (!accounted.has(target.label)) {
+            failedTargets.push({ target, error: 'Import cancelled before this crop was requested.' });
+          }
+        }
+      }
+      this.records.forEach((record, index) => {
+        record.order = index;
+      });
+      this.analyze(this.route);
+      this.mixEnrouteIdentifiers(false);
+      const errors = failedTargets.map(({ target, error }) => `${target.label}: ${error}`);
+      this.progressText.textContent = `${importedTargets.length} of ${targets.length} DOF025 crops imported.${cancelled ? ' Import cancelled.' : ''}${errors.length ? ` ${errors.length} failed: ${errors.join(' | ')}` : ''}`;
+      this.onMessage(
+        cancelled
+          ? `DOF025 import cancelled after ${importedTargets.length} successful crop(s).`
+          : errors.length
+            ? `Imported ${importedTargets.length} DOF025 crop(s); ${errors.length} failed. Coordinates were sent to GURS.`
+            : `Imported ${importedTargets.length} DOF025 crop${importedTargets.length === 1 ? '' : 's'} at approximately ${coverage.widthM.toFixed(0)} × ${coverage.heightM.toFixed(0)} m coverage.`,
+        cancelled || errors.length ? 'warning' : 'success'
+      );
+      return { importedTargets, failedTargets, cancelled };
+    } finally {
+      window.clearTimeout(batchTimeout);
+      this.progress.hidden = true;
+      this.activeImportController = null;
+      this.setImporting(false);
+    }
   }
 
   async importFiles(files: File[], overrides = new Map<string, ImportOverride>()): Promise<void> {
@@ -445,6 +928,7 @@ export class PhotoWorkflow {
         record.order = index;
       });
       this.analyze(this.route);
+      this.mixEnrouteIdentifiers(false);
       this.progressText.textContent = `${imported} of ${files.length} photos imported.${errors.length ? ` ${errors.length} failed: ${errors.join(' | ')}` : ''}`;
       this.onMessage(
         errors.length
@@ -501,6 +985,7 @@ export class PhotoWorkflow {
       });
       this.records = staged;
       this.analyze(manifest.route);
+      this.mixEnrouteIdentifiers(false);
       this.onMessage(`Loaded ${manifest.label}. Its 29 photos remain in this browser tab only.`, 'success');
     } catch (error) {
       staged.forEach((record) => {
@@ -520,8 +1005,11 @@ export class PhotoWorkflow {
     this.importing = importing;
     this.input.disabled = importing || this.externallyBusy;
     this.loadExampleButton.disabled = importing || this.externallyBusy;
+    this.mixLettersButton.disabled = importing || this.externallyBusy;
     this.drop.setAttribute('aria-busy', String(importing));
     this.list.setAttribute('aria-busy', String(importing));
+    this.cancelImportButton.hidden = !importing || this.activeImportController === null;
+    this.cancelImportButton.disabled = !importing || this.activeImportController === null;
   }
 
   analyze(points: Waypoint[]): PhotoComplianceSummary {
@@ -570,9 +1058,9 @@ export class PhotoWorkflow {
     const enroute = this.records.filter((record) => record.classification === 'enroute');
     if (enroute.length > 0) {
       const splitAfterM = this.handoutOptions.splitAfterM;
-      const positioned = enroute.filter((record) => record.analysis);
-      const before = positioned.filter((record) => (record.analysis?.alongRouteM ?? 0) <= (splitAfterM ?? 0));
-      const after = positioned.filter((record) => (record.analysis?.alongRouteM ?? 0) > (splitAfterM ?? 0));
+      const positioned = enroute.filter((record) => routePosition(record) !== null);
+      const before = positioned.filter((record) => (routePosition(record) ?? 0) <= (splitAfterM ?? 0));
+      const after = positioned.filter((record) => (routePosition(record) ?? 0) > (splitAfterM ?? 0));
       const complete = splitAfterM !== null && positioned.length === enroute.length;
       const splitValid = complete && before.length > 0 && after.length > 0;
       this.compliance.findings.push({
@@ -589,12 +1077,29 @@ export class PhotoWorkflow {
         measured: `${before.length} before / ${after.length} after / ${enroute.length - positioned.length} unavailable`,
         permitted: 'two non-empty sets separated at a valid internal route boundary',
       });
-      this.compliance.violationCount = this.compliance.findings.filter(
-        (finding) => finding.severity === 'violation'
-      ).length;
-      this.compliance.warningCount = this.compliance.findings.filter(
-        (finding) => finding.severity === 'warning'
-      ).length;
+      const groups = [before, after];
+      const revealsOrder = complete && groups.some(lettersRevealRouteOrder);
+      this.compliance.findings.push({
+        photoId: null,
+        severity: complete ? (revealsOrder ? 'violation' : 'pass') : 'warning',
+        code: 'enroute-letter-order',
+        rule: 'A2.4.5',
+        affected: 'route',
+        message: complete
+          ? revealsOrder
+            ? 'En-route photo letters disclose route order within at least one handout part.'
+            : 'En-route photo letters are mixed independently within both handout parts.'
+          : 'Letter mixing requires a valid split and reliable route positions.',
+        measured: complete
+          ? revealsOrder
+            ? 'alphabetical route sequence detected'
+            : 'mixed sequence in both route parts'
+          : 'route sequence unavailable',
+        permitted: 'lettered photos in non-route order within each of the two route parts',
+      });
+      const counts = operationalFindingCounts(this.compliance.findings);
+      this.compliance.violationCount = counts.violationCount;
+      this.compliance.warningCount = counts.warningCount;
       this.compliance.status =
         this.compliance.violationCount > 0
           ? 'against-rules'
@@ -782,8 +1287,18 @@ export class PhotoWorkflow {
       heading.append(title, controls);
       const status = document.createElement('span');
       status.className = 'photo-status';
-      const hasViolation = record.findings.some((finding) => finding.severity === 'violation');
-      const hasWarning = record.findings.some((finding) => finding.severity === 'warning');
+      const primaryFindings = record.findings.filter(
+        (finding) => finding.severity !== 'pass' && findingPresentation(finding) === 'primary'
+      );
+      const actionFindings = record.findings.filter(
+        (finding) => finding.severity !== 'pass' && findingPresentation(finding) === 'action'
+      );
+      const auditFindings = record.findings.filter(
+        (finding) => finding.severity !== 'pass' && findingPresentation(finding) === 'audit'
+      );
+      const hasViolation = primaryFindings.some((finding) => finding.severity === 'violation');
+      const hasWarning = primaryFindings.some((finding) => finding.severity === 'warning');
+      const hasAction = actionFindings.length > 0;
       if (!hasViolation && record.exceptionAccepted) {
         record.exceptionAccepted = false;
         record.exceptionAcceptedAt = null;
@@ -792,16 +1307,18 @@ export class PhotoWorkflow {
         ? record.exceptionAccepted
           ? 'accepted'
           : 'fail'
-        : hasWarning
+        : hasAction || hasWarning
           ? 'review'
           : 'ok';
       status.textContent = hasViolation
         ? record.exceptionAccepted
           ? 'Accepted exception · still against the rules'
           : 'Against the rules'
-        : hasWarning
-          ? 'Manual review required'
-          : 'OK for automated checks';
+        : hasAction
+          ? 'Action required'
+          : hasWarning
+            ? 'Manual review required'
+            : 'OK for automated checks';
       const exceptionButton = document.createElement('button');
       exceptionButton.type = 'button';
       exceptionButton.className = 'btn btn-small photo-exception-button';
@@ -875,7 +1392,13 @@ export class PhotoWorkflow {
       ].every((value) => value !== null)
         ? `; original EXIF GPS: ${record.originalMetadata.latitude.value}, ${record.originalMetadata.longitude.value}`
         : '';
-      provenance.textContent = `${record.width}×${record.height}px · Position: ${record.metadata.latitude.source}/${record.metadata.longitude.source}${originalPosition}; EXIF altitude: ${record.metadata.gpsAltitudeMslM.value ?? 'missing'} m MSL; camera: ${[record.metadata.cameraMake.value, record.metadata.cameraModel.value].filter(Boolean).join(' ') || 'missing'}; orientation: ${record.metadata.orientation.value ?? 'missing'}.`;
+      const orthophotoProvenance = record.generatedOrthophoto
+        ? `; GURS DOF025 crop ${record.generatedOrthophoto.coverageWidthM.toFixed(0)}×${record.generatedOrthophoto.coverageHeightM.toFixed(0)} m modeled at ${record.generatedOrthophoto.modeledAltitudeM} m AGL, ${record.generatedOrthophoto.modeledFocalLength35Mm} mm, ${record.generatedOrthophoto.modeledDepressionDeg}° depression`
+        : '';
+      const targetProvenance = record.generatedOrthophoto?.targetSource
+        ? `; OSM target: ${record.generatedOrthophoto.targetSource.name ?? record.generatedOrthophoto.targetSource.featureType} (${record.generatedOrthophoto.targetSource.featureType}, score ${record.generatedOrthophoto.targetSource.score}${record.generatedOrthophoto.targetSource.selectionSalt ? `, selection mix ${record.generatedOrthophoto.targetSource.selectionSalt.slice(0, 8)}` : ''})`
+        : '';
+      provenance.textContent = `${record.width}×${record.height}px · Position: ${record.metadata.latitude.source}/${record.metadata.longitude.source}${originalPosition}; EXIF altitude: ${record.metadata.gpsAltitudeMslM.value ?? 'missing'} m MSL; camera: ${[record.metadata.cameraMake.value, record.metadata.cameraModel.value].filter(Boolean).join(' ') || 'missing'}; orientation: ${record.metadata.orientation.value ?? 'missing'}${orthophotoProvenance}${targetProvenance}.`;
       metadataDetails.append(metadataSummary, metadataGrid, provenance);
       const metrics = document.createElement('p');
       metrics.className = 'photo-metrics';
@@ -884,17 +1407,65 @@ export class PhotoWorkflow {
         : 'Route metrics unavailable until both position and a valid route are present.';
       const issueList = document.createElement('ul');
       issueList.className = 'photo-card-findings';
-      for (const finding of record.findings.filter((item) => item.severity !== 'pass')) {
+      for (const finding of primaryFindings) {
         const item = document.createElement('li');
         item.textContent = `${finding.rule}: ${finding.measured}; permitted ${finding.permitted}.${record.exceptionAccepted && finding.severity === 'violation' ? ' Accepted as a judge exception; violation retained.' : ''}`;
         issueList.appendChild(item);
       }
+      issueList.hidden = primaryFindings.length === 0;
+      const actionList = document.createElement('ul');
+      actionList.className = 'photo-card-actions';
+      for (const finding of actionFindings) {
+        const item = document.createElement('li');
+        item.textContent =
+          finding.code === 'task-position-missing'
+            ? 'Mark the photographed task/object with coordinates or link a valid waypoint before generating the marked map.'
+            : finding.message;
+        actionList.appendChild(item);
+      }
+      actionList.hidden = actionFindings.length === 0;
+      const auditDetails = document.createElement('details');
+      auditDetails.className = 'photo-audit-details';
+      auditDetails.hidden = auditFindings.length === 0;
+      const auditSummary = document.createElement('summary');
+      auditSummary.className = 'photo-audit-summary';
+      auditSummary.textContent = `Technical & rulebook audit (${auditFindings.length})`;
+      const auditList = document.createElement('ul');
+      auditList.className = 'photo-audit-findings';
+      for (const finding of auditFindings) {
+        const item = document.createElement('li');
+        item.textContent = `${finding.rule}: ${finding.message} ${finding.measured}; expected ${finding.permitted}.`;
+        auditList.appendChild(item);
+      }
+      auditDetails.append(auditSummary, auditList);
       if (record.importError) {
         const error = document.createElement('p');
         error.className = 'danger-text';
         error.textContent = `Metadata error: ${record.importError}`;
-        body.append(heading, status, exceptionButton, error, grid, metrics, issueList, metadataDetails);
-      } else body.append(heading, status, exceptionButton, grid, metrics, issueList, metadataDetails);
+        body.append(
+          heading,
+          status,
+          exceptionButton,
+          error,
+          grid,
+          metrics,
+          issueList,
+          actionList,
+          auditDetails,
+          metadataDetails
+        );
+      } else
+        body.append(
+          heading,
+          status,
+          exceptionButton,
+          grid,
+          metrics,
+          issueList,
+          actionList,
+          auditDetails,
+          metadataDetails
+        );
       article.append(image, body);
       fragment.appendChild(article);
     }
@@ -920,7 +1491,10 @@ export class PhotoWorkflow {
           ? `Manual review required · ${this.compliance.warningCount} item(s) could not be automated`
           : 'OK for automated photo checks';
     const findingFragment = document.createDocumentFragment();
-    for (const finding of this.compliance.findings.filter((item) => item.severity !== 'pass')) {
+    const operationalFindings = this.compliance.findings.filter(
+      (finding) => finding.severity !== 'pass' && findingPresentation(finding) !== 'audit'
+    );
+    for (const finding of operationalFindings) {
       const item = document.createElement('li');
       const accepted =
         finding.photoId !== null &&
@@ -930,5 +1504,18 @@ export class PhotoWorkflow {
       findingFragment.appendChild(item);
     }
     this.findings.replaceChildren(findingFragment);
+    this.findings.hidden = operationalFindings.length === 0;
+    const auditFindings = this.compliance.findings.filter(
+      (finding) => finding.severity !== 'pass' && findingPresentation(finding) === 'audit'
+    );
+    const auditFragment = document.createDocumentFragment();
+    for (const finding of auditFindings) {
+      const item = document.createElement('li');
+      item.textContent = `${finding.rule} · ${finding.affected}: ${finding.message} ${finding.measured}; expected ${finding.permitted}.`;
+      auditFragment.appendChild(item);
+    }
+    this.auditFindings.replaceChildren(auditFragment);
+    this.auditSummary.textContent = `Technical & rulebook audit details (${auditFindings.length})`;
+    this.auditDetails.hidden = auditFindings.length === 0;
   }
 }

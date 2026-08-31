@@ -875,6 +875,241 @@ th:not(:first-child) {
   margin-top: 0.75rem;
 }
 
+.orthophoto-generator {
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.orthophoto-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.orthophoto-heading h3,
+.orthophoto-heading p {
+  margin: 0;
+}
+
+.coverage-badge {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: #dceee8;
+  color: #145a43;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.orthophoto-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.orthophoto-controls label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.orthophoto-controls input {
+  min-width: 0;
+}
+
+.osm-candidate-review {
+  margin-top: 0.85rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.osm-discovery-progress {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid #bfd2ca;
+  border-radius: 8px;
+  background: #f5faf8;
+}
+
+.osm-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.82rem;
+}
+
+.osm-discovery-progress progress {
+  width: 100%;
+  margin: 0.55rem 0;
+  accent-color: #26745a;
+}
+
+.osm-discovery-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.osm-leg-progress {
+  padding: 0.25rem 0.45rem;
+  border: 1px solid #cbd8d3;
+  border-radius: 999px;
+  background: #fff;
+  color: #60706a;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.osm-leg-progress[data-state="active"] {
+  border-color: #26745a;
+  background: #dceee8;
+  color: #145a43;
+  animation: osm-progress-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.osm-leg-progress[data-state="scanned"] {
+  border-color: #80aa9a;
+  color: #24604b;
+}
+
+.osm-leg-progress[data-state="done"] {
+  border-color: #26745a;
+  background: #26745a;
+  color: #fff;
+}
+
+.osm-leg-progress[data-state="warning"] {
+  border-color: #c78b22;
+  background: #fff1d6;
+  color: #79520b;
+}
+
+.osm-discovery-progress[data-state="complete"] {
+  border-color: #69a58d;
+  background: #eef8f4;
+}
+
+.osm-discovery-progress[data-state="warning"] {
+  border-color: #d5a34a;
+  background: #fffaf0;
+}
+
+.osm-discovery-progress[data-state="error"] {
+  border-color: #c86666;
+  background: #fff4f4;
+}
+
+@keyframes osm-progress-pulse {
+  from {
+    box-shadow: 0 0 0 0 rgba(38, 116, 90, 0.05);
+  }
+  to {
+    box-shadow: 0 0 0 4px rgba(38, 116, 90, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .osm-leg-progress[data-state="active"] {
+    animation: none;
+  }
+}
+
+.osm-review-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.osm-review-heading h4,
+.osm-review-heading p {
+  margin: 0;
+}
+
+.osm-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.osm-candidate-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.osm-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  padding: 0.6rem;
+  border: 1px solid #cbd8d3;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.osm-candidate:has(input:checked) {
+  border-color: #26745a;
+  box-shadow: inset 0 0 0 1px #26745a;
+  background: #f1faf6;
+}
+
+.osm-candidate-copy {
+  min-width: 0;
+}
+
+.osm-candidate-copy strong,
+.osm-candidate-copy span {
+  display: block;
+}
+
+.osm-candidate-copy span {
+  margin-top: 0.15rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.osm-confidence {
+  padding: 0.2rem 0.4rem;
+  border-radius: 999px;
+  background: #e3eee9;
+  color: #205d49;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.osm-confidence[data-confidence="fallback"] {
+  background: #f4ead0;
+  color: #795b12;
+}
+
+@media (max-width: 780px) {
+  .orthophoto-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .orthophoto-heading {
+    display: grid;
+  }
+
+  .osm-candidate-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .photo-workflow progress {
   width: 100%;
   margin-top: 0.75rem;
@@ -941,6 +1176,39 @@ th:not(:first-child) {
   padding-left: 1.2rem;
   color: #6f2c20;
   font-size: 0.82rem;
+}
+
+.photo-card-actions {
+  margin: 0.6rem 0;
+  padding: 0.55rem 0.7rem 0.55rem 1.75rem;
+  border-left: 3px solid #c28b20;
+  border-radius: 4px;
+  background: #fff8e7;
+  color: #6b4a0b;
+  font-size: 0.82rem;
+}
+
+.photo-audit-details,
+.photo-overall-audit {
+  margin-top: 0.65rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.photo-audit-summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.photo-audit-findings {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.photo-audit-findings li + li {
+  margin-top: 0.35rem;
 }
 
 .photo-list {

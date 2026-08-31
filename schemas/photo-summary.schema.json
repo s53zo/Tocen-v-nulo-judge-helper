@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "status", "counts", "photos", "findings"],
   "properties": {
-    "schemaVersion": { "const": 3 },
+    "schemaVersion": { "const": 4 },
     "status": { "enum": ["ok", "against-rules", "manual-review"] },
     "counts": {
       "type": "object",
@@ -27,6 +27,7 @@
   "$defs": {
     "sourcedValue": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["value", "source", "reliable"],
       "properties": {
         "value": {},
@@ -37,6 +38,7 @@
     },
     "finding": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["photoId", "code", "rule", "severity", "affected", "message", "measured", "permitted"],
       "properties": {
         "photoId": { "type": ["string", "null"] },
@@ -51,11 +53,14 @@
     },
     "photo": {
       "type": "object",
-      "required": ["id", "order", "identifier", "fileName", "fileSize", "contentHash", "classification", "cameraMetadata", "originalMetadata", "taskPosition", "status", "exceptionAccepted", "exceptionAcceptedAt", "findings"],
+      "additionalProperties": false,
+      "required": ["id", "order", "identifier", "identifierMixSalt", "identifierMixAlgorithm", "fileName", "fileSize", "contentHash", "classification", "cameraMetadata", "originalMetadata", "taskPosition", "status", "exceptionAccepted", "exceptionAcceptedAt", "findings", "generatedOrthophoto"],
       "properties": {
         "id": { "type": "string" },
         "order": { "type": "integer", "minimum": 1 },
         "identifier": { "type": "string" },
+        "identifierMixSalt": { "type": ["string", "null"] },
+        "identifierMixAlgorithm": { "type": ["string", "null"] },
         "fileName": { "type": "string" },
         "fileSize": { "type": "integer", "minimum": 0 },
         "contentHash": { "type": "string" },
@@ -65,6 +70,7 @@
         "originalMetadata": { "type": "object" },
         "taskPosition": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["latitude", "longitude"],
           "properties": {
             "latitude": { "$ref": "#/$defs/sourcedValue" },
@@ -76,7 +82,45 @@
         "status": { "enum": ["ok", "against-rules", "manual-review"] },
         "exceptionAccepted": { "type": "boolean" },
         "exceptionAcceptedAt": { "type": ["string", "null"], "format": "date-time" },
-        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "generatedOrthophoto": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/generatedOrthophoto" }
+          ]
+        }
+      }
+    },
+    "generatedOrthophoto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "layer", "targetLabel", "requestedAt", "coverageWidthM", "coverageHeightM", "modeledAltitudeM", "modeledFocalLength35Mm", "modeledDepressionDeg", "attribution"],
+      "properties": {
+        "provider": { "const": "GURS" },
+        "layer": { "const": "DOF025" },
+        "targetLabel": { "type": "string" },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "coverageWidthM": { "type": "number", "exclusiveMinimum": 0, "maximum": 5000 },
+        "coverageHeightM": { "type": "number", "exclusiveMinimum": 0, "maximum": 5000 },
+        "modeledAltitudeM": { "type": "number", "exclusiveMinimum": 0 },
+        "modeledFocalLength35Mm": { "type": "number", "exclusiveMinimum": 0 },
+        "modeledDepressionDeg": { "type": "number", "exclusiveMinimum": 0, "maximum": 90 },
+        "attribution": { "type": "string" },
+        "targetSource": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "elementId", "category", "featureType", "name", "score", "attribution"],
+          "properties": {
+            "provider": { "const": "OpenStreetMap" },
+            "elementId": { "type": "string" },
+            "category": { "type": "string" },
+            "featureType": { "type": "string" },
+            "name": { "type": ["string", "null"] },
+            "score": { "type": "number" },
+            "attribution": { "type": "string" },
+            "selectionSalt": { "type": "string" }
+          }
+        }
       }
     }
   }

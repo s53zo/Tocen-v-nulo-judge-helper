@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Create calibrated precision-flying route overlays, timing schedules, and print-ready maps in your browser.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.tile.openstreetmap.org; worker-src 'self' blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.tile.openstreetmap.org https://ipi.eprostor.gov.si https://overpass-api.de https://overpass.private.coffee https://maps.mail.ru; worker-src 'self' blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
   <link rel="stylesheet" href="./assets/style.css">
   <script type="module" src="./assets/app.js"></script>
 </head>
@@ -136,6 +136,7 @@ TP4,46.836955,16.308447
 TP5,46.775187,16.202892
 TP6,46.552346,16.430293
 FP,46.608093,16.234769</textarea>
+            <p class="note"><code>PHOTO_name,latitude,longitude</code> rows define DOF025 photo targets and are excluded from route geometry.</p>
           </div>
         </div>
       </section>
@@ -144,7 +145,7 @@ FP,46.608093,16.234769</textarea>
         <div class="panel-content">
           <section class="photo-workflow" aria-labelledby="photoWorkflowTitle">
             <h2 id="photoWorkflowTitle">5. Photos &amp; Tasks</h2>
-            <p class="note privacy-note"><strong>Private by design:</strong> photos, EXIF metadata, analysis, and generated files stay in this browser tab. Bundled-map mode makes no third-party map request; optional OSM tiles disclose only the approximate displayed area after consent.</p>
+            <p class="note privacy-note"><strong>Private by design:</strong> photos, EXIF metadata, analysis, and generated files stay in this browser tab. Bundled-map mode makes no third-party map request. Choosing OSM tiles, finding OSM targets, or importing GURS imagery sends only the relevant displayed area, bounded route corridor, or selected coordinates. OSM discovery tries maps.mail.ru first and contacts overpass.private.coffee or overpass-api.de only if the preceding service fails.</p>
             <label id="photoDropzone" class="photo-dropzone" for="photoFiles">
               <span><strong>Drop JPEG photos here</strong> or choose multiple files</span>
               <input id="photoFiles" type="file" accept="image/jpeg,.jpg,.jpeg" multiple>
@@ -153,8 +154,65 @@ FP,46.608093,16.234769</textarea>
               <button type="button" id="loadPhotoExample" class="btn btn-secondary">Load TVN 2025 example (29 photos)</button>
               <span class="note">The historical example is about 49 MB and loads only when requested.</span>
             </div>
+            <section class="orthophoto-generator" aria-labelledby="orthophotoTitle">
+              <div class="orthophoto-heading">
+                <div>
+                  <h3 id="orthophotoTitle">GURS DOF025 route photos</h3>
+                  <p class="note">Generate top-down orthophoto crops with the approximate ground coverage of an angled camera photo.</p>
+                </div>
+                <span id="orthophotoCoveragePreview" class="coverage-badge"></span>
+              </div>
+              <div class="orthophoto-controls">
+                <label>Initial selection
+                  <input id="orthophotoRandomCount" type="number" min="1" max="12" step="1" value="6">
+                </label>
+                <label>Height AGL (m)
+                  <input id="orthophotoAltitude" type="number" min="10" max="1000" step="10" value="100">
+                </label>
+                <label>35 mm equiv. focal (mm)
+                  <input id="orthophotoFocalLength" type="number" min="10" max="300" step="1" value="60">
+                </label>
+                <label>Depression angle (°)
+                  <input id="orthophotoDepression" type="number" min="10" max="90" step="1" value="45">
+                </label>
+              </div>
+              <div class="photo-import-actions">
+                <button type="button" id="addRandomOrthophotos" class="btn btn-secondary">Find identifiable OSM targets</button>
+                <button type="button" id="loadWaypointOrthophotos" class="btn btn-secondary">Load PHOTO_ coordinates</button>
+              </div>
+              <section id="osmDiscoveryProgress" class="osm-discovery-progress" aria-labelledby="osmDiscoveryProgressText" hidden>
+                <div class="osm-progress-heading">
+                  <strong id="osmDiscoveryProgressText">Preparing OpenStreetMap discovery…</strong>
+                  <span id="osmDiscoveryProgressPercent">0%</span>
+                </div>
+                <progress id="osmDiscoveryProgressBar" value="0" max="1" aria-labelledby="osmDiscoveryProgressText"></progress>
+                <div id="osmDiscoveryLegs" class="osm-discovery-legs" aria-label="Route-leg discovery progress"></div>
+                <p id="osmDiscoveryWarning" class="note" role="status" aria-live="polite"></p>
+                <button type="button" id="cancelOsmDiscovery" class="btn btn-secondary btn-small" hidden>Cancel OSM discovery</button>
+              </section>
+              <section id="osmCandidateReview" class="osm-candidate-review" aria-labelledby="osmCandidateReviewTitle" hidden>
+                <div class="osm-review-heading">
+                  <div>
+                    <h4 id="osmCandidateReviewTitle">Review proposed targets</h4>
+                    <p id="osmCandidateSummary" class="note" role="status" aria-live="polite"></p>
+                  </div>
+                  <div class="osm-review-actions">
+                    <button type="button" id="selectAllOsmCandidates" class="btn btn-ghost btn-small">Select all</button>
+                    <button type="button" id="clearOsmCandidateSelection" class="btn btn-ghost btn-small">Clear</button>
+                    <button type="button" id="refreshOsmCandidates" class="btn btn-ghost btn-small">Replace suggestion</button>
+                  </div>
+                </div>
+                <div id="osmCandidateList" class="osm-candidate-list"></div>
+                <div class="photo-import-actions">
+                  <button type="button" id="importOsmCandidates" class="btn btn-primary">Import selected DOF025 photos</button>
+                  <span id="osmCandidateSelectionStatus" class="note" role="status" aria-live="polite"></span>
+                </div>
+              </section>
+              <p class="note">Target syntax: <code>PHOTO_CHURCH,46.6301,16.1792</code>. Accepted OSM targets are added to the WAYPOINTS field for reproducibility. Feature data © OpenStreetMap contributors. Imagery: Geodetska uprava Republike Slovenije, DOF025, current mosaic (2023–2025), CC BY 4.0.</p>
+            </section>
             <progress id="photoProgress" value="0" max="1" hidden></progress>
             <p id="photoProgressText" class="note" role="status" aria-live="polite"></p>
+            <button type="button" id="cancelPhotoImport" class="btn btn-secondary btn-small" hidden>Cancel photo import</button>
 
             <details class="photo-options">
               <summary>Map layers and handout options</summary>
@@ -170,12 +228,21 @@ FP,46.608093,16.234769</textarea>
                     <option selected>TP5</option>
                   </select>
                 </label>
+                <button type="button" id="mixPhotoLetters" class="btn btn-secondary btn-small">
+                  Remix en-route letters
+                </button>
                 <label><input id="handoutSummary" type="checkbox" checked> Add compliance summary page</label>
               </div>
             </details>
 
             <div id="photoComplianceStatus" class="photo-overall-status" role="status" aria-live="polite"></div>
             <ul id="photoFindings" class="photo-findings"></ul>
+            <details id="photoAuditDetails" class="photo-overall-audit" hidden>
+              <summary id="photoAuditSummary" class="photo-audit-summary">
+                Technical &amp; rulebook audit details
+              </summary>
+              <ul id="photoAuditFindings" class="photo-audit-findings"></ul>
+            </details>
             <p id="photoEmpty" class="empty-state">No photos selected. You can generate a route without photos.</p>
             <div id="photoList" class="photo-list"></div>
           </section>
@@ -225,6 +292,7 @@ FP,46.608093,16.234769</textarea>
                 <a id="downloadPhotoAnalysis" href="#" class="btn btn-ghost">Photo Analysis (CSV)</a>
                 <a id="downloadPhotoKey" href="#" class="btn btn-ghost">Photo Overlay Key (CSV)</a>
                 <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Judge Photo Handout (PDF)</a>
+                <a id="downloadCompetitorPhotoHandout" href="#" class="btn btn-ghost">Competitor Photo Handout (PDF)</a>
               </div>
               <ul id="artifactStatuses" class="artifact-statuses" aria-live="polite">
                 <li data-artifact="map">Judge map: not started</li>
@@ -233,6 +301,7 @@ FP,46.608093,16.234769</textarea>
                 <li data-artifact="preview">Preview: not started</li>
                 <li data-artifact="data">CSV/JSON: not started</li>
                 <li data-artifact="handout">Judge photo handout: not started</li>
+                <li data-artifact="competitorHandout">Competitor photo handout: not started</li>
               </ul>
             </div>
 

@@ -151,7 +151,7 @@ test('P250 generation completes with bounded preview and valid PDFs', async ({ p
   await generateAndVerify(page, 'p250', browserName);
 });
 
-test('corrupt JPEG remains a manual-review item instead of crashing generation', async ({ page }) => {
+test('corrupt JPEG remains an actionable item instead of crashing generation', async ({ page }) => {
   await page.goto('/');
   await page.locator('#photoFiles').setInputFiles({
     name: 'broken.jpg',
@@ -163,7 +163,7 @@ test('corrupt JPEG remains a manual-review item instead of crashing generation',
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
   await expect(page.locator('#status')).toContainText('Generated');
-  await expect(page.locator('.photo-card .photo-status')).toContainText('Manual review');
+  await expect(page.locator('.photo-card .photo-status')).toContainText('Action required');
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="handout"]')).toHaveAttribute('data-state', 'failed');
   await expectPdfBlob(page, '#downloadPdf');
@@ -176,6 +176,87 @@ test('OSM requires explicit third-party tile consent', async ({ page }) => {
   await expect(page.locator('#osmThirdPartyConsent')).not.toBeChecked();
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toContainText('Consent to third-party OpenStreetMap');
+});
+
+test('OSM-selected DOF025 route photo is reviewed, fetched, and retained as a PHOTO_ target', async ({
+  page,
+}) => {
+  const jpeg = await readFile(new URL('../examples/photos/IMG__160111_00_092 TP2.jpg', import.meta.url));
+  const secondJpeg = await readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url));
+  let requestedUrl = '';
+  let orthophotoRequestCount = 0;
+  const overpassQueries: string[] = [];
+  await page.route('https://maps.mail.ru/osm/tools/overpass/**', async (route) => {
+    overpassQueries.push(route.request().postData() ?? '');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        elements: [
+          {
+            type: 'way',
+            id: 123,
+            center: { lat: 46.5508, lon: 16.1676 },
+            tags: { bridge: 'yes', highway: 'tertiary', name: 'Test bridge' },
+          },
+          {
+            type: 'way',
+            id: 124,
+            center: { lat: 46.5608, lon: 16.1701 },
+            tags: { bridge: 'yes', highway: 'tertiary', name: 'Second test bridge' },
+          },
+        ],
+      }),
+    });
+  });
+  await page.route('https://ipi.eprostor.gov.si/**', async (route) => {
+    requestedUrl = route.request().url();
+    const body = orthophotoRequestCount % 2 === 0 ? jpeg : secondJpeg;
+    orthophotoRequestCount += 1;
+    await route.fulfill({ status: 200, contentType: 'image/jpeg', body });
+  });
+  await page.goto('/');
+  await page.locator('#orthophotoRandomCount').fill('1');
+  await page.locator('#addRandomOrthophotos').click();
+  await expect(page.locator('#osmDiscoveryProgress')).toBeVisible();
+  await expect(page.locator('#osmCandidateReview')).toBeVisible();
+  await expect(page.locator('#osmDiscoveryProgressPercent')).toHaveText('100%');
+  await expect(page.locator('.osm-leg-progress[data-state="done"]')).toHaveCount(7);
+  await expect(page.getByText('Test bridge', { exact: true })).toBeVisible();
+  const initialQueryCount = overpassQueries.length;
+  expect(initialQueryCount).toBeGreaterThan(1);
+  const firstSelectionMix = await page.locator('#osmCandidateSummary').textContent();
+  await page.locator('#refreshOsmCandidates').click();
+  await expect(page.locator('#osmCandidateSummary')).not.toHaveText(firstSelectionMix ?? '');
+  await expect(page.locator('#osmCandidateSummary')).toContainText('Selection mix');
+  const replacedSelectionMix = await page.locator('#osmCandidateSummary').textContent();
+  await page.locator('#addRandomOrthophotos').click();
+  await expect(page.locator('#osmCandidateSummary')).not.toHaveText(replacedSelectionMix ?? '');
+  expect(overpassQueries).toHaveLength(initialQueryCount);
+  await page.locator('#orthophotoRandomCount').fill('2');
+  await page.locator('#addRandomOrthophotos').click();
+  await expect(page.locator('#osmCandidateReview')).toBeVisible();
+  expect(overpassQueries.length).toBeGreaterThan(1);
+  await page.locator('#orthophotoRandomCount').fill('1');
+  await expect(page.locator('.osm-candidate')).toHaveCount(2);
+  await expect(page.locator('.osm-candidate input:checked')).toHaveCount(1);
+  await page.locator('#selectAllOsmCandidates').click();
+  await expect(page.locator('.osm-candidate input:checked')).toHaveCount(2);
+  await expect(page.locator('#importOsmCandidates')).toBeEnabled();
+  await expect(page.locator('#osmCandidateSelectionStatus')).toContainText('2 selected');
+  await page.locator('#importOsmCandidates').click();
+
+  await expect(page.locator('#photoProgressText')).toContainText('2 of 2 DOF025 crops imported');
+  await expect(page.locator('.photo-card')).toHaveCount(2);
+  await expect(page.locator('.photo-card').first()).toContainText('GURS DOF025 crop');
+  await expect(page.locator('.photo-card').filter({ hasText: 'OSM target: Test bridge' })).toHaveCount(1);
+  await expect(page.locator('.photo-card').first()).toContainText('selection mix');
+  await expect(page.locator('.photo-card .photo-status').first()).toContainText('OK for automated checks');
+  await expect(page.locator('[data-action="verify-generated-photo"]')).toHaveCount(0);
+  await expect(page.locator('#waypoints')).toHaveValue(/PHOTO_OSM_BRIDGE_01,/);
+  expect(overpassQueries.some((query) => query.includes('bridge'))).toBe(true);
+  expect(requestedUrl).toContain('LAYERS=SI.GURS.ZPDZ%3ADOF025');
+  expect(requestedUrl).toContain('WIDTH=1600');
 });
 
 test('preview failure preserves successful map downloads', async ({ page }) => {
@@ -305,17 +386,7 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   expect(reviewLayout.photoWidth).toBeGreaterThan(reviewLayout.controlWidth * 2);
   expect(reviewLayout.photoColumns).toBeGreaterThanOrEqual(2);
   await expect(page.locator('.photo-metadata-details').first()).not.toHaveAttribute('open', '');
-  const enrouteCard = page
-    .locator('.photo-card')
-    .filter({
-      has: page.locator('[data-field="classification"] option:checked', { hasText: 'En-route photo' }),
-    })
-    .first();
-  await expect(enrouteCard).toBeVisible();
-  const enrouteId = await enrouteCard.getAttribute('data-photo-id');
-  expect(enrouteId).not.toBeNull();
-  const liveEnrouteCard = () => page.locator(`.photo-card[data-photo-id="${enrouteId}"]`);
-  const exceptionButton = liveEnrouteCard().locator('.photo-exception-button:visible');
+  const exceptionButton = page.locator('.photo-exception-button:visible').first();
   await expect(exceptionButton).toBeVisible();
   await exceptionButton.click();
   await expect(page.locator('.photo-status[data-tone="accepted"]')).toHaveCount(1);
@@ -325,6 +396,7 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="preview"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="handout"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('[data-artifact="competitorHandout"]')).toHaveAttribute('data-state', 'ok');
   const summary = JSON.parse((await downloadBytes(page, '#downloadSummary')).toString());
   await expectSummarySchemas(summary);
   expect(summary.photos.counts.acceptedExceptions).toBe(1);
@@ -343,4 +415,5 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   expect(judgeMap.equals(competitorMap)).toBe(false);
   expect(competitorMap.equals(emptyMap)).toBe(false);
   await expectPdfBlob(page, '#downloadPhotoHandout');
+  await expectPdfBlob(page, '#downloadCompetitorPhotoHandout');
 });

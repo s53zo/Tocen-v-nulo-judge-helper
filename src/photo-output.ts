@@ -1,3 +1,4 @@
+import { isOperationalFinding } from './photo-compliance';
 import type { PhotoComplianceSummary, PhotoRecord } from './photo-types';
 
 function csvCell(value: unknown): string {
@@ -11,6 +12,8 @@ export const PHOTO_ANALYSIS_COLUMNS = [
   'identifier',
   'file_name',
   'classification',
+  'identifier_mix_salt',
+  'identifier_mix_algorithm',
   'linked_waypoint',
   'capture_time',
   'capture_time_source',
@@ -63,11 +66,23 @@ export const PHOTO_ANALYSIS_COLUMNS = [
   'exception_accepted_at',
   'finding_codes',
   'finding_details',
+  'orthophoto_target',
+  'orthophoto_coverage_width_m',
+  'orthophoto_coverage_height_m',
+  'orthophoto_attribution',
+  'osm_target_name',
+  'osm_target_type',
+  'osm_target_category',
+  'osm_target_score',
+  'osm_element_id',
+  'osm_attribution',
+  'osm_selection_salt',
 ] as const;
 
 function photoStatus(photo: PhotoRecord): string {
-  if (photo.findings.some((finding) => finding.severity === 'violation')) return 'against-rules';
-  if (photo.findings.some((finding) => finding.severity === 'warning')) return 'manual-review';
+  const operational = photo.findings.filter(isOperationalFinding);
+  if (operational.some((finding) => finding.severity === 'violation')) return 'against-rules';
+  if (operational.some((finding) => finding.severity === 'warning')) return 'manual-review';
   return 'ok';
 }
 
@@ -81,6 +96,8 @@ export function photoAnalysisRows(photos: PhotoRecord[]): Record<string, unknown
   return photos.map((photo, index) => ({
     order: index + 1,
     identifier: photo.identifier,
+    identifier_mix_salt: photo.identifierMixSalt,
+    identifier_mix_algorithm: photo.identifierMixAlgorithm,
     file_name: photo.fileName,
     classification: photo.classification,
     linked_waypoint: photo.linkedWaypoint,
@@ -149,6 +166,17 @@ export function photoAnalysisRows(photos: PhotoRecord[]): Record<string, unknown
           message,
         }))
     ),
+    orthophoto_target: photo.generatedOrthophoto?.targetLabel,
+    orthophoto_coverage_width_m: photo.generatedOrthophoto?.coverageWidthM,
+    orthophoto_coverage_height_m: photo.generatedOrthophoto?.coverageHeightM,
+    orthophoto_attribution: photo.generatedOrthophoto?.attribution,
+    osm_target_name: photo.generatedOrthophoto?.targetSource?.name,
+    osm_target_type: photo.generatedOrthophoto?.targetSource?.featureType,
+    osm_target_category: photo.generatedOrthophoto?.targetSource?.category,
+    osm_target_score: photo.generatedOrthophoto?.targetSource?.score,
+    osm_element_id: photo.generatedOrthophoto?.targetSource?.elementId,
+    osm_attribution: photo.generatedOrthophoto?.targetSource?.attribution,
+    osm_selection_salt: photo.generatedOrthophoto?.targetSource?.selectionSalt,
   }));
 }
 
@@ -195,7 +223,7 @@ export function photoOverlayKeyCsv(photos: PhotoRecord[]): string {
 
 export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplianceSummary) {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     status: compliance.status,
     counts: {
       photos: photos.length,
@@ -209,6 +237,8 @@ export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplia
       id: photo.id,
       order: photo.order + 1,
       identifier: photo.identifier,
+      identifierMixSalt: photo.identifierMixSalt ?? null,
+      identifierMixAlgorithm: photo.identifierMixAlgorithm ?? null,
       fileName: photo.fileName,
       fileSize: photo.fileSize,
       contentHash: photo.contentHash,
@@ -223,6 +253,7 @@ export function photoSummaryJson(photos: PhotoRecord[], compliance: PhotoComplia
       exceptionAccepted: photo.exceptionAccepted,
       exceptionAcceptedAt: photo.exceptionAcceptedAt,
       findings: photo.findings,
+      generatedOrthophoto: photo.generatedOrthophoto ?? null,
     })),
     findings: compliance.findings,
   };

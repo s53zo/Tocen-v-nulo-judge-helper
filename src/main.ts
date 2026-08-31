@@ -17,10 +17,21 @@ import {
 import rawMapPresets from './map-presets.json';
 import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
 import { loadMapPresets } from './maps';
-import { evaluatePhotoCompliance, isPhotoAcceptedForJudge } from './photo-compliance';
+import { type OrthophotoCaptureModel, type OrthophotoTarget, orthophotoCoverage } from './orthophoto';
+import {
+  createSeededRandom,
+  discoverOsmPhotoCandidates,
+  fetchOverpassPhotoData,
+  type OsmDiscoveryProgress,
+  type OsmPhotoCandidate,
+  type OverpassResponse,
+  selectOsmPhotoCandidates,
+  targetSelectionIssue,
+} from './osm-photo-candidates';
+import { evaluatePhotoCompliance, isCountedRouteTask, isPhotoAcceptedForJudge } from './photo-compliance';
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
-import { PhotoWorkflow } from './photo-workflow';
+import { PHOTO_IMPORT_LIMITS, PhotoWorkflow } from './photo-workflow';
 import './styles.css';
 
 const APP_BASE_URL = new URL('./', document.baseURI);
@@ -92,6 +103,29 @@ const locationCountryFilter = requiredElement<HTMLSelectElement>('locationCountr
 const libraryControls = requiredElement<HTMLElement>('libraryControls');
 const locationsList = requiredElement<HTMLElement>('locationsList');
 const addAllFilteredBtn = requiredElement<HTMLButtonElement>('addAllFiltered');
+const orthophotoRandomCount = requiredElement<HTMLInputElement>('orthophotoRandomCount');
+const orthophotoAltitude = requiredElement<HTMLInputElement>('orthophotoAltitude');
+const orthophotoFocalLength = requiredElement<HTMLInputElement>('orthophotoFocalLength');
+const orthophotoDepression = requiredElement<HTMLInputElement>('orthophotoDepression');
+const orthophotoCoveragePreview = requiredElement<HTMLElement>('orthophotoCoveragePreview');
+const handoutSplit = requiredElement<HTMLSelectElement>('handoutSplit');
+const addRandomOrthophotos = requiredElement<HTMLButtonElement>('addRandomOrthophotos');
+const loadWaypointOrthophotos = requiredElement<HTMLButtonElement>('loadWaypointOrthophotos');
+const osmCandidateReview = requiredElement<HTMLElement>('osmCandidateReview');
+const osmCandidateSummary = requiredElement<HTMLElement>('osmCandidateSummary');
+const osmCandidateList = requiredElement<HTMLElement>('osmCandidateList');
+const osmCandidateSelectionStatus = requiredElement<HTMLElement>('osmCandidateSelectionStatus');
+const refreshOsmCandidates = requiredElement<HTMLButtonElement>('refreshOsmCandidates');
+const selectAllOsmCandidates = requiredElement<HTMLButtonElement>('selectAllOsmCandidates');
+const clearOsmCandidateSelection = requiredElement<HTMLButtonElement>('clearOsmCandidateSelection');
+const importOsmCandidates = requiredElement<HTMLButtonElement>('importOsmCandidates');
+const osmDiscoveryProgress = requiredElement<HTMLElement>('osmDiscoveryProgress');
+const osmDiscoveryProgressText = requiredElement<HTMLElement>('osmDiscoveryProgressText');
+const osmDiscoveryProgressPercent = requiredElement<HTMLElement>('osmDiscoveryProgressPercent');
+const osmDiscoveryProgressBar = requiredElement<HTMLProgressElement>('osmDiscoveryProgressBar');
+const osmDiscoveryLegs = requiredElement<HTMLElement>('osmDiscoveryLegs');
+const osmDiscoveryWarning = requiredElement<HTMLElement>('osmDiscoveryWarning');
+const cancelOsmDiscovery = requiredElement<HTMLButtonElement>('cancelOsmDiscovery');
 
 const downloadPdfLink = requiredElement<HTMLAnchorElement>('downloadPdf');
 const downloadOverlayLink = requiredElement<HTMLAnchorElement>('downloadOverlay');
@@ -100,6 +134,9 @@ const downloadSummaryLink = requiredElement<HTMLAnchorElement>('downloadSummary'
 const downloadPhotoAnalysisLink = requiredElement<HTMLAnchorElement>('downloadPhotoAnalysis');
 const downloadPhotoKeyLink = requiredElement<HTMLAnchorElement>('downloadPhotoKey');
 const downloadPhotoHandoutLink = requiredElement<HTMLAnchorElement>('downloadPhotoHandout');
+const downloadCompetitorPhotoHandoutLink = requiredElement<HTMLAnchorElement>(
+  'downloadCompetitorPhotoHandout'
+);
 downloadCroppedLink.style.display = 'none';
 const downloadUrls = {
   pdf: null,
@@ -109,6 +146,7 @@ const downloadUrls = {
   photoAnalysis: null,
   photoKey: null,
   photoHandout: null,
+  competitorPhotoHandout: null,
 };
 let previewObjectUrl = null;
 let croppedPreviewController: AbortController | null = null;
@@ -131,13 +169,14 @@ function setArtifactState(artifact: string, state: ArtifactState, detail: string
     preview: 'Preview',
     data: 'CSV/JSON',
     handout: 'Judge photo handout',
+    competitorHandout: 'Competitor photo handout',
   };
   const label = labels[artifact] ?? artifact;
   item.textContent = `${label}: ${detail}`;
 }
 
 function resetArtifactStates(): void {
-  for (const artifact of ['map', 'overlay', 'crop', 'preview', 'data', 'handout']) {
+  for (const artifact of ['map', 'overlay', 'crop', 'preview', 'data', 'handout', 'competitorHandout']) {
     setArtifactState(artifact, 'not-started', 'not started');
   }
 }
@@ -213,6 +252,7 @@ registerDownloadPreview(downloadSummaryLink, 'summary');
 registerDownloadPreview(downloadPhotoAnalysisLink, 'photoAnalysis');
 registerDownloadPreview(downloadPhotoKeyLink, 'photoKey');
 registerDownloadPreview(downloadPhotoHandoutLink, 'photoHandout');
+registerDownloadPreview(downloadCompetitorPhotoHandoutLink, 'competitorPhotoHandout');
 
 const croppedPreviewContainer = requiredElement<HTMLElement>('croppedPreviewContainer');
 const croppedPreviewLink = requiredElement<HTMLAnchorElement>('croppedPreviewLink');
@@ -373,6 +413,18 @@ function textNodeElement(text: string): HTMLElement {
 }
 
 const photoWorkflow = new PhotoWorkflow(setStatus);
+let discoveredOsmCandidates: OsmPhotoCandidate[] = [];
+let selectedOsmCandidateIds = new Set<string>();
+let osmCandidateRouteKey = '';
+let osmDiscoveryBusy = false;
+let osmSelectionSalt = '';
+const osmDiscoveryWarningLegs = new Set<number>();
+const osmDiscoveryCache = new Map<string, { data: OverpassResponse; cachedAt: number }>();
+const OSM_CACHE_MAXIMUM_ENTRIES = 5;
+const OSM_CACHE_TTL_MS = 10 * 60_000;
+let osmDiscoveryStartedAt = 0;
+let osmDiscoveryElapsedTimer: ReturnType<typeof setInterval> | null = null;
+let osmDiscoveryController: AbortController | null = null;
 let waypointAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
 waypointTextarea.addEventListener('input', () => {
   if (waypointAnalysisTimer !== null) clearTimeout(waypointAnalysisTimer);
@@ -380,12 +432,533 @@ waypointTextarea.addEventListener('input', () => {
     waypointAnalysisTimer = null;
     if (generationController || photoWorkflow.isBusy) return;
     try {
-      photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));
+      const points = parseWaypoints(waypointTextarea.value);
+      photoWorkflow.analyze(points);
+      if (osmCandidateRouteKey && osmCandidateRouteKey !== JSON.stringify(points)) {
+        clearOsmCandidateReview();
+      }
       setStatus('Route changed: photo analysis refreshed. Generate again to rebuild outputs.');
     } catch {
       setStatus('Route changed: photo analysis is waiting for a valid route.', 'warning');
     }
   }, 300);
+});
+
+function readOrthophotoModel(): OrthophotoCaptureModel {
+  const model = {
+    altitudeM: Number(orthophotoAltitude.value),
+    focalLength35Mm: Number(orthophotoFocalLength.value),
+    depressionDeg: Number(orthophotoDepression.value),
+    aspectRatio: 16 / 9,
+  };
+  if (!Number.isFinite(model.altitudeM) || model.altitudeM < 10 || model.altitudeM > 1000) {
+    throw new Error('DOF025 height must be between 10 and 1,000 m AGL.');
+  }
+  if (!Number.isFinite(model.focalLength35Mm) || model.focalLength35Mm < 10 || model.focalLength35Mm > 300) {
+    throw new Error('DOF025 focal length must be between 10 and 300 mm.');
+  }
+  if (!Number.isFinite(model.depressionDeg) || model.depressionDeg < 10 || model.depressionDeg > 90) {
+    throw new Error('DOF025 depression angle must be between 10° and 90°.');
+  }
+  orthophotoCoverage(model);
+  return model;
+}
+
+function updateOrthophotoCoveragePreview(): void {
+  try {
+    const coverage = orthophotoCoverage(readOrthophotoModel());
+    orthophotoCoveragePreview.textContent = `≈ ${coverage.widthM.toFixed(0)} × ${coverage.heightM.toFixed(0)} m`;
+    orthophotoCoveragePreview.removeAttribute('data-invalid');
+  } catch {
+    orthophotoCoveragePreview.textContent = 'Invalid capture model';
+    orthophotoCoveragePreview.dataset.invalid = 'true';
+  }
+}
+
+function requestedOsmTargetCount(): number {
+  const count = Number(orthophotoRandomCount.value);
+  if (!Number.isInteger(count) || count < 1 || count > 12) {
+    throw new Error('Target count must be an integer from 1 to 12.');
+  }
+  return count;
+}
+
+function osmCacheKey(
+  points: Array<[string, number, number]>,
+  requestedCount: number,
+  splitAfterM: number | null
+): string {
+  return JSON.stringify({ version: 2, points, requestedCount, splitAfterM });
+}
+
+function readCachedOsmData(key: string): OverpassResponse | null {
+  const entry = osmDiscoveryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > OSM_CACHE_TTL_MS) {
+    osmDiscoveryCache.delete(key);
+    return null;
+  }
+  osmDiscoveryCache.delete(key);
+  osmDiscoveryCache.set(key, entry);
+  return entry.data;
+}
+
+function cacheOsmData(key: string, data: OverpassResponse): void {
+  if (data.warnings?.length) return;
+  osmDiscoveryCache.set(key, { data, cachedAt: Date.now() });
+  while (osmDiscoveryCache.size > OSM_CACHE_MAXIMUM_ENTRIES) {
+    const oldestKey = osmDiscoveryCache.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    osmDiscoveryCache.delete(oldestKey);
+  }
+}
+
+function setOsmDiscoveryBusy(busy: boolean): void {
+  osmDiscoveryBusy = busy;
+  addRandomOrthophotos.disabled = busy;
+  orthophotoRandomCount.disabled = busy;
+  waypointTextarea.disabled = busy;
+  refreshOsmCandidates.disabled = busy;
+  selectAllOsmCandidates.disabled = busy;
+  clearOsmCandidateSelection.disabled = busy;
+  importOsmCandidates.disabled = busy;
+  loadWaypointOrthophotos.disabled = busy;
+  handoutSplit.disabled = busy || handoutSplit.options.length === 0;
+  cancelOsmDiscovery.hidden = !busy || osmDiscoveryController === null;
+  cancelOsmDiscovery.disabled = !busy || osmDiscoveryController === null;
+  osmCandidateReview.setAttribute('aria-busy', String(busy));
+  photoWorkflow.setExternalBusy(busy);
+  if (!busy && discoveredOsmCandidates.length > 0) renderOsmCandidateReview();
+}
+
+function stopOsmDiscoveryElapsedTimer(): void {
+  if (osmDiscoveryElapsedTimer !== null) clearInterval(osmDiscoveryElapsedTimer);
+  osmDiscoveryElapsedTimer = null;
+}
+
+function renderOsmDiscoveryPercent(): void {
+  const percent = Math.round((osmDiscoveryProgressBar.value / osmDiscoveryProgressBar.max) * 100);
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - osmDiscoveryStartedAt) / 1000));
+  osmDiscoveryProgressPercent.textContent = `${percent}% · ${elapsedSeconds}s`;
+}
+
+function beginOsmDiscoveryProgress(points: Array<[string, number, number]>): void {
+  stopOsmDiscoveryElapsedTimer();
+  osmDiscoveryStartedAt = Date.now();
+  osmDiscoveryWarningLegs.clear();
+  osmDiscoveryProgress.hidden = false;
+  osmDiscoveryProgress.dataset.state = 'working';
+  osmDiscoveryProgressText.textContent = 'Starting per-leg OpenStreetMap discovery…';
+  osmDiscoveryProgressPercent.textContent = '0%';
+  osmDiscoveryProgressBar.max = Math.max(1, (points.length - 1) * 3);
+  osmDiscoveryProgressBar.value = 0;
+  osmDiscoveryElapsedTimer = setInterval(renderOsmDiscoveryPercent, 1000);
+  osmDiscoveryWarning.textContent =
+    'Each route leg is checked separately. Building searches run only if stronger targets are insufficient.';
+  osmDiscoveryLegs.replaceChildren(
+    ...points.slice(0, -1).map(([name], index) => {
+      const chip = document.createElement('span');
+      chip.className = 'osm-leg-progress';
+      chip.dataset.legIndex = String(index);
+      chip.dataset.state = 'pending';
+      chip.textContent = `${name}–${points[index + 1][0]}`;
+      chip.setAttribute('aria-label', `${chip.textContent}: pending`);
+      return chip;
+    })
+  );
+}
+
+function setOsmLegProgressState(chip: HTMLElement | null, state: string): void {
+  if (!chip) return;
+  chip.dataset.state = state;
+  chip.setAttribute('aria-label', `${chip.textContent}: ${state}`);
+}
+
+function updateOsmDiscoveryProgress(progress: OsmDiscoveryProgress): void {
+  const stageLabels = {
+    features: 'identifiable features',
+    roads: 'road junctions',
+    buildings: 'building fallback',
+  } as const;
+  osmDiscoveryProgressBar.max = progress.totalSteps;
+  osmDiscoveryProgressBar.value = progress.completedSteps;
+  renderOsmDiscoveryPercent();
+  const chip = osmDiscoveryLegs.querySelector<HTMLElement>(`[data-leg-index="${progress.legIndex}"]`);
+  if (progress.state === 'started') {
+    if (progress.detail?.includes('shared route feature index')) {
+      osmDiscoveryProgressText.textContent = `Downloading the shared OpenStreetMap feature index for all ${progress.legCount} legs…`;
+      setStatus(`Downloading OpenStreetMap features for all ${progress.legCount} route legs…`);
+      osmDiscoveryLegs.querySelectorAll<HTMLElement>('.osm-leg-progress').forEach((legChip) => {
+        setOsmLegProgressState(legChip, 'active');
+      });
+    } else {
+      osmDiscoveryProgressText.textContent = `Leg ${progress.legIndex + 1} of ${progress.legCount} · ${progress.legName}: checking ${stageLabels[progress.stage]}…`;
+      setStatus(
+        `Searching OpenStreetMap · leg ${progress.legIndex + 1} of ${progress.legCount} · ${stageLabels[progress.stage]}…`
+      );
+      setOsmLegProgressState(chip, 'active');
+    }
+  } else if (progress.state === 'warning') {
+    osmDiscoveryWarningLegs.add(progress.legIndex);
+    osmDiscoveryWarning.textContent = `${progress.legName} ${stageLabels[progress.stage]} could not be loaded (${progress.detail ?? 'request failed'}). Continuing with completed results.`;
+    setOsmLegProgressState(chip, 'warning');
+  } else if (progress.stage === 'features' || progress.stage === 'roads') {
+    setOsmLegProgressState(chip, osmDiscoveryWarningLegs.has(progress.legIndex) ? 'warning' : 'scanned');
+  } else if (progress.stage === 'buildings') {
+    setOsmLegProgressState(chip, osmDiscoveryWarningLegs.has(progress.legIndex) ? 'warning' : 'done');
+  }
+}
+
+function finishOsmDiscoveryProgress(candidateCount: number, warnings: string[]): void {
+  stopOsmDiscoveryElapsedTimer();
+  osmDiscoveryProgressBar.value = osmDiscoveryProgressBar.max;
+  osmDiscoveryProgressPercent.textContent = '100%';
+  osmDiscoveryProgress.dataset.state = warnings.length ? 'warning' : 'complete';
+  osmDiscoveryProgressText.textContent = `Discovery complete · ${candidateCount} eligible feature${candidateCount === 1 ? '' : 's'} found`;
+  osmDiscoveryLegs.querySelectorAll<HTMLElement>('.osm-leg-progress').forEach((chip) => {
+    if (chip.dataset.state !== 'warning') setOsmLegProgressState(chip, 'done');
+  });
+  osmDiscoveryWarning.textContent = warnings.length
+    ? `${warnings.length} OpenStreetMap request${warnings.length === 1 ? '' : 's'} could not be loaded. Candidates from completed stages were retained. ${warnings.slice(0, 3).join(' | ')}${warnings.length > 3 ? ` | ${warnings.length - 3} more` : ''}`
+    : 'Every required leg stage completed. Unnecessary building searches were skipped.';
+}
+
+function failOsmDiscoveryProgress(message: string): void {
+  stopOsmDiscoveryElapsedTimer();
+  osmDiscoveryProgress.hidden = false;
+  osmDiscoveryProgress.dataset.state = 'error';
+  osmDiscoveryProgressText.textContent = 'OpenStreetMap discovery stopped';
+  osmDiscoveryWarning.textContent = message;
+}
+
+function clearOsmCandidateReview(): void {
+  stopOsmDiscoveryElapsedTimer();
+  discoveredOsmCandidates = [];
+  selectedOsmCandidateIds.clear();
+  osmCandidateRouteKey = '';
+  osmSelectionSalt = '';
+  osmCandidateList.replaceChildren();
+  osmCandidateReview.hidden = true;
+  osmDiscoveryProgress.hidden = true;
+  osmDiscoveryWarningLegs.clear();
+}
+
+function selectedOsmCandidates(): OsmPhotoCandidate[] {
+  return discoveredOsmCandidates.filter((candidate) => selectedOsmCandidateIds.has(candidate.id));
+}
+
+function osmSelectionWarnings(selected: OsmPhotoCandidate[]): string[] {
+  if (selected.length === 0) return [];
+  const warnings: string[] = [];
+  const selectionIssue = targetSelectionIssue(
+    selected,
+    requestedOsmTargetCount(),
+    photoWorkflow.handoutOptions.splitAfterM
+  );
+  if (selectionIssue) warnings.push(selectionIssue);
+  const existingEnroute = photoWorkflow.records.filter(
+    (record) => record.classification === 'enroute'
+  ).length;
+  if (existingEnroute + selected.length > 12) {
+    warnings.push(
+      `Rule A2.4.5 warning: importing all selected targets would create ${existingEnroute + selected.length} en-route photos; permitted maximum 12.`
+    );
+  }
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    const existingTasks = photoWorkflow.records.filter((record) => isCountedRouteTask(record, points)).length;
+    if (existingTasks + selected.length > 15) {
+      warnings.push(
+        `Rule A2.4.6 warning: importing all selected targets would create ${existingTasks + selected.length} route tasks; permitted maximum 15.`
+      );
+    }
+  } catch {
+    // Route parsing already has its own validation; keep target review usable.
+  }
+  return warnings;
+}
+
+function renderOsmCandidateReview(): void {
+  const selected = selectedOsmCandidates();
+  const warnings = osmSelectionWarnings(selected);
+  const exceedsImportCapacity =
+    photoWorkflow.records.length + selected.length > PHOTO_IMPORT_LIMITS.maximumCount;
+  osmCandidateSummary.textContent = `All ${discoveredOsmCandidates.length} eligible OSM feature${discoveredOsmCandidates.length === 1 ? ' is' : 's are'} shown. ${selected.length} selected. Selection mix ${osmSelectionSalt.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`;
+  osmCandidateSelectionStatus.textContent =
+    selected.length === 0
+      ? 'Select at least one target to import.'
+      : exceedsImportCapacity
+        ? `${selected.length} selected · app safety limit: a maximum of ${PHOTO_IMPORT_LIMITS.maximumCount} total photos can be loaded.`
+        : warnings.length
+          ? `${selected.length} selected · ${warnings.join(' ')}`
+          : `${selected.length} selected · ready for DOF025 import`;
+  osmCandidateSelectionStatus.dataset.tone =
+    selected.length === 0 || exceedsImportCapacity || warnings.length ? 'warning' : 'ok';
+  importOsmCandidates.disabled = osmDiscoveryBusy || selected.length === 0 || exceedsImportCapacity;
+  const fragment = document.createDocumentFragment();
+  for (const candidate of discoveredOsmCandidates) {
+    const row = document.createElement('label');
+    row.className = 'osm-candidate';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = selectedOsmCandidateIds.has(candidate.id);
+    checkbox.dataset.osmCandidateId = candidate.id;
+    const copy = document.createElement('span');
+    copy.className = 'osm-candidate-copy';
+    const title = document.createElement('strong');
+    title.textContent = candidate.name;
+    const metrics = document.createElement('span');
+    metrics.textContent = `${candidate.featureType} · ${candidate.routeLegName} · ${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint}`;
+    copy.append(title, metrics);
+    const confidence = document.createElement('span');
+    confidence.className = 'osm-confidence';
+    confidence.dataset.confidence = candidate.confidence;
+    confidence.textContent = `heuristic ${candidate.confidence} ${candidate.score}`;
+    row.append(checkbox, copy, confidence);
+    fragment.appendChild(row);
+  }
+  osmCandidateList.replaceChildren(fragment);
+  osmCandidateReview.hidden = false;
+}
+
+function chooseOsmCandidateProposal(): void {
+  const selected = selectOsmPhotoCandidates(
+    discoveredOsmCandidates,
+    requestedOsmTargetCount(),
+    photoWorkflow.handoutOptions.splitAfterM,
+    createSeededRandom(osmSelectionSalt)
+  );
+  selectedOsmCandidateIds = new Set(selected.map((candidate) => candidate.id));
+  renderOsmCandidateReview();
+}
+
+function newOsmSelectionSalt(): string {
+  const values = crypto.getRandomValues(new Uint32Array(2));
+  return Array.from(values, (value) => value.toString(16).padStart(8, '0')).join('');
+}
+
+function appendOrthophotoTargetRows(targets: OrthophotoTarget[]): void {
+  const rows = targets.map(
+    (target) => `PHOTO_${target.label},${target.latitude.toFixed(6)},${target.longitude.toFixed(6)}`
+  );
+  const current = waypointTextarea.value.trimEnd();
+  waypointTextarea.value = `${current}${current ? '\n' : ''}${rows.join('\n')}`;
+  waypointTextarea.dispatchEvent(new Event('input'));
+}
+
+for (const input of [orthophotoAltitude, orthophotoFocalLength, orthophotoDepression]) {
+  input.addEventListener('input', updateOrthophotoCoveragePreview);
+}
+orthophotoRandomCount.addEventListener('input', () => {
+  if (discoveredOsmCandidates.length === 0) return;
+  try {
+    chooseOsmCandidateProposal();
+  } catch {
+    osmCandidateSelectionStatus.textContent = 'Enter a target count from 1 to 12.';
+    importOsmCandidates.disabled = true;
+  }
+});
+handoutSplit.addEventListener('change', () => {
+  if (discoveredOsmCandidates.length === 0 || osmDiscoveryBusy) return;
+  try {
+    osmSelectionSalt = newOsmSelectionSalt();
+    chooseOsmCandidateProposal();
+    setStatus('Handout split changed: the proposed OSM targets were reselected and revalidated.', 'warning');
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+});
+updateOrthophotoCoveragePreview();
+
+addRandomOrthophotos.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
+  try {
+    const count = requestedOsmTargetCount();
+    const points = parseWaypoints(waypointTextarea.value);
+    photoWorkflow.analyze(points);
+    const route = buildRoute(points);
+    const routeKey = JSON.stringify(points);
+    const retainedCandidates = osmCandidateRouteKey === routeKey ? [...discoveredOsmCandidates] : [];
+    const splitAfterM = photoWorkflow.handoutOptions.splitAfterM;
+    const cacheKey = osmCacheKey(points, count, splitAfterM);
+    const cachedData = readCachedOsmData(cacheKey);
+    clearOsmCandidateReview();
+    osmSelectionSalt = newOsmSelectionSalt();
+    beginOsmDiscoveryProgress(points);
+    if (!cachedData) {
+      osmDiscoveryController = new AbortController();
+    }
+    setOsmDiscoveryBusy(true);
+    setStatus(
+      cachedData
+        ? 'Reusing the complete cached OpenStreetMap discovery with a new selection mix…'
+        : `Searching OpenStreetMap leg by leg (1 of ${points.length - 1})…`
+    );
+    const data =
+      cachedData ??
+      (await fetchOverpassPhotoData(points, {
+        route,
+        requestedCount: count,
+        splitAfterM,
+        signal: osmDiscoveryController?.signal,
+        onProgress: updateOsmDiscoveryProgress,
+      }));
+    const newlyDiscoveredCandidates = discoverOsmPhotoCandidates(data, route, points);
+    discoveredOsmCandidates = [
+      ...new Map(
+        [...retainedCandidates, ...newlyDiscoveredCandidates].map((candidate) => [candidate.id, candidate])
+      ).values(),
+    ].sort((left, right) => right.score - left.score || (left.alongRouteM ?? 0) - (right.alongRouteM ?? 0));
+    osmCandidateRouteKey = routeKey;
+    if (discoveredOsmCandidates.length === 0) {
+      throw new Error('No identifiable OSM targets met the route, clearance, and distance requirements.');
+    }
+    if (!cachedData) cacheOsmData(cacheKey, data);
+    finishOsmDiscoveryProgress(discoveredOsmCandidates.length, data.warnings ?? []);
+    chooseOsmCandidateProposal();
+    const selectedCount = selectedOsmCandidateIds.size;
+    const partialWarning = data.warnings?.length
+      ? ` ${data.warnings.length} OpenStreetMap request${data.warnings.length === 1 ? '' : 's'} could not be loaded; completed results were retained.`
+      : '';
+    const accumulatedNotice = retainedCandidates.length
+      ? ` Results were merged with ${retainedCandidates.length} candidates retained from the previous attempt.`
+      : '';
+    setStatus(
+      `${`Found ${discoveredOsmCandidates.length} eligible OSM features and displayed all of them. ${selectedCount} are initially selected; choose any number before importing.`}${partialWarning}${accumulatedNotice}`,
+      data.warnings?.length ? 'warning' : 'success'
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failOsmDiscoveryProgress(message);
+    setStatus(`Error: ${message}`, 'error');
+  } finally {
+    osmDiscoveryController = null;
+    if (osmDiscoveryBusy) setOsmDiscoveryBusy(false);
+  }
+});
+
+cancelOsmDiscovery.addEventListener('click', () => {
+  osmDiscoveryController?.abort(new Error('OpenStreetMap discovery cancelled by the user.'));
+});
+
+refreshOsmCandidates.addEventListener('click', () => {
+  if (discoveredOsmCandidates.length === 0 || osmDiscoveryBusy) return;
+  try {
+    const previousIds = [...selectedOsmCandidateIds].sort().join('|');
+    let changed = false;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      osmSelectionSalt = newOsmSelectionSalt();
+      chooseOsmCandidateProposal();
+      if ([...selectedOsmCandidateIds].sort().join('|') !== previousIds) {
+        changed = true;
+        break;
+      }
+    }
+    setStatus(
+      changed
+        ? 'Replaced the proposed OSM target selection. Review it before importing.'
+        : 'No alternative valid target set was available; the selection remains unchanged.',
+      changed ? 'neutral' : 'warning'
+    );
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+});
+
+selectAllOsmCandidates.addEventListener('click', () => {
+  selectedOsmCandidateIds = new Set(discoveredOsmCandidates.map((candidate) => candidate.id));
+  renderOsmCandidateReview();
+  setStatus(`Selected all ${selectedOsmCandidateIds.size} discovered OSM targets.`, 'warning');
+});
+
+clearOsmCandidateSelection.addEventListener('click', () => {
+  selectedOsmCandidateIds.clear();
+  renderOsmCandidateReview();
+  setStatus('Cleared the OSM target selection.');
+});
+
+osmCandidateList.addEventListener('change', (event) => {
+  const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-osm-candidate-id]');
+  if (!checkbox) return;
+  const id = checkbox.dataset.osmCandidateId;
+  if (!id) return;
+  if (checkbox.checked) selectedOsmCandidateIds.add(id);
+  else selectedOsmCandidateIds.delete(id);
+  const scrollTop = osmCandidateList.scrollTop;
+  renderOsmCandidateReview();
+  osmCandidateList.scrollTop = scrollTop;
+  osmCandidateList.querySelector<HTMLInputElement>(`[data-osm-candidate-id="${CSS.escape(id)}"]`)?.focus();
+});
+
+importOsmCandidates.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
+  try {
+    const selected = selectedOsmCandidates();
+    if (selected.length === 0) throw new Error('Select at least one proposed target.');
+    const existingLabels = new Set(
+      parseOrthophotoTargets(waypointTextarea.value).map((target) => target.label.toLocaleUpperCase())
+    );
+    const targets: OrthophotoTarget[] = selected.map((candidate, index) => {
+      const category = candidate.category
+        .replace(/[^A-Z0-9]+/gi, '_')
+        .toUpperCase()
+        .slice(0, 14);
+      let suffix = index + 1;
+      let label = `OSM_${category}_${String(suffix).padStart(2, '0')}`;
+      while (existingLabels.has(label)) {
+        suffix += 1;
+        label = `OSM_${category}_${String(suffix).padStart(2, '0')}`;
+      }
+      existingLabels.add(label);
+      return {
+        ...candidate,
+        label,
+        source: { ...candidate.source, selectionSalt: osmSelectionSalt },
+      };
+    });
+    const model = readOrthophotoModel();
+    const result = await photoWorkflow.importOrthophotoTargets(targets, model);
+    if (result.importedTargets.length > 0) appendOrthophotoTargetRows(result.importedTargets);
+    if (result.failedTargets.length === 0 && !result.cancelled) {
+      clearOsmCandidateReview();
+    } else {
+      const failedElementIds = new Set(
+        result.failedTargets
+          .map(({ target }) => target.source?.elementId)
+          .filter((id): id is string => Boolean(id))
+      );
+      selectedOsmCandidateIds = new Set(
+        discoveredOsmCandidates
+          .filter((candidate) => failedElementIds.has(candidate.source.elementId))
+          .map((candidate) => candidate.id)
+      );
+      renderOsmCandidateReview();
+    }
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+});
+
+loadWaypointOrthophotos.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy) return;
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    photoWorkflow.analyze(points);
+    const loadedLabels = new Set(
+      photoWorkflow.records
+        .map((record) => record.generatedOrthophoto?.targetLabel.toLocaleUpperCase())
+        .filter((label): label is string => Boolean(label))
+    );
+    const targets = parseOrthophotoTargets(waypointTextarea.value).filter(
+      (target) => !loadedLabels.has(target.label.toLocaleUpperCase())
+    );
+    if (targets.length === 0) {
+      throw new Error('No unloaded PHOTO_name,latitude,longitude rows were found.');
+    }
+    await photoWorkflow.importOrthophotoTargets(targets, readOrthophotoModel());
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
 });
 
 function renderRuleList(
@@ -796,8 +1369,12 @@ function tryInterpretAsD96(first, second) {
   return null;
 }
 
-function parseWaypoints(raw: string): Array<[string, number, number]> {
-  const points = raw
+function isPhotoCoordinateName(name: string): boolean {
+  return /^PHOTO_[A-Z0-9][A-Z0-9_-]{0,30}$/i.test(name);
+}
+
+function parseCoordinateRows(raw: string): Array<[string, number, number]> {
+  return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'))
@@ -818,6 +1395,10 @@ function parseWaypoints(raw: string): Array<[string, number, number]> {
       }
       return [name, Number(latLon.lat.toFixed(6)), Number(latLon.lon.toFixed(6))] as [string, number, number];
     });
+}
+
+function parseWaypoints(raw: string): Array<[string, number, number]> {
+  const points = parseCoordinateRows(raw).filter(([name]) => !isPhotoCoordinateName(name));
   if (points.length < 2) {
     throw new Error('At least two waypoints are required');
   }
@@ -837,6 +1418,23 @@ function parseWaypoints(raw: string): Array<[string, number, number]> {
     seenNames.add(normalizedName);
   }
   return points;
+}
+
+function parseOrthophotoTargets(raw: string): OrthophotoTarget[] {
+  const targets = parseCoordinateRows(raw)
+    .filter(([name]) => isPhotoCoordinateName(name))
+    .map(([name, latitude, longitude]) => ({
+      label: name.slice('PHOTO_'.length),
+      latitude,
+      longitude,
+    }));
+  const seen = new Set<string>();
+  for (const target of targets) {
+    const normalized = target.label.toLocaleUpperCase();
+    if (seen.has(normalized)) throw new Error(`PHOTO_ names must be unique: ${target.label}`);
+    seen.add(normalized);
+  }
+  return targets;
 }
 
 function dmsToDecimal(raw) {
@@ -1224,12 +1822,14 @@ async function generate() {
     clearDownloadUrl('photoAnalysis', downloadPhotoAnalysisLink);
     clearDownloadUrl('photoKey', downloadPhotoKeyLink);
     clearDownloadUrl('photoHandout', downloadPhotoHandoutLink);
+    clearDownloadUrl('competitorPhotoHandout', downloadCompetitorPhotoHandoutLink);
     downloadOverlayLink.style.display = 'none';
     downloadCroppedLink.style.display = 'none';
     downloadSummaryLink.style.display = 'none';
     downloadPhotoAnalysisLink.style.display = 'none';
     downloadPhotoKeyLink.style.display = 'none';
     downloadPhotoHandoutLink.style.display = 'none';
+    downloadCompetitorPhotoHandoutLink.style.display = 'none';
     clearCroppedPreview();
     if (outputsSection) {
       outputsSection.hidden = true;
@@ -2237,9 +2837,10 @@ async function generate() {
     setArtifactState('data', 'ok', 'CSV files ready; summary pending');
 
     setArtifactState('handout', 'processing', 'preparing photos');
+    setArtifactState('competitorHandout', 'processing', 'preparing photos');
     try {
       setStatus(
-        `Preparing ${judgePhotos.length} accepted photo${judgePhotos.length === 1 ? '' : 's'} for the judge handout...`
+        `Preparing ${judgePhotos.length} accepted photo${judgePhotos.length === 1 ? '' : 's'} for the judge and competitor handouts...`
       );
       const handoutPhotos = [];
       for (const record of judgePhotos) {
@@ -2255,26 +2856,54 @@ async function generate() {
         'the photo handout font',
         controller.signal
       );
-      const { buildPhotoHandout } = await import('./photo-handout');
-      const handoutBytes = await buildPhotoHandout(
-        handoutPhotos,
-        judgePhotoCompliance,
-        handoutFontBytes,
-        handoutOptions
-      );
-      setDownloadUrl(
-        'photoHandout',
-        createPdfObjectUrl(handoutBytes),
-        'judge_photo_handout.pdf',
-        downloadPhotoHandoutLink
-      );
-      downloadPhotoHandoutLink.style.display = 'inline-flex';
-      setArtifactState('handout', 'ok', 'PDF ready');
+      const { buildCompetitorPhotoHandout, buildPhotoHandout } = await import('./photo-handout');
+      try {
+        const handoutBytes = await buildPhotoHandout(
+          handoutPhotos,
+          judgePhotoCompliance,
+          handoutFontBytes,
+          handoutOptions
+        );
+        setDownloadUrl(
+          'photoHandout',
+          createPdfObjectUrl(handoutBytes),
+          'judge_photo_handout.pdf',
+          downloadPhotoHandoutLink
+        );
+        downloadPhotoHandoutLink.style.display = 'inline-flex';
+        setArtifactState('handout', 'ok', 'PDF ready');
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        artifactFailures.push(`judge photo handout: ${message}`);
+        setArtifactState('handout', 'failed', message);
+      }
+      try {
+        const competitorHandoutBytes = await buildCompetitorPhotoHandout(
+          handoutPhotos,
+          handoutFontBytes,
+          handoutOptions
+        );
+        setDownloadUrl(
+          'competitorPhotoHandout',
+          createPdfObjectUrl(competitorHandoutBytes),
+          'competitor_photo_handout.pdf',
+          downloadCompetitorPhotoHandoutLink
+        );
+        downloadCompetitorPhotoHandoutLink.style.display = 'inline-flex';
+        setArtifactState('competitorHandout', 'ok', 'PDF ready');
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        artifactFailures.push(`competitor photo handout: ${message}`);
+        setArtifactState('competitorHandout', 'failed', message);
+      }
     } catch (error) {
       if (controller.signal.aborted) throw error;
       const message = error instanceof Error ? error.message : String(error);
-      artifactFailures.push(`photo handout: ${message}`);
+      artifactFailures.push(`photo handouts: ${message}`);
       setArtifactState('handout', 'failed', message);
+      setArtifactState('competitorHandout', 'failed', message);
     }
 
     const summary = {

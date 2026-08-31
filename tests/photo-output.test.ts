@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { buildPhotoHandout } from '../src/photo-handout';
+import { buildCompetitorPhotoHandout, buildPhotoHandout } from '../src/photo-handout';
 import { orientationTransform } from '../src/photo-image';
 import { photoAnalysisCsv, photoSummaryJson } from '../src/photo-output';
 import type { PhotoComplianceSummary, PhotoRecord } from '../src/photo-types';
@@ -48,7 +48,7 @@ describe('photo outputs', () => {
       },
     ] as unknown as PhotoRecord[];
     expect(photoAnalysisCsv(records)).toContain('"one,""two"".jpg"');
-    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(3);
+    expect(photoSummaryJson(records, compliance).schemaVersion).toBe(4);
   });
 
   it('neutralizes spreadsheet formulas while leaving numeric values numeric', () => {
@@ -149,6 +149,17 @@ describe('photo outputs', () => {
   it('creates a valid empty handout PDF', async () => {
     const font = fs.readFileSync('node_modules/notosans-fontface/fonts/NotoSans-Bold.ttf');
     const bytes = await buildPhotoHandout([], compliance, new Uint8Array(font), {
+      splitWaypoint: 'TP5',
+      splitAfterM: 10_000,
+      includeSummary: true,
+    });
+    const document = await PDFDocument.load(bytes);
+    expect(document.getPageCount()).toBe(1);
+  });
+
+  it('creates a valid empty competitor handout PDF', async () => {
+    const font = fs.readFileSync('node_modules/notosans-fontface/fonts/NotoSans-Bold.ttf');
+    const bytes = await buildCompetitorPhotoHandout([], new Uint8Array(font), {
       splitWaypoint: 'TP5',
       splitAfterM: 10_000,
       includeSummary: true,

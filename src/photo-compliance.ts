@@ -2,9 +2,45 @@ import { haversine, type Waypoint } from './domain';
 import type { PhotoComplianceSummary, PhotoFinding, PhotoRecord } from './photo-types';
 
 const NM_M = 1852;
+const ENROUTE_CAMERA_ROUTE_AXIS_LIMIT_M = 500;
+
+export type FindingPresentation = 'primary' | 'action' | 'audit';
+
+const ACTION_FINDING_CODES = new Set(['task-position-missing']);
+const AUDIT_FINDING_CODES = new Set([
+  'camera-angle-missing',
+  'capture-altitude-missing',
+  'focal-length',
+  'focal-length-missing',
+  'judge-content-review',
+]);
+
+export function findingPresentation(finding: PhotoFinding): FindingPresentation {
+  if (ACTION_FINDING_CODES.has(finding.code)) return 'action';
+  if (AUDIT_FINDING_CODES.has(finding.code)) return 'audit';
+  return 'primary';
+}
+
+export function isOperationalFinding(finding: PhotoFinding): boolean {
+  return findingPresentation(finding) !== 'audit';
+}
+
+export function operationalFindingCounts(findings: PhotoFinding[]): {
+  violationCount: number;
+  warningCount: number;
+} {
+  const operational = findings.filter(isOperationalFinding);
+  return {
+    violationCount: operational.filter((finding) => finding.severity === 'violation').length,
+    warningCount: operational.filter((finding) => finding.severity === 'warning').length,
+  };
+}
 
 export function isPhotoAcceptedForJudge(photo: PhotoRecord): boolean {
-  return photo.exceptionAccepted || !photo.findings.some((finding) => finding.severity === 'violation');
+  return (
+    photo.exceptionAccepted ||
+    !photo.findings.some((finding) => isOperationalFinding(finding) && finding.severity === 'violation')
+  );
 }
 
 export type WaypointRole = 'start' | 'turning-point' | 'control-point' | 'finish';
@@ -237,14 +273,14 @@ export function evaluatePhotoCompliance(photos: PhotoRecord[], points: Waypoint[
       } else {
         findings.push(
           photoFinding(
-            photo.analysis.lateralDistanceM <= 300 ? 'pass' : 'violation',
+            photo.analysis.lateralDistanceM <= ENROUTE_CAMERA_ROUTE_AXIS_LIMIT_M ? 'pass' : 'violation',
             'route-axis-distance',
             'A2.4.5',
-            photo.analysis.lateralDistanceM <= 300
-              ? 'Camera is within the route-axis limit.'
-              : 'Camera is too far from the route axis.',
+            photo.analysis.lateralDistanceM <= ENROUTE_CAMERA_ROUTE_AXIS_LIMIT_M
+              ? 'Camera is within the configured route-axis screening limit.'
+              : 'Camera exceeds the configured route-axis screening limit.',
             `${photo.analysis.lateralDistanceM.toFixed(0)} m`,
-            'maximum 300 m'
+            `configured maximum ${ENROUTE_CAMERA_ROUTE_AXIS_LIMIT_M} m`
           )
         );
       }
@@ -373,28 +409,7 @@ export function evaluatePhotoCompliance(photos: PhotoRecord[], points: Waypoint[
     }
   }
 
-  const orderedEnroute = enroute
-    .filter((photo) => photo.analysis)
-    .map((photo) => photo.analysis?.alongRouteM ?? 0);
-  if (
-    orderedEnroute.length > 1 &&
-    orderedEnroute.every((distance, index) => index === 0 || distance >= orderedEnroute[index - 1])
-  ) {
-    findings.push(
-      finding(
-        'warning',
-        'enroute-presentation-order',
-        'A2.4.5',
-        'route',
-        'En-route photos appear to be presented in route order.',
-        'monotonic route positions',
-        'alphabetical presentation that does not disclose route order'
-      )
-    );
-  }
-
-  const violationCount = findings.filter((item) => item.severity === 'violation').length;
-  const warningCount = findings.filter((item) => item.severity === 'warning').length;
+  const { violationCount, warningCount } = operationalFindingCounts(findings);
   return {
     status: violationCount > 0 ? 'against-rules' : warningCount > 0 ? 'manual-review' : 'ok',
     findings,
