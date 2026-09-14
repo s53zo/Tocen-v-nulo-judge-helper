@@ -77,6 +77,10 @@ export const PHOTO_ANALYSIS_COLUMNS = [
   'osm_element_id',
   'osm_attribution',
   'osm_selection_salt',
+  'control_photo_role',
+  'control_photo_waypoint',
+  'correct_object_latitude',
+  'correct_object_longitude',
 ] as const;
 
 function photoStatus(photo: PhotoRecord): string {
@@ -177,6 +181,10 @@ export function photoAnalysisRows(photos: PhotoRecord[]): Record<string, unknown
     osm_element_id: photo.generatedOrthophoto?.targetSource?.elementId,
     osm_attribution: photo.generatedOrthophoto?.targetSource?.attribution,
     osm_selection_salt: photo.generatedOrthophoto?.targetSource?.selectionSalt,
+    control_photo_role: photo.generatedOrthophoto?.targetSource?.controlRole,
+    control_photo_waypoint: photo.generatedOrthophoto?.targetSource?.controlWaypoint,
+    correct_object_latitude: photo.generatedOrthophoto?.targetSource?.correctObjectLatitude,
+    correct_object_longitude: photo.generatedOrthophoto?.targetSource?.correctObjectLongitude,
   }));
 }
 

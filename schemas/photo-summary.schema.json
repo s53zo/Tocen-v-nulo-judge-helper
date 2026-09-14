@@ -118,7 +118,11 @@
             "name": { "type": ["string", "null"] },
             "score": { "type": "number" },
             "attribution": { "type": "string" },
-            "selectionSalt": { "type": "string" }
+            "selectionSalt": { "type": "string" },
+            "controlRole": { "enum": ["true", "false"] },
+            "controlWaypoint": { "type": "string" },
+            "correctObjectLatitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "correctObjectLongitude": { "type": "number", "minimum": -180, "maximum": 180 }
           }
         }
       }

@@ -701,9 +701,14 @@ export class PhotoWorkflow {
       height,
       originalMetadata,
       metadata,
-      classification: orthophoto ? 'enroute' : (item?.classification ?? inferred.classification),
-      identifier: item?.identifier ?? alphabeticIdentifier(existingRecords.length),
-      linkedWaypoint: item?.linkedWaypoint ?? inferred.linkedWaypoint,
+      classification: orthophoto
+        ? (orthophoto.target.control?.classification ?? 'enroute')
+        : (item?.classification ?? inferred.classification),
+      identifier:
+        orthophoto?.target.control?.identifier ??
+        item?.identifier ??
+        alphabeticIdentifier(existingRecords.length),
+      linkedWaypoint: orthophoto?.target.control?.waypoint ?? item?.linkedWaypoint ?? inferred.linkedWaypoint,
       taskLatitude: orthophoto
         ? sourcedValue(orthophoto.target.latitude, 'manual', true, 'Centre of the DOF025 crop.')
         : missingValue('Task/object latitude has not been supplied.'),

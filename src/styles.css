@@ -978,7 +978,8 @@ th:not(:first-child) {
   color: #24604b;
 }
 
-.osm-leg-progress[data-state="done"] {
+.osm-leg-progress[data-state="done"],
+.osm-leg-progress[data-state="recovered"] {
   border-color: #26745a;
   background: #26745a;
   color: #fff;
@@ -1068,6 +1069,58 @@ th:not(:first-child) {
 
 .osm-candidate-copy {
   min-width: 0;
+}
+
+.control-photo-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.control-photo-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.45fr) repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+  padding: 0.75rem;
+  border: 1px solid #cbd8d3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.control-photo-waypoint {
+  margin: 0;
+  color: #153f33;
+}
+
+.control-photo-option {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border: 1px solid #d8e2de;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.control-photo-option:has(input:checked) {
+  border-color: #26745a;
+  box-shadow: inset 0 0 0 1px #26745a;
+  background: #f1faf6;
+}
+
+.control-photo-option img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #eef2f0;
+}
+
+@media (max-width: 780px) {
+  .control-photo-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .osm-candidate-copy strong,

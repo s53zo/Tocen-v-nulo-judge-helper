@@ -166,6 +166,11 @@ describe('photo compliance', () => {
       photo(index, { classification: 'control-correct', linkedWaypoint: 'SP' })
     );
     expect(evaluatePhotoCompliance(startControls, points).routeTaskCount).toBe(16);
+    expect(
+      evaluatePhotoCompliance(startControls, points).findings.some(
+        (item) => item.code === 'post-control-spacing'
+      )
+    ).toBe(false);
     const staleSigns = Array.from({ length: 16 }, (_, index) =>
       photo(index, { classification: 'sign-task', linkedWaypoint: 'TP99' })
     );

@@ -17,10 +17,17 @@ import {
 import rawMapPresets from './map-presets.json';
 import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
 import { loadMapPresets } from './maps';
-import { type OrthophotoCaptureModel, type OrthophotoTarget, orthophotoCoverage } from './orthophoto';
 import {
+  type OrthophotoCaptureModel,
+  type OrthophotoTarget,
+  orthophotoCoverage,
+  orthophotoRequestUrl,
+} from './orthophoto';
+import {
+  type ControlPhotoProposal,
   createSeededRandom,
   discoverOsmPhotoCandidates,
+  fetchOsmControlPhotoProposals,
   fetchOverpassPhotoData,
   type OsmDiscoveryProgress,
   type OsmPhotoCandidate,
@@ -126,6 +133,11 @@ const osmDiscoveryProgressBar = requiredElement<HTMLProgressElement>('osmDiscove
 const osmDiscoveryLegs = requiredElement<HTMLElement>('osmDiscoveryLegs');
 const osmDiscoveryWarning = requiredElement<HTMLElement>('osmDiscoveryWarning');
 const cancelOsmDiscovery = requiredElement<HTMLButtonElement>('cancelOsmDiscovery');
+const findControlPhotoOptions = requiredElement<HTMLButtonElement>('findControlPhotoOptions');
+const controlPhotoReview = requiredElement<HTMLElement>('controlPhotoReview');
+const controlPhotoStatus = requiredElement<HTMLElement>('controlPhotoStatus');
+const controlPhotoList = requiredElement<HTMLElement>('controlPhotoList');
+const importControlPhotos = requiredElement<HTMLButtonElement>('importControlPhotos');
 
 const downloadPdfLink = requiredElement<HTMLAnchorElement>('downloadPdf');
 const downloadOverlayLink = requiredElement<HTMLAnchorElement>('downloadOverlay');
@@ -425,6 +437,9 @@ const OSM_CACHE_TTL_MS = 10 * 60_000;
 let osmDiscoveryStartedAt = 0;
 let osmDiscoveryElapsedTimer: ReturnType<typeof setInterval> | null = null;
 let osmDiscoveryController: AbortController | null = null;
+let controlPhotoProposals: ControlPhotoProposal[] = [];
+let selectedControlPhotoRoles = new Map<string, 'true' | 'false'>();
+let controlPhotoRouteKey = '';
 let waypointAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
 waypointTextarea.addEventListener('input', () => {
   if (waypointAnalysisTimer !== null) clearTimeout(waypointAnalysisTimer);
@@ -436,6 +451,9 @@ waypointTextarea.addEventListener('input', () => {
       photoWorkflow.analyze(points);
       if (osmCandidateRouteKey && osmCandidateRouteKey !== JSON.stringify(points)) {
         clearOsmCandidateReview();
+      }
+      if (controlPhotoRouteKey && controlPhotoRouteKey !== JSON.stringify(points)) {
+        clearControlPhotoReview();
       }
       setStatus('Route changed: photo analysis refreshed. Generate again to rebuild outputs.');
     } catch {
@@ -523,12 +541,15 @@ function setOsmDiscoveryBusy(busy: boolean): void {
   clearOsmCandidateSelection.disabled = busy;
   importOsmCandidates.disabled = busy;
   loadWaypointOrthophotos.disabled = busy;
+  findControlPhotoOptions.disabled = busy;
+  importControlPhotos.disabled = busy;
   handoutSplit.disabled = busy || handoutSplit.options.length === 0;
   cancelOsmDiscovery.hidden = !busy || osmDiscoveryController === null;
   cancelOsmDiscovery.disabled = !busy || osmDiscoveryController === null;
   osmCandidateReview.setAttribute('aria-busy', String(busy));
   photoWorkflow.setExternalBusy(busy);
   if (!busy && discoveredOsmCandidates.length > 0) renderOsmCandidateReview();
+  if (!busy && controlPhotoProposals.length > 0) renderControlPhotoReview();
 }
 
 function stopOsmDiscoveryElapsedTimer(): void {
@@ -584,7 +605,8 @@ function updateOsmDiscoveryProgress(progress: OsmDiscoveryProgress): void {
   osmDiscoveryProgressBar.value = progress.completedSteps;
   renderOsmDiscoveryPercent();
   const chip = osmDiscoveryLegs.querySelector<HTMLElement>(`[data-leg-index="${progress.legIndex}"]`);
-  if (progress.state === 'started') {
+  if (progress.state === 'started' || progress.state === 'retrying') {
+    const retryPrefix = progress.state === 'retrying' ? 'Retrying after the first leg pass · ' : '';
     if (progress.detail?.includes('shared route feature index')) {
       osmDiscoveryProgressText.textContent = `Downloading the shared OpenStreetMap feature index for all ${progress.legCount} legs…`;
       setStatus(`Downloading OpenStreetMap features for all ${progress.legCount} route legs…`);
@@ -592,7 +614,7 @@ function updateOsmDiscoveryProgress(progress: OsmDiscoveryProgress): void {
         setOsmLegProgressState(legChip, 'active');
       });
     } else {
-      osmDiscoveryProgressText.textContent = `Leg ${progress.legIndex + 1} of ${progress.legCount} · ${progress.legName}: checking ${stageLabels[progress.stage]}…`;
+      osmDiscoveryProgressText.textContent = `${retryPrefix}Leg ${progress.legIndex + 1} of ${progress.legCount} · ${progress.legName}: checking ${stageLabels[progress.stage]}…`;
       setStatus(
         `Searching OpenStreetMap · leg ${progress.legIndex + 1} of ${progress.legCount} · ${stageLabels[progress.stage]}…`
       );
@@ -602,11 +624,74 @@ function updateOsmDiscoveryProgress(progress: OsmDiscoveryProgress): void {
     osmDiscoveryWarningLegs.add(progress.legIndex);
     osmDiscoveryWarning.textContent = `${progress.legName} ${stageLabels[progress.stage]} could not be loaded (${progress.detail ?? 'request failed'}). Continuing with completed results.`;
     setOsmLegProgressState(chip, 'warning');
+  } else if (progress.state === 'recovered') {
+    osmDiscoveryWarningLegs.delete(progress.legIndex);
+    osmDiscoveryWarning.textContent = `${progress.legName} ${stageLabels[progress.stage]} recovered on the deferred retry pass.`;
+    setOsmLegProgressState(chip, 'recovered');
   } else if (progress.stage === 'features' || progress.stage === 'roads') {
     setOsmLegProgressState(chip, osmDiscoveryWarningLegs.has(progress.legIndex) ? 'warning' : 'scanned');
   } else if (progress.stage === 'buildings') {
     setOsmLegProgressState(chip, osmDiscoveryWarningLegs.has(progress.legIndex) ? 'warning' : 'done');
   }
+}
+
+function clearControlPhotoReview(): void {
+  controlPhotoProposals = [];
+  selectedControlPhotoRoles.clear();
+  controlPhotoRouteKey = '';
+  controlPhotoList.replaceChildren();
+  controlPhotoReview.hidden = true;
+}
+
+function renderControlPhotoReview(): void {
+  const coverage = orthophotoCoverage(readOrthophotoModel());
+  const fragment = document.createDocumentFragment();
+  for (const proposal of controlPhotoProposals) {
+    const [waypointName] = proposal.waypoint;
+    const row = document.createElement('section');
+    row.className = 'control-photo-row';
+    const heading = document.createElement('h5');
+    heading.className = 'control-photo-waypoint';
+    heading.textContent = waypointName;
+    row.appendChild(heading);
+    const options: Array<['true' | 'false', typeof proposal.trueTarget | null]> = [
+      ['true', proposal.trueTarget],
+      ...(waypointName === 'SP' || waypointName === 'FP'
+        ? []
+        : ([['false', proposal.falseTarget]] as Array<
+            ['true' | 'false', typeof proposal.trueTarget | null]
+          >)),
+    ];
+    for (const [role, target] of options) {
+      if (!target) continue;
+      const label = document.createElement('label');
+      label.className = 'control-photo-option';
+      const choice = document.createElement('input');
+      choice.type = 'radio';
+      choice.name = `control-photo-${waypointName}`;
+      choice.value = role;
+      choice.dataset.controlWaypoint = waypointName;
+      choice.checked = selectedControlPhotoRoles.get(waypointName) === role;
+      const title = document.createElement('strong');
+      title.textContent = `${role === 'true' ? 'True' : 'False'} · ${target.name}`;
+      const metrics = document.createElement('span');
+      metrics.className = 'note';
+      metrics.textContent =
+        role === 'true'
+          ? `${target.featureType} · ${target.distanceFromWaypointM.toFixed(0)} m from ${waypointName}`
+          : `${target.featureType} · ${(target.distanceFromCorrectM / 1852).toFixed(2)} NM from the true object`;
+      const preview = document.createElement('img');
+      preview.alt = `${waypointName} ${role} orthophoto preview`;
+      preview.loading = 'lazy';
+      preview.src = orthophotoRequestUrl(target.latitude, target.longitude, coverage, 800);
+      label.append(choice, title, metrics, preview);
+      row.appendChild(label);
+    }
+    fragment.appendChild(row);
+  }
+  controlPhotoList.replaceChildren(fragment);
+  controlPhotoReview.hidden = false;
+  importControlPhotos.disabled = controlPhotoProposals.length === 0 || osmDiscoveryBusy;
 }
 
 function finishOsmDiscoveryProgress(candidateCount: number, warnings: string[]): void {
@@ -808,7 +893,7 @@ addRandomOrthophotos.addEventListener('click', async () => {
       ...new Map(
         [...retainedCandidates, ...newlyDiscoveredCandidates].map((candidate) => [candidate.id, candidate])
       ).values(),
-    ].sort((left, right) => right.score - left.score || (left.alongRouteM ?? 0) - (right.alongRouteM ?? 0));
+    ].sort((left, right) => (left.alongRouteM ?? 0) - (right.alongRouteM ?? 0) || right.score - left.score);
     osmCandidateRouteKey = routeKey;
     if (discoveredOsmCandidates.length === 0) {
       throw new Error('No identifiable OSM targets met the route, clearance, and distance requirements.');
@@ -934,6 +1019,107 @@ importOsmCandidates.addEventListener('click', async () => {
       );
       renderOsmCandidateReview();
     }
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+});
+
+findControlPhotoOptions.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    photoWorkflow.analyze(points);
+    clearControlPhotoReview();
+    osmDiscoveryController = new AbortController();
+    setOsmDiscoveryBusy(true);
+    controlPhotoReview.hidden = false;
+    controlPhotoStatus.textContent = 'Finding the nearest identifiable object for each control…';
+    setStatus('Searching OpenStreetMap for SP/TP/FP photo options…');
+    const result = await fetchOsmControlPhotoProposals(points, {
+      signal: osmDiscoveryController.signal,
+      onProgress: ({ waypointIndex, waypointCount, waypointName, stage, state }) => {
+        const action =
+          state === 'retrying'
+            ? 'retrying after the first pass'
+            : stage === 'true'
+              ? 'finding the true object'
+              : 'finding a similar false object 1-10 NM away';
+        controlPhotoStatus.textContent = `${waypointIndex + 1} of ${waypointCount} · ${waypointName} · ${action}`;
+      },
+    });
+    controlPhotoProposals = result.proposals;
+    controlPhotoRouteKey = JSON.stringify(points);
+    selectedControlPhotoRoles = new Map(
+      result.proposals.map(({ waypoint }) => [waypoint[0], 'true' as const])
+    );
+    renderControlPhotoReview();
+    controlPhotoStatus.textContent = `${result.proposals.length} of ${points.length} controls have a true-photo proposal.${result.warnings.length ? ` ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join(' | ')}` : ' Choose true or false for each TP.'}`;
+    setStatus(
+      result.warnings.length
+        ? `Control-photo discovery completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}. Review the available choices.`
+        : 'Control-photo options are ready. SP and FP are fixed to true; choose true or false for every TP.',
+      result.warnings.length ? 'warning' : 'success'
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    controlPhotoStatus.textContent = message;
+    setStatus(`Error: ${message}`, 'error');
+  } finally {
+    osmDiscoveryController = null;
+    if (osmDiscoveryBusy) setOsmDiscoveryBusy(false);
+  }
+});
+
+controlPhotoList.addEventListener('change', (event) => {
+  const choice = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-control-waypoint]');
+  if (!choice) return;
+  const waypoint = choice.dataset.controlWaypoint;
+  if (!waypoint || (choice.value !== 'true' && choice.value !== 'false')) return;
+  selectedControlPhotoRoles.set(waypoint, choice.value);
+  renderControlPhotoReview();
+  controlPhotoList
+    .querySelector<HTMLInputElement>(
+      `input[data-control-waypoint="${CSS.escape(waypoint)}"][value="${choice.value}"]`
+    )
+    ?.focus();
+});
+
+importControlPhotos.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
+  try {
+    const targets: OrthophotoTarget[] = controlPhotoProposals.flatMap((proposal) => {
+      const waypoint = proposal.waypoint[0];
+      const role = waypoint === 'SP' || waypoint === 'FP' ? 'true' : selectedControlPhotoRoles.get(waypoint);
+      const selected = role === 'false' ? proposal.falseTarget : proposal.trueTarget;
+      if (!role || !selected) return [];
+      return [
+        {
+          ...selected,
+          label: `CONTROL_${waypoint}_${role.toUpperCase()}`,
+          source: {
+            ...selected.source,
+            controlRole: role,
+            controlWaypoint: waypoint,
+            ...(role === 'false'
+              ? {
+                  correctObjectLatitude: proposal.trueTarget.latitude,
+                  correctObjectLongitude: proposal.trueTarget.longitude,
+                }
+              : {}),
+          },
+          control: {
+            classification: role === 'false' ? 'control-false' : 'control-correct',
+            waypoint,
+            identifier: waypoint,
+          },
+        },
+      ];
+    });
+    if (targets.length !== controlPhotoProposals.length) {
+      throw new Error('Choose an available true or false photo for every proposed control.');
+    }
+    const result = await photoWorkflow.importOrthophotoTargets(targets, readOrthophotoModel());
+    if (result.failedTargets.length === 0 && !result.cancelled) clearControlPhotoReview();
   } catch (error) {
     setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }

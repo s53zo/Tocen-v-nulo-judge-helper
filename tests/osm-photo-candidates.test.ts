@@ -6,6 +6,7 @@ import {
   buildOverpassPhotoQueries,
   createSeededRandom,
   discoverOsmPhotoCandidates,
+  fetchOsmControlPhotoProposals,
   fetchOverpassPhotoData,
   type OverpassResponse,
   selectOsmPhotoCandidates,
@@ -160,7 +161,7 @@ describe('Overpass photo query', () => {
     expect(new Set(requestedHosts)).toEqual(new Set(['maps.mail.ru']));
   });
 
-  it('retries the preferred endpoint once before contacting an alternative', async () => {
+  it('defers a failed leg until the other legs run, then retries it on an alternative', async () => {
     const requestedHosts: string[] = [];
     let firstRequest = true;
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
@@ -171,9 +172,37 @@ describe('Overpass photo query', () => {
       }
       return new Response(JSON.stringify({ elements: [] }), { status: 200 });
     });
-    await fetchOverpassPhotoData(points, { fetcher: fetcher as typeof fetch });
+    const progress: string[] = [];
+    await fetchOverpassPhotoData(points, {
+      fetcher: fetcher as typeof fetch,
+      retryDelayMs: 0,
+      onProgress: ({ legIndex, stage, state }) => progress.push(`${legIndex}:${stage}:${state}`),
+    });
     expect(requestedHosts.slice(0, 2)).toEqual(['maps.mail.ru', 'maps.mail.ru']);
-    expect(new Set(requestedHosts)).toEqual(new Set(['maps.mail.ru']));
+    expect(requestedHosts[2]).toBe('overpass.private.coffee');
+    expect(progress).toContain('0:features:retrying');
+    expect(progress).toContain('0:features:recovered');
+  });
+
+  it('retries failed legs fairly in endpoint rounds', async () => {
+    const requestedHosts: string[] = [];
+    let requestCount = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      requestedHosts.push(new URL(String(input)).host);
+      requestCount += 1;
+      if (requestCount <= 2) return new Response('', { status: 504 });
+      return new Response(JSON.stringify({ elements: [] }), { status: 200 });
+    });
+    await fetchOverpassPhotoData(points, {
+      fetcher: fetcher as typeof fetch,
+      retryDelayMs: 0,
+    });
+    expect(requestedHosts.slice(0, 4)).toEqual([
+      'maps.mail.ru',
+      'maps.mail.ru',
+      'overpass.private.coffee',
+      'overpass.private.coffee',
+    ]);
   });
 
   it('skips per-leg building fallback after enough stronger targets are found', async () => {
@@ -226,6 +255,52 @@ describe('Overpass photo query', () => {
     });
     controller.abort(new Error('cancelled by test'));
     await expect(result).rejects.toThrow(/cancelled by test/);
+  });
+
+  it('proposes true SP/FP photos and a rule-separated false option for a TP', async () => {
+    const controlData = {
+      elements: [
+        {
+          type: 'way',
+          id: 100,
+          center: { lat: 46.6, lon: 16.0 },
+          tags: { bridge: 'yes', name: 'SP bridge' },
+        },
+        {
+          type: 'way',
+          id: 101,
+          center: { lat: 46.6, lon: 16.1 },
+          tags: { bridge: 'yes', name: 'TP bridge' },
+        },
+        {
+          type: 'way',
+          id: 102,
+          center: { lat: 46.6, lon: 16.2 },
+          tags: { bridge: 'yes', name: 'FP bridge' },
+        },
+        {
+          type: 'way',
+          id: 103,
+          center: { lat: 46.6, lon: 16.13 },
+          tags: { bridge: 'yes', name: 'False bridge' },
+        },
+      ],
+    };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(controlData), { status: 200 }));
+    const result = await fetchOsmControlPhotoProposals(points, {
+      fetcher: fetcher as typeof fetch,
+      retryDelayMs: 0,
+    });
+    expect(result.warnings).toEqual([]);
+    expect(result.proposals).toHaveLength(3);
+    expect(result.proposals[0].trueTarget.name).toBe('SP bridge');
+    expect(result.proposals[0].falseTarget).toBeNull();
+    expect(result.proposals[1].trueTarget.name).toBe('TP bridge');
+    expect(result.proposals[1].falseTarget?.name).toBe('False bridge');
+    expect(result.proposals[1].falseTarget?.distanceFromCorrectM).toBeGreaterThanOrEqual(1852);
+    expect(result.proposals[1].falseTarget?.distanceFromCorrectM).toBeLessThanOrEqual(10 * 1852);
+    expect(result.proposals[2].trueTarget.name).toBe('FP bridge');
+    expect(result.proposals[2].falseTarget).toBeNull();
   });
 });
 
@@ -291,6 +366,15 @@ describe('OSM candidate discovery and selection', () => {
     });
     const selected = selectOsmPhotoCandidates(candidates, 12, 10_000, () => 0.5);
     expect(selected).toHaveLength(12);
+    expect(selected.map((candidate) => candidate.alongRouteM)).toEqual(
+      [...selected]
+        .map((candidate) => candidate.alongRouteM)
+        .sort((left, right) => (left ?? 0) - (right ?? 0))
+    );
+    const beforeLegCounts = [0, 1, 2, 3, 4].map(
+      (legIndex) => selected.filter((candidate) => candidate.routeLegIndex === legIndex).length
+    );
+    expect(Math.max(...beforeLegCounts) - Math.min(...beforeLegCounts)).toBeLessThanOrEqual(1);
     expect(selected.filter((candidate) => candidate.routeLegIndex === 5)).toHaveLength(3);
     expect(selected.filter((candidate) => candidate.routeLegIndex === 6)).toHaveLength(3);
     expect(targetSelectionIssue(selected, 12, 10_000)).toBeNull();

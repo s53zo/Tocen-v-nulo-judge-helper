@@ -89,6 +89,10 @@ export interface GeneratedOrthophotoInfo {
     score: number;
     attribution: string;
     selectionSalt?: string;
+    controlRole?: 'true' | 'false';
+    controlWaypoint?: string;
+    correctObjectLatitude?: number;
+    correctObjectLongitude?: number;
   };
 }
 

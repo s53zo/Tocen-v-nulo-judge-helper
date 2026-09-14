@@ -19,6 +19,16 @@ const MAXIMUM_OVERPASS_RESPONSE_BYTES = 15 * 1024 * 1024;
 const MAXIMUM_OVERPASS_ELEMENTS = 50_000;
 const MAXIMUM_GEOMETRY_POINTS = 10_000;
 const MAXIMUM_OSM_TEXT_LENGTH = 500;
+const CONTROL_TRUE_SEARCH_RADIUS_M = 3000;
+const CONTROL_FALSE_MINIMUM_M = 1852;
+const CONTROL_FALSE_MAXIMUM_M = 10 * 1852;
+const CONTROL_FALSE_PROBE_RADII_NM = [1.4, 3, 5.5, 8, 9.5] as const;
+const PRIMARY_OVERPASS_ATTEMPTS = [[OVERPASS_SECOND_FALLBACK_URL, 18_000]] as const;
+const RETRY_OVERPASS_ATTEMPTS = [
+  [OVERPASS_FALLBACK_URL, 22_000],
+  [OVERPASS_API_URL, 22_000],
+  [OVERPASS_SECOND_FALLBACK_URL, 35_000],
+] as const;
 
 export function createSeededRandom(salt: string): () => number {
   let seed = 0x811c9dc5;
@@ -58,7 +68,13 @@ export interface OverpassResponse {
 }
 
 export type OsmDiscoveryStage = 'features' | 'roads' | 'buildings';
-export type OsmDiscoveryStageState = 'started' | 'completed' | 'warning' | 'skipped';
+export type OsmDiscoveryStageState =
+  | 'started'
+  | 'completed'
+  | 'warning'
+  | 'skipped'
+  | 'retrying'
+  | 'recovered';
 
 export interface OsmDiscoveryProgress {
   legIndex: number;
@@ -79,6 +95,7 @@ export interface FetchOverpassOptions {
   fetcher?: typeof fetch;
   onProgress?: (progress: OsmDiscoveryProgress) => void;
   deadlineMs?: number;
+  retryDelayMs?: number;
 }
 
 export interface OsmPhotoCandidate extends OrthophotoTarget {
@@ -96,6 +113,39 @@ export interface OsmPhotoCandidate extends OrthophotoTarget {
   routeLegCount: number;
   routeLegBoundariesM: number[];
   source: OrthophotoTargetSource;
+}
+
+export interface ControlPhotoCandidate extends OrthophotoTarget {
+  id: string;
+  name: string;
+  category: string;
+  featureType: string;
+  score: number;
+  distanceFromWaypointM: number;
+  distanceFromCorrectM: number;
+  source: NonNullable<OrthophotoTarget['source']>;
+}
+
+export interface ControlPhotoProposal {
+  waypoint: Waypoint;
+  trueTarget: ControlPhotoCandidate;
+  falseTarget: ControlPhotoCandidate | null;
+}
+
+export interface ControlDiscoveryProgress {
+  waypointIndex: number;
+  waypointCount: number;
+  waypointName: string;
+  stage: 'true' | 'false';
+  state: OsmDiscoveryStageState;
+  detail?: string;
+}
+
+export interface FetchControlPhotoOptions {
+  signal?: AbortSignal;
+  fetcher?: typeof fetch;
+  retryDelayMs?: number;
+  onProgress?: (progress: ControlDiscoveryProgress) => void;
 }
 
 interface CandidateDefinition {
@@ -352,7 +402,7 @@ async function requestOverpass(
   query: string,
   signal: AbortSignal | undefined,
   fetcher: typeof fetch,
-  timeoutMs = 20_000
+  attempts: ReadonlyArray<readonly [string, number]>
 ): Promise<OverpassResponse> {
   const controllers: AbortController[] = [];
   const requestEndpoint = async (endpoint: string, requestTimeoutMs: number): Promise<OverpassResponse> => {
@@ -387,12 +437,7 @@ async function requestOverpass(
     // Exact-query diagnostics showed that concurrent requests make the healthy
     // public instance queue one leg until it times out. Try it alone first; only
     // contact the less reliable alternatives after a real failure.
-    for (const [endpoint, requestTimeoutMs] of [
-      [OVERPASS_SECOND_FALLBACK_URL, 35_000],
-      [OVERPASS_SECOND_FALLBACK_URL, 35_000],
-      [OVERPASS_FALLBACK_URL, timeoutMs],
-      [OVERPASS_API_URL, timeoutMs],
-    ] as const) {
+    for (const [endpoint, requestTimeoutMs] of attempts) {
       try {
         return await requestEndpoint(endpoint, requestTimeoutMs);
       } catch (error) {
@@ -428,7 +473,7 @@ export async function fetchOverpassPhotoData(
   }, options.deadlineMs ?? 240_000);
   const discoverySignal = discoveryController.signal;
   const legCount = points.length - 1;
-  const totalSteps = legCount * 3;
+  let totalSteps = legCount * 3;
   let completedSteps = 0;
   const warnings: string[] = [];
   const elements = new Map<string, OverpassElement>();
@@ -449,32 +494,81 @@ export async function fetchOverpassPhotoData(
       ...(detail ? { detail } : {}),
     });
   };
-  const runStage = async (legIndex: number, stage: OsmDiscoveryStage, query: string) => {
-    emit(legIndex, stage, 'started');
+  const runStage = async (
+    legIndex: number,
+    stage: OsmDiscoveryStage,
+    query: string,
+    attempts: ReadonlyArray<readonly [string, number]>,
+    retry = false
+  ): Promise<string | null> => {
+    emit(legIndex, stage, retry ? 'retrying' : 'started');
     try {
-      const result = await requestOverpass(query, discoverySignal, fetcher);
+      const result = await requestOverpass(query, discoverySignal, fetcher, attempts);
       for (const element of result.elements) elements.set(`${element.type}/${element.id}`, element);
       completedSteps += 1;
-      emit(legIndex, stage, 'completed');
+      emit(legIndex, stage, retry ? 'recovered' : 'completed');
+      return null;
     } catch (error) {
       if (options.signal?.aborted) throw error;
       const detail = error instanceof Error ? error.message : String(error);
-      warnings.push(`${points[legIndex][0]}–${points[legIndex + 1][0]} ${stage}: ${detail}`);
       completedSteps += 1;
       emit(legIndex, stage, 'warning', detail);
+      return detail;
     }
   };
 
-  const runLegsWithConcurrency = async (stage: OsmDiscoveryStage, concurrency: number): Promise<void> => {
+  const runLegsWithDeferredRetry = async (stage: OsmDiscoveryStage): Promise<void> => {
     let nextLeg = 0;
+    const failed: Array<{ legIndex: number; query: string; detail: string }> = [];
     const worker = async () => {
       while (nextLeg < legCount && !discoverySignal.aborted) {
         const legIndex = nextLeg;
         nextLeg += 1;
-        await runStage(legIndex, stage, buildOverpassLegQueries(points, legIndex)[stage]);
+        const query = buildOverpassLegQueries(points, legIndex)[stage];
+        const detail = await runStage(legIndex, stage, query, PRIMARY_OVERPASS_ATTEMPTS);
+        if (detail) failed.push({ legIndex, query, detail });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(concurrency, legCount) }, () => worker()));
+    await worker();
+    if (failed.length === 0) return;
+    if (discoverySignal.aborted) {
+      warnings.push(
+        ...failed.map(
+          ({ legIndex, detail }) => `${points[legIndex][0]}–${points[legIndex + 1][0]} ${stage}: ${detail}`
+        )
+      );
+      return;
+    }
+    const retryDelayMs = options.retryDelayMs ?? 900;
+    if (retryDelayMs > 0) {
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, retryDelayMs));
+    }
+    let remaining = failed;
+    for (const retryAttempt of RETRY_OVERPASS_ATTEMPTS) {
+      if (remaining.length === 0 || discoverySignal.aborted) break;
+      totalSteps += remaining.length;
+      const nextRound: typeof remaining = [];
+      for (const failedRequest of remaining) {
+        if (discoverySignal.aborted) {
+          nextRound.push(failedRequest);
+          continue;
+        }
+        const retryDetail = await runStage(
+          failedRequest.legIndex,
+          stage,
+          failedRequest.query,
+          [retryAttempt],
+          true
+        );
+        if (retryDetail) nextRound.push({ ...failedRequest, detail: retryDetail });
+      }
+      remaining = nextRound;
+    }
+    warnings.push(
+      ...remaining.map(
+        ({ legIndex, detail }) => `${points[legIndex][0]}–${points[legIndex + 1][0]} ${stage}: ${detail}`
+      )
+    );
   };
 
   const skipStage = (stage: OsmDiscoveryStage, detail: string) => {
@@ -488,7 +582,7 @@ export async function fetchOverpassPhotoData(
     // Start with bounded leg queries. A single route-wide query can monopolize the
     // complete discovery budget on a busy public Overpass instance and leave no
     // completed work to retain at the deadline.
-    await runLegsWithConcurrency('features', 1);
+    await runLegsWithDeferredRetry('features');
 
     const enoughCandidates = () => {
       if (!route) return false;
@@ -506,13 +600,13 @@ export async function fetchOverpassPhotoData(
       skipStage('roads', 'Skipped after the bounded core-feature search time was exhausted.');
       skipStage('buildings', 'Skipped after the bounded enrichment search time was exhausted.');
     } else {
-      await runLegsWithConcurrency('roads', 1);
+      await runLegsWithDeferredRetry('roads');
       if (enoughCandidates()) {
         skipStage('buildings', 'Enough feature and road targets were found.');
       } else if (deadlineReached || Date.now() - discoveryStartedAt >= ENRICHMENT_TIME_BUDGET_MS) {
         skipStage('buildings', 'Skipped after the bounded enrichment search time was exhausted.');
       } else {
-        await runLegsWithConcurrency('buildings', 1);
+        await runLegsWithDeferredRetry('buildings');
       }
     }
     if (deadlineReached) {
@@ -788,6 +882,266 @@ export function discoverOsmPhotoCandidates(
   );
 }
 
+interface RankedControlCandidate extends ControlPhotoCandidate {
+  tags: Record<string, string>;
+}
+
+function controlFeatureFilters(): string[] {
+  return [
+    ...coreFeatureFilters(),
+    `nwr["building"~"^(house|apartments|terrace|farm|church|chapel|school|industrial|warehouse|public|retail|commercial)$"]`,
+  ];
+}
+
+export function buildOverpassControlTrueQuery([, latitude, longitude]: Waypoint): string {
+  const around = `(around:${CONTROL_TRUE_SEARCH_RADIUS_M},${latitude.toFixed(7)},${longitude.toFixed(7)})`;
+  return `[out:json][timeout:30];(${controlFeatureFilters()
+    .map((filter) => `${filter}${around};`)
+    .join('')});out body center;`;
+}
+
+function specificControlFilter(tags: Record<string, string>): string | null {
+  const choices: Array<[string, string | undefined]> = [
+    ['railway', tags.railway === 'level_crossing' ? tags.railway : undefined],
+    ['bridge', tags.bridge && tags.bridge !== 'no' ? tags.bridge : undefined],
+    ['historic', tags.historic],
+    ['amenity', tags.amenity],
+    ['leisure', tags.leisure],
+    ['landuse', tags.landuse],
+    ['man_made', tags.man_made],
+    ['power', tags.power],
+    ['natural', tags.natural],
+    ['waterway', tags.waterway],
+    ['place', tags.place],
+    ['building', tags.building],
+  ];
+  const selected = choices.find(([, value]) => value);
+  if (!selected) return null;
+  const [key, value] = selected;
+  if (!/^[a-z_]+$/.test(key) || !/^[a-z0-9_:.-]+$/i.test(value ?? '')) return null;
+  return `nwr["${key}"="${value}"]`;
+}
+
+function offsetCoordinate(latitude: number, longitude: number, distanceM: number, bearingDeg: number) {
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const latitudeOffset = (Math.cos(bearing) * distanceM) / 111_320;
+  const longitudeOffset =
+    (Math.sin(bearing) * distanceM) / Math.max(111_320 * Math.cos((latitude * Math.PI) / 180), 111_320 * 0.2);
+  return { latitude: latitude + latitudeOffset, longitude: longitude + longitudeOffset };
+}
+
+export function buildOverpassControlFalseQuery(
+  correct: ControlPhotoCandidate,
+  tags: Record<string, string>,
+  radiusNm: number = CONTROL_FALSE_PROBE_RADII_NM[0]
+): string {
+  const filter = specificControlFilter(tags);
+  if (!filter) throw new Error(`No bounded similarity query is available for ${correct.featureType}.`);
+  if (!Number.isFinite(radiusNm) || radiusNm < 1 || radiusNm > 10) {
+    throw new Error('False-object probe radius must be between 1 and 10 NM.');
+  }
+  const probes = Array.from({ length: 8 }, (_, index) => {
+    const coordinate = offsetCoordinate(correct.latitude, correct.longitude, radiusNm * 1852, index * 45);
+    return `${filter}(around:450,${coordinate.latitude.toFixed(7)},${coordinate.longitude.toFixed(7)});`;
+  });
+  return `[out:json][timeout:30];(${probes.join('')});out body center;`;
+}
+
+function rankedControlCandidates(
+  data: OverpassResponse,
+  waypoint: Waypoint,
+  correct?: ControlPhotoCandidate
+): RankedControlCandidate[] {
+  const [, waypointLatitude, waypointLongitude] = waypoint;
+  return data.elements
+    .flatMap((element) => {
+      const coordinate = elementCoordinate(element);
+      const tags = element.tags ?? {};
+      const definition = candidateDefinition(tags);
+      if (!coordinate || !definition) return [];
+      const distanceFromWaypointM = haversine(
+        waypointLatitude,
+        waypointLongitude,
+        coordinate.lat,
+        coordinate.lon
+      );
+      const distanceFromCorrectM = correct
+        ? haversine(correct.latitude, correct.longitude, coordinate.lat, coordinate.lon)
+        : 0;
+      if (
+        correct &&
+        (distanceFromCorrectM < CONTROL_FALSE_MINIMUM_M ||
+          distanceFromCorrectM > CONTROL_FALSE_MAXIMUM_M ||
+          definition.featureType !== correct.featureType)
+      ) {
+        return [];
+      }
+      const source: NonNullable<OrthophotoTarget['source']> = {
+        provider: 'OpenStreetMap',
+        elementId: `${element.type}/${element.id}`,
+        category: definition.category,
+        featureType: definition.featureType,
+        name: normalizedOsmText(definition.name ?? tags.name) ?? null,
+        score: definition.score,
+        attribution: OSM_ATTRIBUTION,
+        controlRole: correct ? 'false' : 'true',
+        controlWaypoint: waypoint[0],
+        ...(correct
+          ? {
+              correctObjectLatitude: correct.latitude,
+              correctObjectLongitude: correct.longitude,
+            }
+          : {}),
+      };
+      return [
+        {
+          id: source.elementId,
+          label: '',
+          latitude: Number(coordinate.lat.toFixed(7)),
+          longitude: Number(coordinate.lon.toFixed(7)),
+          name: source.name ?? definition.featureType,
+          category: definition.category,
+          featureType: definition.featureType,
+          score: definition.score,
+          distanceFromWaypointM,
+          distanceFromCorrectM,
+          source,
+          tags,
+        },
+      ];
+    })
+    .sort((left, right) => {
+      const leftDistance = correct ? left.distanceFromCorrectM : left.distanceFromWaypointM;
+      const rightDistance = correct ? right.distanceFromCorrectM : right.distanceFromWaypointM;
+      return leftDistance - rightDistance || right.score - left.score;
+    });
+}
+
+export async function fetchOsmControlPhotoProposals(
+  points: Waypoint[],
+  options: FetchControlPhotoOptions = {}
+): Promise<{ proposals: ControlPhotoProposal[]; warnings: string[] }> {
+  const fetcher = options.fetcher ?? fetch;
+  const warnings: string[] = [];
+  const trueTargets = new Map<number, RankedControlCandidate>();
+  const failedTrue: Array<{ index: number; query: string; detail: string }> = [];
+  const emit = (
+    waypointIndex: number,
+    stage: 'true' | 'false',
+    state: OsmDiscoveryStageState,
+    detail?: string
+  ) =>
+    options.onProgress?.({
+      waypointIndex,
+      waypointCount: points.length,
+      waypointName: points[waypointIndex][0],
+      stage,
+      state,
+      ...(detail ? { detail } : {}),
+    });
+  const request = async (
+    index: number,
+    stage: 'true' | 'false',
+    query: string,
+    attempts: ReadonlyArray<readonly [string, number]>,
+    retry = false
+  ): Promise<OverpassResponse | string> => {
+    emit(index, stage, retry ? 'retrying' : 'started');
+    try {
+      const result = await requestOverpass(query, options.signal, fetcher, attempts);
+      emit(index, stage, retry ? 'recovered' : 'completed');
+      return result;
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      emit(index, stage, 'warning', detail);
+      return detail;
+    }
+  };
+  for (const [index, point] of points.entries()) {
+    const query = buildOverpassControlTrueQuery(point);
+    const result = await request(index, 'true', query, PRIMARY_OVERPASS_ATTEMPTS);
+    if (typeof result === 'string') failedTrue.push({ index, query, detail: result });
+    else {
+      const candidate = rankedControlCandidates(result, point)[0];
+      if (candidate) trueTargets.set(index, candidate);
+      else warnings.push(`${point[0]}: no identifiable OSM object was found within 3 km.`);
+    }
+  }
+  if (failedTrue.length) {
+    const delay = options.retryDelayMs ?? 900;
+    if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+    for (const failed of failedTrue) {
+      const result = await request(failed.index, 'true', failed.query, RETRY_OVERPASS_ATTEMPTS, true);
+      if (typeof result === 'string') {
+        warnings.push(`${points[failed.index][0]} true target: ${result}`);
+      } else {
+        const candidate = rankedControlCandidates(result, points[failed.index])[0];
+        if (candidate) trueTargets.set(failed.index, candidate);
+        else warnings.push(`${points[failed.index][0]}: no identifiable OSM object was found within 3 km.`);
+      }
+    }
+  }
+
+  const falseTargets = new Map<number, RankedControlCandidate>();
+  const failedFalse = new Set<number>();
+  for (const [index, correct] of trueTargets) {
+    if (index === 0 || index === points.length - 1) continue;
+    let hadRequestFailure = false;
+    for (const radiusNm of CONTROL_FALSE_PROBE_RADII_NM) {
+      const query = buildOverpassControlFalseQuery(correct, correct.tags, radiusNm);
+      const result = await request(index, 'false', query, PRIMARY_OVERPASS_ATTEMPTS);
+      if (typeof result === 'string') {
+        hadRequestFailure = true;
+        continue;
+      }
+      const candidate = rankedControlCandidates(result, points[index], correct)[0];
+      if (!candidate) continue;
+      falseTargets.set(index, candidate);
+      break;
+    }
+    if (!falseTargets.has(index)) {
+      if (hadRequestFailure) failedFalse.add(index);
+      else warnings.push(`${points[index][0]}: no similar false object was found from 1 to 10 NM away.`);
+    }
+  }
+  if (failedFalse.size) {
+    const delay = options.retryDelayMs ?? 900;
+    if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+    for (const index of failedFalse) {
+      const correct = trueTargets.get(index);
+      if (!correct) continue;
+      let lastFailure = '';
+      for (const radiusNm of CONTROL_FALSE_PROBE_RADII_NM) {
+        const query = buildOverpassControlFalseQuery(correct, correct.tags, radiusNm);
+        const result = await request(index, 'false', query, RETRY_OVERPASS_ATTEMPTS, true);
+        if (typeof result === 'string') {
+          lastFailure = result;
+          continue;
+        }
+        const candidate = rankedControlCandidates(result, points[index], correct)[0];
+        if (!candidate) continue;
+        falseTargets.set(index, candidate);
+        break;
+      }
+      if (!falseTargets.has(index)) {
+        warnings.push(
+          lastFailure
+            ? `${points[index][0]} false target: ${lastFailure}`
+            : `${points[index][0]}: no similar false object was found from 1 to 10 NM away.`
+        );
+      }
+    }
+  }
+
+  const proposals = [...trueTargets.entries()].map(([index, trueTarget]) => ({
+    waypoint: points[index],
+    trueTarget,
+    falseTarget: falseTargets.get(index) ?? null,
+  }));
+  return { proposals, warnings };
+}
+
 const CATEGORY_LIMIT = 2;
 
 function selectGroup(
@@ -817,25 +1171,31 @@ function selectGroup(
     );
   };
 
-  // Give every represented leg one target before filling the remaining slots.
-  // There is deliberately no maximum per leg.
-  for (const routeLegIndex of [...new Set(ranked.map((candidate) => candidate.routeLegIndex))]) {
-    if (selected.length >= count) break;
-    const candidate = ranked.find((item) => item.routeLegIndex === routeLegIndex && canSelect(item, true));
-    if (candidate) selected.push(candidate);
-  }
-  for (const candidate of ranked) {
-    if (selected.length >= count) break;
-    if (selected.includes(candidate) || !canSelect(candidate, true)) continue;
-    selected.push(candidate);
-  }
-  if (selected.length < count) {
-    for (const candidate of ranked) {
-      if (selected.length >= count) break;
-      if (selected.includes(candidate) || alreadySelected.includes(candidate)) continue;
-      if (!canSelect(candidate, false)) continue;
-      selected.push(candidate);
+  const legIndices = [...new Set(ranked.map((candidate) => candidate.routeLegIndex))].sort(
+    (left, right) => left - right
+  );
+  const fillEvenly = (enforceCategoryLimit: boolean) => {
+    let madeProgress = true;
+    while (selected.length < count && madeProgress) {
+      madeProgress = false;
+      for (const routeLegIndex of legIndices) {
+        if (selected.length >= count) break;
+        const candidate = ranked.find(
+          (item) =>
+            item.routeLegIndex === routeLegIndex &&
+            !selected.includes(item) &&
+            !alreadySelected.includes(item) &&
+            canSelect(item, enforceCategoryLimit)
+        );
+        if (!candidate) continue;
+        selected.push(candidate);
+        madeProgress = true;
+      }
     }
+  };
+  fillEvenly(true);
+  if (selected.length < count) {
+    fillEvenly(false);
   }
   return selected;
 }

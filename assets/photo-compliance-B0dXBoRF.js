@@ -244,7 +244,9 @@ function D(e, t) {
 	}]));
 	for (let r of e) {
 		let e = `${r.identifier || "?"} (${r.fileName})`, i = (t, n, i, a, o, s) => T(t, n, i, e, a, o, s, r.id), a = r.metadata.latitude.reliable && r.metadata.longitude.reliable, o = S(r, t);
-		if (r.importError && n.push(i("warning", "photo-import-error", "A2.4.1-A2.4.8", "The image or metadata import failed and requires manual review.", r.importError, "readable image and reviewable metadata")), r.linkedWaypoint && !o && n.push(i("warning", "stale-waypoint-link", "A2.4.2-A2.4.7", "The linked waypoint does not exist in the current route.", r.linkedWaypoint, "an existing route waypoint")), w(r, t)) {
+		r.importError && n.push(i("warning", "photo-import-error", "A2.4.1-A2.4.8", "The image or metadata import failed and requires manual review.", r.importError, "readable image and reviewable metadata")), r.linkedWaypoint && !o && n.push(i("warning", "stale-waypoint-link", "A2.4.2-A2.4.7", "The linked waypoint does not exist in the current route.", r.linkedWaypoint, "an existing route waypoint"));
+		let l = !!o && (r.classification === "control-correct" || r.classification === "control-false");
+		if (w(r, t) && !l) {
 			if (r.taskAnalysis) {
 				if (r.taskAnalysis.routePosition !== "on-route") n.push(i("violation", "task-outside-route", "A2.4.6-A2.4.7", "The task lies before SP or after FP.", r.taskAnalysis.routePosition, "a task on the competition route"));
 				else {
@@ -262,10 +264,13 @@ function D(e, t) {
 			n.push(t.value !== null && t.reliable ? i(t.value >= 50 && t.value <= 70 ? "pass" : "violation", "focal-length", "A2.4.5", t.value >= 50 && t.value <= 70 ? "Equivalent focal length is within range." : "Equivalent focal length is outside the permitted range.", `${t.value.toFixed(1)} mm equivalent`, "50-70 mm equivalent") : i("warning", "focal-length-missing", "A2.4.5", "Focal length requires manual review.", "reliable 35 mm equivalent unavailable", "50-70 mm equivalent"));
 		}
 		if (r.classification === "control-false") {
-			let e = r.linkedWaypoint ? c.get(r.linkedWaypoint.toUpperCase()) : void 0, a = E(r, t);
-			if (e && a) {
-				let t = s(a[0], a[1], e.latitude, e.longitude);
-				n.push(i(t >= p ? "pass" : "violation", "false-control-distance", "A2.4.2", t >= p ? "False object is sufficiently separated from the correct object." : "False object is too close to the correct object.", `${(t / p).toFixed(2)} NM`, "at least 1.00 NM"));
+			let e = r.generatedOrthophoto?.targetSource, a = e?.correctObjectLatitude !== void 0 && e.correctObjectLongitude !== void 0 ? {
+				latitude: e.correctObjectLatitude,
+				longitude: e.correctObjectLongitude
+			} : r.linkedWaypoint ? c.get(r.linkedWaypoint.toUpperCase()) : void 0, o = E(r, t);
+			if (a && o) {
+				let e = s(o[0], o[1], a.latitude, a.longitude);
+				n.push(i(e >= p ? "pass" : "violation", "false-control-distance", "A2.4.2", e >= p ? "False object is sufficiently separated from the correct object." : "False object is too close to the correct object.", `${(e / p).toFixed(2)} NM`, "at least 1.00 NM"));
 			} else n.push(i("warning", "false-control-distance-missing", "A2.4.2", "False-object separation requires manual review.", "task coordinate or linked waypoint missing", "at least 1.00 NM from correct object"));
 		}
 		r.classification !== "reference" && n.push(i("warning", "judge-content-review", "A2.4.1-A2.4.8", "A judge must confirm content, quality, identification, map marking, and presentation requirements.", "not safely automatable from metadata", "manual judge confirmation"));

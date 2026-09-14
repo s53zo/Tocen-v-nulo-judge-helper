@@ -180,7 +180,10 @@ export function evaluatePhotoCompliance(photos: PhotoRecord[], points: Waypoint[
       );
     }
 
-    if (isCountedRouteTask(photo, points)) {
+    const isLinkedControlPhoto =
+      Boolean(linked) &&
+      (photo.classification === 'control-correct' || photo.classification === 'control-false');
+    if (isCountedRouteTask(photo, points) && !isLinkedControlPhoto) {
       if (photo.taskAnalysis) {
         if (photo.taskAnalysis.routePosition !== 'on-route') {
           findings.push(
@@ -363,9 +366,17 @@ export function evaluatePhotoCompliance(photos: PhotoRecord[], points: Waypoint[
     }
 
     if (photo.classification === 'control-false') {
-      const correct = photo.linkedWaypoint
-        ? waypointLookup.get(photo.linkedWaypoint.toUpperCase())
-        : undefined;
+      const generatedSource = photo.generatedOrthophoto?.targetSource;
+      const correct =
+        generatedSource?.correctObjectLatitude !== undefined &&
+        generatedSource.correctObjectLongitude !== undefined
+          ? {
+              latitude: generatedSource.correctObjectLatitude,
+              longitude: generatedSource.correctObjectLongitude,
+            }
+          : photo.linkedWaypoint
+            ? waypointLookup.get(photo.linkedWaypoint.toUpperCase())
+            : undefined;
       const task = taskCoordinates(photo, points);
       if (correct && task) {
         const distance = haversine(task[0], task[1], correct.latitude, correct.longitude);

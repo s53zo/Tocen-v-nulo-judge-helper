@@ -259,6 +259,69 @@ test('OSM-selected DOF025 route photo is reviewed, fetched, and retained as a PH
   expect(requestedUrl).toContain('WIDTH=1600');
 });
 
+test('control-photo discovery fixes SP/FP to true and lets each TP choose a false object', async ({
+  page,
+}) => {
+  const importJpegs = await Promise.all([
+    readFile(new URL('../examples/photos/IMG__160111_00_092 TP2.jpg', import.meta.url)),
+    readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url)),
+    readFile(new URL('../examples/photos/IMG__162634_00_224 TP5.jpg', import.meta.url)),
+  ]);
+  const controlData = {
+    elements: [
+      {
+        type: 'way',
+        id: 100,
+        center: { lat: 46.6, lon: 16.0 },
+        tags: { bridge: 'yes', name: 'SP bridge' },
+      },
+      {
+        type: 'way',
+        id: 101,
+        center: { lat: 46.6, lon: 16.1 },
+        tags: { bridge: 'yes', name: 'TP bridge' },
+      },
+      {
+        type: 'way',
+        id: 102,
+        center: { lat: 46.6, lon: 16.2 },
+        tags: { bridge: 'yes', name: 'FP bridge' },
+      },
+      {
+        type: 'way',
+        id: 103,
+        center: { lat: 46.6, lon: 16.13 },
+        tags: { bridge: 'yes', name: 'False bridge' },
+      },
+    ],
+  };
+  await page.route('https://maps.mail.ru/osm/tools/overpass/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(controlData) });
+  });
+  let importIndex = 0;
+  await page.route('https://ipi.eprostor.gov.si/**', async (route) => {
+    const width = new URL(route.request().url()).searchParams.get('WIDTH');
+    const body = width === '1600' ? importJpegs[importIndex++] : importJpegs[0];
+    await route.fulfill({ status: 200, contentType: 'image/jpeg', body });
+  });
+  await page.goto('/');
+  await page.locator('#waypoints').fill('SP,46.6,16.0\nTP1,46.6,16.1\nFP,46.6,16.2');
+  await page.locator('#findControlPhotoOptions').click();
+  await expect(page.locator('#controlPhotoReview')).toBeVisible();
+  await expect(page.locator('.control-photo-row')).toHaveCount(3);
+  await expect(page.locator('.control-photo-waypoint')).toHaveText(['SP', 'TP1', 'FP']);
+  await expect(page.locator('.control-photo-row').nth(0).locator('.control-photo-option')).toHaveCount(1);
+  await expect(page.locator('.control-photo-row').nth(1).locator('.control-photo-option')).toHaveCount(2);
+  await expect(page.locator('.control-photo-row').nth(2).locator('.control-photo-option')).toHaveCount(1);
+  await page.locator('input[data-control-waypoint="TP1"][value="false"]').check();
+  await page.locator('#importControlPhotos').click();
+  await expect(page.locator('#photoProgressText')).toContainText('3 of 3 DOF025 crops imported');
+  await expect(page.locator('.photo-card')).toHaveCount(3);
+  await expect(page.locator('.photo-card').nth(0)).toContainText('Correct control photo');
+  await expect(page.locator('.photo-card').nth(1)).toContainText('False control photo');
+  await expect(page.locator('.photo-card').nth(2)).toContainText('Correct control photo');
+});
+
 test('preview failure preserves successful map downloads', async ({ page }) => {
   await page.route('**/maps/previews/**/*.webp', (route) => route.abort());
   await page.goto('/');

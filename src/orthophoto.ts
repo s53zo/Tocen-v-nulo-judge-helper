@@ -24,6 +24,11 @@ export interface OrthophotoTarget {
   longitude: number;
   alongRouteM?: number;
   source?: OrthophotoTargetSource;
+  control?: {
+    classification: 'control-correct' | 'control-false';
+    waypoint: string;
+    identifier: string;
+  };
 }
 
 export interface OrthophotoTargetSource {
@@ -35,6 +40,10 @@ export interface OrthophotoTargetSource {
   score: number;
   attribution: string;
   selectionSalt?: string;
+  controlRole?: 'true' | 'false';
+  controlWaypoint?: string;
+  correctObjectLatitude?: number;
+  correctObjectLongitude?: number;
 }
 
 export function orthophotoCoverage(model: OrthophotoCaptureModel): OrthophotoCoverage {

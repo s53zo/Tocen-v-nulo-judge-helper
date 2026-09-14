@@ -1,4 +1,4 @@
-import { i as e, n as t } from "./photo-compliance-BfRVzm_Q.js";
+import { i as e, n as t } from "./photo-compliance-B0dXBoRF.js";
 import n from "./fontkit.es-B5FHmNtr.js";
 import { PDFDocument as r, rgb as i } from "./es-DLUcyPiH.js";
 //#region src/photo-handout.ts
@@ -51,13 +51,20 @@ function l(e, t, n, r, a, s, c, l = i(.12, .15, .18), u = Infinity) {
 async function u(u, d, f, p) {
 	let m = await r.create();
 	m.registerFontkit(n);
-	let h = await m.embedFont(f, { subset: !0 }), g = [{
-		title: `Judge solutions before ${p.splitWaypoint}`,
-		items: u.filter(({ record: e }) => s(e, p.splitAfterM) === 0).sort(c)
-	}, {
-		title: `Judge solutions after ${p.splitWaypoint}`,
-		items: u.filter(({ record: e }) => s(e, p.splitAfterM) === 1).sort(c)
-	}].filter((e) => e.items.length > 0), _ = (a[1] - 40 - 38 - 14) / 2;
+	let h = await m.embedFont(f, { subset: !0 }), g = [
+		{
+			title: "Judge control-point solutions",
+			items: u.filter(({ record: e }) => ["control-correct", "control-false"].includes(e.classification)).sort(c)
+		},
+		{
+			title: `Judge solutions before ${p.splitWaypoint}`,
+			items: u.filter(({ record: e }) => e.classification === "enroute" && s(e, p.splitAfterM) === 0).sort(c)
+		},
+		{
+			title: `Judge solutions after ${p.splitWaypoint}`,
+			items: u.filter(({ record: e }) => e.classification === "enroute" && s(e, p.splitAfterM) === 1).sort(c)
+		}
+	].filter((e) => e.items.length > 0), _ = (a[1] - 40 - 38 - 14) / 2;
 	for (let t of g) for (let n = 0; n < t.items.length; n += 2) {
 		let r = m.addPage(a);
 		r.drawText(t.title, {
@@ -144,13 +151,20 @@ async function u(u, d, f, p) {
 async function d(e, t, l) {
 	let u = await r.create();
 	u.registerFontkit(n);
-	let d = await u.embedFont(t, { subset: !0 }), f = [{
-		title: `Before ${l.splitWaypoint}`,
-		items: e.filter(({ record: e }) => e.classification === "enroute" && s(e, l.splitAfterM) === 0).sort(c)
-	}, {
-		title: `After ${l.splitWaypoint}`,
-		items: e.filter(({ record: e }) => e.classification === "enroute" && s(e, l.splitAfterM) === 1).sort(c)
-	}].filter((e) => e.items.length > 0), p = (a[1] - 40 - 38 - 14) / 2;
+	let d = await u.embedFont(t, { subset: !0 }), f = [
+		{
+			title: "Control-point photos",
+			items: e.filter(({ record: e }) => ["control-correct", "control-false"].includes(e.classification)).sort(c)
+		},
+		{
+			title: `Before ${l.splitWaypoint}`,
+			items: e.filter(({ record: e }) => e.classification === "enroute" && s(e, l.splitAfterM) === 0).sort(c)
+		},
+		{
+			title: `After ${l.splitWaypoint}`,
+			items: e.filter(({ record: e }) => e.classification === "enroute" && s(e, l.splitAfterM) === 1).sort(c)
+		}
+	].filter((e) => e.items.length > 0), p = (a[1] - 40 - 38 - 14) / 2;
 	for (let e of f) for (let t = 0; t < e.items.length; t += 2) {
 		let n = u.addPage(a);
 		n.drawText(e.title, {

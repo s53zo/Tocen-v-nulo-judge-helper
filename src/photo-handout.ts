@@ -85,15 +85,25 @@ export async function buildPhotoHandout(
   const font = await document.embedFont(fontBytes, { subset: true });
   const sections = [
     {
+      title: 'Judge control-point solutions',
+      items: photos
+        .filter(({ record }) => ['control-correct', 'control-false'].includes(record.classification))
+        .sort(compareHandoutItems),
+    },
+    {
       title: `Judge solutions before ${options.splitWaypoint}`,
       items: photos
-        .filter(({ record }) => splitIndex(record, options.splitAfterM) === 0)
+        .filter(
+          ({ record }) => record.classification === 'enroute' && splitIndex(record, options.splitAfterM) === 0
+        )
         .sort(compareHandoutItems),
     },
     {
       title: `Judge solutions after ${options.splitWaypoint}`,
       items: photos
-        .filter(({ record }) => splitIndex(record, options.splitAfterM) === 1)
+        .filter(
+          ({ record }) => record.classification === 'enroute' && splitIndex(record, options.splitAfterM) === 1
+        )
         .sort(compareHandoutItems),
     },
   ].filter((section) => section.items.length > 0);
@@ -248,6 +258,12 @@ export async function buildCompetitorPhotoHandout(
   document.registerFontkit(fontkit);
   const font = await document.embedFont(fontBytes, { subset: true });
   const sections = [
+    {
+      title: 'Control-point photos',
+      items: photos
+        .filter(({ record }) => ['control-correct', 'control-false'].includes(record.classification))
+        .sort(compareHandoutItems),
+    },
     {
       title: `Before ${options.splitWaypoint}`,
       items: photos
