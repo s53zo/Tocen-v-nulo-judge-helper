@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhotoRecord } from '../src/photo-types';
 import {
   alphabeticIdentifier,
+  compactEnrouteIdentifiers,
   createIdentifierMixRandom,
   jpegDimensions,
   lettersRevealRouteOrder,
@@ -53,5 +54,20 @@ describe('photo workflow validation', () => {
       ({ identifier, analysis: { alongRouteM }, taskAnalysis: null }) as PhotoRecord;
     expect(lettersRevealRouteOrder([record('A', 100), record('B', 200), record('C', 300)])).toBe(true);
     expect(lettersRevealRouteOrder([record('C', 100), record('A', 200), record('B', 300)])).toBe(false);
+  });
+
+  it('compacts competition-photo identifiers without changing control identifiers', () => {
+    const competition = (identifier: string) => ({ identifier, classification: 'enroute' }) as PhotoRecord;
+    const photos = [
+      competition('A'),
+      competition('C'),
+      { identifier: 'TP1', classification: 'control-correct' } as PhotoRecord,
+      competition('F'),
+    ];
+
+    compactEnrouteIdentifiers(photos);
+
+    expect(photos.map((photo) => photo.identifier)).toEqual(['A', 'B', 'TP1', 'C']);
+    expect(photos[0].identifierMixAlgorithm).toBe('rank-preserving-compaction-v1');
   });
 });

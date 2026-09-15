@@ -173,6 +173,19 @@ export function lettersRevealRouteOrder(photos: PhotoRecord[]): boolean {
   );
 }
 
+export function compactEnrouteIdentifiers(photos: PhotoRecord[]): void {
+  const identifierOrdered = [...photos]
+    .filter((photo) => photo.classification === 'enroute')
+    .sort((left, right) => left.identifier.localeCompare(right.identifier, 'en', { sensitivity: 'base' }));
+  identifierOrdered.forEach((photo, index) => {
+    photo.identifier = alphabeticIdentifier(index);
+    delete photo.identifierMixSalt;
+    photo.identifierMixAlgorithm = 'rank-preserving-compaction-v1';
+    delete photo.fieldErrors?.identifier;
+    delete photo.fieldDrafts?.identifier;
+  });
+}
+
 function emptyMetadata(note: string): PhotoMetadata {
   return {
     latitude: missingValue(note),
@@ -1127,9 +1140,29 @@ export class PhotoWorkflow {
     if (index < 0) return;
     const action = button.dataset.action;
     if (action === 'remove') {
-      const removedName = this.records[index].fileName;
-      URL.revokeObjectURL(this.records[index].previewUrl);
+      const removed = this.records[index];
+      const removedName = removed.fileName;
+      URL.revokeObjectURL(removed.previewUrl);
       this.records.splice(index, 1);
+      this.records.forEach((record, order) => {
+        record.order = order;
+      });
+      if (removed.classification === 'enroute') {
+        compactEnrouteIdentifiers(this.records);
+        this.analyze(this.route);
+        const revealsRouteOrder = this.compliance.findings.some(
+          (finding) => finding.code === 'enroute-letter-order' && finding.severity === 'violation'
+        );
+        if (revealsRouteOrder) this.mixEnrouteIdentifiers(false);
+        const remainingCount = this.records.filter((record) => record.classification === 'enroute').length;
+        this.onMessage(
+          remainingCount
+            ? `Removed ${removedName}. Renumbered ${remainingCount} remaining competition photo${remainingCount === 1 ? '' : 's'} without letter gaps.`
+            : `Removed ${removedName}. No competition photos remain.`,
+          'neutral'
+        );
+        return;
+      }
       this.onMessage(`Removed ${removedName}.`, 'neutral');
     } else if (action === 'up' && index > 0) {
       [this.records[index - 1], this.records[index]] = [this.records[index], this.records[index - 1]];

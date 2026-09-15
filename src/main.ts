@@ -141,6 +141,10 @@ const cancelOsmDiscovery = requiredElement<HTMLButtonElement>('cancelOsmDiscover
 const findControlPhotoOptions = requiredElement<HTMLButtonElement>('findControlPhotoOptions');
 const controlPhotoReview = requiredElement<HTMLElement>('controlPhotoReview');
 const controlPhotoStatus = requiredElement<HTMLElement>('controlPhotoStatus');
+const controlPhotoProgress = requiredElement<HTMLElement>('controlPhotoProgress');
+const controlPhotoProgressCount = requiredElement<HTMLElement>('controlPhotoProgressCount');
+const controlPhotoProgressPhase = requiredElement<HTMLElement>('controlPhotoProgressPhase');
+const controlPhotoProgressBar = requiredElement<HTMLProgressElement>('controlPhotoProgressBar');
 const controlPhotoList = requiredElement<HTMLElement>('controlPhotoList');
 const importControlPhotos = requiredElement<HTMLButtonElement>('importControlPhotos');
 const generationProgress = requiredElement<HTMLProgressElement>('generationProgress');
@@ -586,6 +590,7 @@ function setOsmDiscoveryBusy(busy: boolean): void {
   cancelOsmDiscovery.hidden = !busy || osmDiscoveryController === null;
   cancelOsmDiscovery.disabled = !busy || osmDiscoveryController === null;
   osmCandidateReview.setAttribute('aria-busy', String(busy));
+  controlPhotoReview.setAttribute('aria-busy', String(busy));
   photoWorkflow.setExternalBusy(busy);
   if (!busy && discoveredOsmCandidates.length > 0) renderOsmCandidateReview();
   if (!busy && controlPhotoProposals.length > 0) renderControlPhotoReview();
@@ -679,6 +684,10 @@ function clearControlPhotoReview(): void {
   selectedControlPhotoRoles.clear();
   controlPhotoRouteKey = '';
   controlPhotoList.replaceChildren();
+  controlPhotoProgress.hidden = true;
+  controlPhotoProgress.removeAttribute('data-state');
+  controlPhotoProgressBar.value = 0;
+  controlPhotoProgressBar.max = 1;
   controlPhotoReview.hidden = true;
 }
 
@@ -1095,17 +1104,33 @@ findControlPhotoOptions.addEventListener('click', async () => {
     osmDiscoveryController = new AbortController();
     setOsmDiscoveryBusy(true);
     controlPhotoReview.hidden = false;
+    const controlLookupStepCount = Math.max(1, points.length * 2 - 2);
+    controlPhotoProgress.hidden = false;
+    controlPhotoProgress.dataset.state = 'working';
+    controlPhotoProgressBar.max = controlLookupStepCount;
+    controlPhotoProgressBar.value = 0;
+    controlPhotoProgressCount.textContent = `Preparing control 1 of ${points.length}`;
+    controlPhotoProgressPhase.textContent = `0 of ${controlLookupStepCount} lookup steps`;
     controlPhotoStatus.textContent = 'Finding the nearest identifiable object for each control…';
     setStatus('Searching OpenStreetMap for SP/TP/FP photo options…');
     const result = await fetchOsmControlPhotoProposals(points, {
       signal: osmDiscoveryController.signal,
       onProgress: ({ waypointIndex, waypointCount, waypointName, stage, state }) => {
+        const stepFinished = ['completed', 'recovered', 'warning'].includes(state) ? 1 : 0;
+        const lookupStep =
+          stage === 'true' ? waypointIndex + stepFinished : waypointCount + waypointIndex - 1 + stepFinished;
+        controlPhotoProgressBar.value = Math.max(
+          controlPhotoProgressBar.value,
+          Math.min(controlPhotoProgressBar.max, lookupStep)
+        );
         const action =
           state === 'retrying'
             ? 'retrying after the first pass'
             : stage === 'true'
               ? 'finding the true object'
               : 'finding a similar false object 1-10 NM away';
+        controlPhotoProgressCount.textContent = `Preparing control ${waypointIndex + 1} of ${waypointCount} · ${waypointName}`;
+        controlPhotoProgressPhase.textContent = `${action} · ${controlPhotoProgressBar.value} of ${controlPhotoProgressBar.max} lookup steps`;
         controlPhotoStatus.textContent = `${waypointIndex + 1} of ${waypointCount} · ${waypointName} · ${action}`;
       },
     });
@@ -1115,6 +1140,10 @@ findControlPhotoOptions.addEventListener('click', async () => {
       result.proposals.map(({ waypoint }) => [waypoint[0], 'true' as const])
     );
     renderControlPhotoReview();
+    controlPhotoProgressBar.value = controlPhotoProgressBar.max;
+    controlPhotoProgress.dataset.state = result.warnings.length ? 'warning' : 'complete';
+    controlPhotoProgressCount.textContent = `${points.length} of ${points.length} controls processed`;
+    controlPhotoProgressPhase.textContent = `${result.proposals.length} photo proposal${result.proposals.length === 1 ? '' : 's'} ready`;
     controlPhotoStatus.textContent = `${result.proposals.length} of ${points.length} controls have a true-photo proposal.${result.warnings.length ? ` ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join(' | ')}` : ' Choose true or false for each TP.'}`;
     setStatus(
       result.warnings.length
@@ -1124,6 +1153,8 @@ findControlPhotoOptions.addEventListener('click', async () => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    controlPhotoProgress.dataset.state = 'error';
+    controlPhotoProgressPhase.textContent = 'Discovery stopped';
     controlPhotoStatus.textContent = message;
     setStatus(`Error: ${message}`, 'error');
   } finally {

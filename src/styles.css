@@ -1082,6 +1082,57 @@ th:not(:first-child) {
   margin-top: 0.75rem;
 }
 
+.control-photo-progress {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #80aa9a;
+  border-radius: 8px;
+  background: #f1faf6;
+}
+
+.control-photo-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #205d49;
+  font-size: 0.8rem;
+}
+
+.control-photo-progress-heading strong {
+  font-size: 0.9rem;
+}
+
+.control-photo-progress progress {
+  width: 100%;
+  margin-top: 0.55rem;
+  accent-color: #26745a;
+}
+
+.control-photo-progress[data-state="working"] progress {
+  animation: osm-progress-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.control-photo-progress[data-state="complete"] {
+  border-color: #26745a;
+  background: #e7f6ef;
+}
+
+.control-photo-progress[data-state="warning"] {
+  border-color: #d5a34a;
+  background: #fffaf0;
+}
+
+.control-photo-progress[data-state="error"] {
+  border-color: #c86666;
+  background: #fff4f4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-photo-progress[data-state="working"] progress {
+    animation: none;
+  }
+}
+
 .control-photo-row {
   display: grid;
   grid-template-columns: minmax(90px, 0.45fr) repeat(2, minmax(0, 1fr));
@@ -1143,6 +1194,11 @@ th:not(:first-child) {
 @media (max-width: 780px) {
   .control-photo-row {
     grid-template-columns: 1fr;
+  }
+
+  .control-photo-progress-heading {
+    display: grid;
+    gap: 0.2rem;
   }
 }
 

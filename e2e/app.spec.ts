@@ -214,6 +214,32 @@ test('corrupt JPEG remains an actionable item instead of crashing generation', a
   await expectPdfBlob(page, '#downloadPdf');
 });
 
+test('removing a competition photo closes identifier gaps', async ({ page }) => {
+  const jpegs = await Promise.all([
+    readFile(new URL('../examples/photos/IMG__160111_00_092 TP2.jpg', import.meta.url)),
+    readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url)),
+    readFile(new URL('../examples/photos/IMG__162634_00_224 TP5.jpg', import.meta.url)),
+  ]);
+  await page.goto('/');
+  await goToStage(page, 2);
+  await page.locator('#photoFiles').setInputFiles(
+    jpegs.map((jpeg, index) => ({
+      name: `IMG_remove_${index + 1}.jpg`,
+      mimeType: 'image/jpeg',
+      buffer: jpeg,
+    }))
+  );
+  await expect(page.locator('#photoProgressText')).toContainText('3 of 3 photos imported');
+  await goToStage(page, 3);
+  await page.locator('.photo-card').nth(1).locator('[data-action="remove"]').click();
+
+  const identifiers = await page
+    .locator('input[data-field="identifier"]')
+    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+  expect(identifiers).toEqual(['A', 'B']);
+  await expect(page.locator('#status')).toContainText('without letter gaps');
+});
+
 test('OSM requires explicit third-party tile consent', async ({ page }) => {
   await page.goto('/');
   await page.locator('[data-map-key="osm"]').click();
@@ -358,6 +384,11 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await goToStage(page, 2);
   await page.locator('#findControlPhotoOptions').click();
   await expect(page.locator('#controlPhotoReview')).toBeVisible();
+  await expect(page.locator('#controlPhotoProgress')).toBeVisible();
+  await expect(page.locator('#controlPhotoProgressCount')).toHaveText('3 of 3 controls processed');
+  await expect(page.locator('#controlPhotoProgressPhase')).toContainText('3 photo proposals ready');
+  await expect(page.locator('#controlPhotoProgressBar')).toHaveJSProperty('value', 4);
+  await expect(page.locator('#controlPhotoProgressBar')).toHaveJSProperty('max', 4);
   await expect(page.locator('.control-photo-row')).toHaveCount(3);
   await expect(page.locator('.control-photo-waypoint')).toHaveText(['SP', 'TP1', 'FP']);
   await expect(page.locator('.control-photo-row').nth(0).locator('.control-photo-option')).toHaveCount(1);

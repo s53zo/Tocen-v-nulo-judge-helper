@@ -1689,6 +1689,11 @@ function Ht(e) {
 	return t.every((e, n) => n === 0 || e.identifier.localeCompare(t[n - 1].identifier, "en", { sensitivity: "base" }) > 0);
 }
 function Ut(e) {
+	[...e].filter((e) => e.classification === "enroute").sort((e, t) => e.identifier.localeCompare(t.identifier, "en", { sensitivity: "base" })).forEach((e, t) => {
+		e.identifier = Lt(t), delete e.identifierMixSalt, e.identifierMixAlgorithm = "rank-preserving-compaction-v1", delete e.fieldErrors?.identifier, delete e.fieldDrafts?.identifier;
+	});
+}
+function Wt(e) {
 	return {
 		latitude: z(e),
 		longitude: z(e),
@@ -1705,11 +1710,11 @@ function Ut(e) {
 		lensModel: z(e)
 	};
 }
-async function Wt(e) {
+async function Gt(e) {
 	let t = await crypto.subtle.digest("SHA-256", e);
 	return Array.from(new Uint8Array(t), (e) => e.toString(16).padStart(2, "0")).join("");
 }
-function Gt() {
+function Kt() {
 	if (typeof crypto.randomUUID == "function") return crypto.randomUUID();
 	let e = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(16));
 	return e[6] = e[6] & 15 | 64, e[8] = e[8] & 63 | 128, Array.from(e, (e, t) => `${[
@@ -1719,20 +1724,20 @@ function Gt() {
 		10
 	].includes(t) ? "-" : ""}${e.toString(16).padStart(2, "0")}`).join("");
 }
-function Kt(e) {
+function qt(e) {
 	return JSON.parse(JSON.stringify(e));
 }
-function qt(e, t, n) {
+function Jt(e, t, n) {
 	return n.some((n) => n.contentHash === t || n.fileName === e.name && n.fileSize === e.size);
 }
-function Jt(e, t, n) {
+function Yt(e, t, n) {
 	return {
 		...e,
 		classification: t,
 		linkedWaypoint: n
 	};
 }
-function Yt(e) {
+function Xt(e) {
 	let t = new Uint8Array(e);
 	if (t.length < 4 || t[0] !== 255 || t[1] !== 216) return null;
 	let n = /* @__PURE__ */ new Set([
@@ -1768,19 +1773,19 @@ function Yt(e) {
 	}
 	return null;
 }
-function Xt(e) {
+function Zt(e) {
 	return Error(e.reason instanceof Error ? e.reason.message : "Operation cancelled.");
 }
-function Zt(e, t) {
-	return t ? t.aborted ? Promise.reject(Xt(t)) : new Promise((n, r) => {
-		let i = () => r(Xt(t));
+function Qt(e, t) {
+	return t ? t.aborted ? Promise.reject(Zt(t)) : new Promise((n, r) => {
+		let i = () => r(Zt(t));
 		t.addEventListener("abort", i, { once: !0 }), e.then(n, r).finally(() => t.removeEventListener("abort", i));
 	}) : e;
 }
-function Qt(e, t) {
+function $t(e, t) {
 	return new Promise((n, r) => {
 		let i = new Image(), a = () => t?.removeEventListener("abort", o), o = () => {
-			i.src = "", a(), r(t ? Xt(t) : /* @__PURE__ */ Error("Operation cancelled."));
+			i.src = "", a(), r(t ? Zt(t) : /* @__PURE__ */ Error("Operation cancelled."));
 		};
 		if (i.onload = () => {
 			a(), n([i.naturalWidth, i.naturalHeight]);
@@ -1790,12 +1795,12 @@ function Qt(e, t) {
 		i.src = e;
 	});
 }
-async function $t(e, t) {
+async function en(e, t) {
 	let n = URL.createObjectURL(e);
 	try {
 		let e = await new Promise((e, r) => {
 			let i = new Image(), a = () => t?.removeEventListener("abort", o), o = () => {
-				i.src = "", a(), r(t ? Xt(t) : /* @__PURE__ */ Error("Operation cancelled."));
+				i.src = "", a(), r(t ? Zt(t) : /* @__PURE__ */ Error("Operation cancelled."));
 			};
 			if (i.onload = () => {
 				a(), e(i);
@@ -1826,7 +1831,7 @@ async function $t(e, t) {
 		URL.revokeObjectURL(n);
 	}
 }
-async function en(e, t, n) {
+async function tn(e, t, n) {
 	let r = Number(e.headers.get("content-length"));
 	if (Number.isFinite(r) && r > t) throw Error(`GURS WMS response exceeds the ${Math.round(t / 1024 / 1024)} MB limit.`);
 	if (!e.body) {
@@ -1837,8 +1842,8 @@ async function en(e, t, n) {
 	let i = e.body.getReader(), a = [], o = 0;
 	try {
 		for (;;) {
-			if (n.aborted) throw Xt(n);
-			let { done: e, value: r } = await Zt(i.read(), n);
+			if (n.aborted) throw Zt(n);
+			let { done: e, value: r } = await Qt(i.read(), n);
 			if (e) break;
 			if (o += r.byteLength, o > t) throw Error("GURS WMS response exceeds the image byte limit.");
 			a.push(r.slice().buffer);
@@ -1848,7 +1853,7 @@ async function en(e, t, n) {
 	}
 	return new Blob(a, { type: e.headers.get("content-type") ?? "" });
 }
-function tn(e, t, n, r, i = "text", a = null) {
+function nn(e, t, n, r, i = "text", a = null) {
 	let o = document.createElement("label");
 	o.className = "photo-field", o.append(document.createTextNode(e));
 	let s = document.createElement("input");
@@ -1859,7 +1864,7 @@ function tn(e, t, n, r, i = "text", a = null) {
 	}
 	return o.appendChild(s), o;
 }
-function nn(e, t, n, r, i) {
+function rn(e, t, n, r, i) {
 	let a = document.createElement("label");
 	a.className = "photo-field", a.append(document.createTextNode(e));
 	let o = document.createElement("select");
@@ -1870,7 +1875,7 @@ function nn(e, t, n, r, i) {
 	}
 	return a.appendChild(o), a;
 }
-var rn = class {
+var an = class {
 	onMessage;
 	records = [];
 	compliance = m([], []);
@@ -1946,28 +1951,28 @@ var rn = class {
 		if (!/^image\/jpeg$/i.test(e.type) && !/\.jpe?g$/i.test(e.name)) return this.onMessage(`Skipped ${e.name}: only JPEG photos are supported.`, "warning"), null;
 		if (e.size > V.maximumFileBytes) throw Error(`${e.name} exceeds the ${V.maximumFileBytes / 1024 / 1024} MB limit.`);
 		let i = await e.arrayBuffer();
-		if (r?.aborted) throw Xt(r);
-		let a = Yt(i);
+		if (r?.aborted) throw Zt(r);
+		let a = Xt(i);
 		if (a && a[0] * a[1] / 1e6 > V.maximumMegapixels) throw Error(`${e.name} exceeds the ${V.maximumMegapixels} megapixel limit.`);
-		let o = await Wt(i);
-		if (qt(e, o, n)) return this.onMessage(`Skipped duplicate photo: ${e.name}.`, "warning"), null;
+		let o = await Gt(i);
+		if (Jt(e, o, n)) return this.onMessage(`Skipped duplicate photo: ${e.name}.`, "warning"), null;
 		let s = "", c = 0, l = 0, u = null, d;
 		try {
 			let t = URL.createObjectURL(e);
 			try {
-				[c, l] = await Qt(t, r);
+				[c, l] = await $t(t, r);
 			} finally {
 				URL.revokeObjectURL(t);
 			}
 			if (c * l / 1e6 > V.maximumMegapixels) throw Error(`${e.name} exceeds the ${V.maximumMegapixels} megapixel limit.`);
-			if (d = await Zt(vt(e, i), r), r?.aborted) throw Xt(r);
-			let n = await Zt(Tt(e, d.orientation.value ?? 1, V.thumbnailEdge), r);
-			if (r?.aborted) throw Xt(r);
+			if (d = await Qt(vt(e, i), r), r?.aborted) throw Zt(r);
+			let n = await Qt(Tt(e, d.orientation.value ?? 1, V.thumbnailEdge), r);
+			if (r?.aborted) throw Zt(r);
 			s = URL.createObjectURL(new Blob([Uint8Array.from(n).buffer], { type: "image/jpeg" }));
 		} catch (t) {
-			u = t instanceof Error ? t.message : String(t), d = Ut(u), s = URL.createObjectURL(e);
+			u = t instanceof Error ? t.message : String(t), d = Wt(u), s = URL.createObjectURL(e);
 		}
-		let f = bt(e.name), p = t.item, m = Kt(d);
+		let f = bt(e.name), p = t.item, m = qt(d);
 		p && (d.latitude = {
 			value: p.manualOverrides.latitude,
 			source: "example-track",
@@ -1986,7 +1991,7 @@ var rn = class {
 		}
 		let g = h ? ie(h.model) : null;
 		return {
-			id: Gt(),
+			id: Kt(),
 			file: e,
 			fileName: e.name,
 			fileSize: e.size,
@@ -2054,11 +2059,11 @@ var rn = class {
 					if (!e.ok) throw Error(`GURS WMS returned HTTP ${e.status}`);
 					let n = V.maximumTotalBytes - l;
 					if (n <= 0) throw Error("The total photo byte limit has been reached.");
-					let i = await en(e, Math.min(V.maximumFileBytes, n), u.signal);
+					let i = await tn(e, Math.min(V.maximumFileBytes, n), u.signal);
 					if (!/^image\/jpeg(?:;|$)/i.test(i.type)) throw Error(`GURS WMS returned ${i.type || "an unknown content type"} instead of JPEG`);
 					let s = new Uint8Array(await i.slice(0, 2).arrayBuffer());
 					if (s[0] !== 255 || s[1] !== 216) throw Error("GURS WMS response does not contain JPEG bytes.");
-					let c = await $t(i, u.signal);
+					let c = await en(i, u.signal);
 					if (c.standardDeviation < 4 && c.edgeMean < 2) throw Error("DOF025 crop is nearly uniform and has too little visible detail.");
 					let d = a.label.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 40) || "TARGET", f = new File([i], `DOF025_${d}_${a.latitude.toFixed(6)}_${a.longitude.toFixed(6)}.jpg`, { type: "image/jpeg" }), p = await this.importOne(f, { orthophoto: {
 						target: a,
@@ -2228,8 +2233,16 @@ var rn = class {
 		if (n < 0) return;
 		let r = t.dataset.action;
 		if (r === "remove") {
-			let e = this.records[n].fileName;
-			URL.revokeObjectURL(this.records[n].previewUrl), this.records.splice(n, 1), this.onMessage(`Removed ${e}.`, "neutral");
+			let e = this.records[n], t = e.fileName;
+			if (URL.revokeObjectURL(e.previewUrl), this.records.splice(n, 1), this.records.forEach((e, t) => {
+				e.order = t;
+			}), e.classification === "enroute") {
+				Ut(this.records), this.analyze(this.route), this.compliance.findings.some((e) => e.code === "enroute-letter-order" && e.severity === "violation") && this.mixEnrouteIdentifiers(!1);
+				let e = this.records.filter((e) => e.classification === "enroute").length;
+				this.onMessage(e ? `Removed ${t}. Renumbered ${e} remaining competition photo${e === 1 ? "" : "s"} without letter gaps.` : `Removed ${t}. No competition photos remain.`, "neutral");
+				return;
+			}
+			this.onMessage(`Removed ${t}.`, "neutral");
 		} else if (r === "up" && n > 0) [this.records[n - 1], this.records[n]] = [this.records[n], this.records[n - 1]], this.onMessage(`Moved ${this.records[n - 1].fileName} up.`, "neutral");
 		else if (r === "down" && n < this.records.length - 1) [this.records[n], this.records[n + 1]] = [this.records[n + 1], this.records[n]], this.onMessage(`Moved ${this.records[n + 1].fileName} down.`, "neutral");
 		else if (r === "accept-exception") {
@@ -2249,7 +2262,7 @@ var rn = class {
 			let i = It(r, t.value);
 			i.error ? (o[r] = i.error, s[r] = t.value) : (delete o[r], delete s[r]), e === "taskLatitude" || e === "taskLongitude" ? n[e] = yt(n[e], i.value) : n.metadata[e] = yt(n.metadata[e], i.value);
 		};
-		if (r === "classification") n.classification = Jt(n, t.value, n.linkedWaypoint).classification;
+		if (r === "classification") n.classification = Yt(n, t.value, n.linkedWaypoint).classification;
 		else if (r === "identifier") {
 			let e = t.value.trim().toUpperCase(), i = this.records.some((t) => t.id !== n.id && t.identifier.trim().toUpperCase() === e), a = /^[A-Z]$/.test(e) ? i ? "Identifier must be unique." : null : "Use one letter from A to Z.";
 			a ? (o[r] = a, s[r] = t.value, n.identifier = "") : (delete o[r], delete s[r], n.identifier = e);
@@ -2309,8 +2322,8 @@ var rn = class {
 			w.className = "photo-metadata-summary", w.textContent = "Photo details and corrections";
 			let T = document.createElement("div");
 			T.className = "photo-field-grid";
-			let E = (e, t, n) => tn(e, i.fieldDrafts?.[t] ?? n?.toString() ?? "", t, i.id, "number", i.fieldErrors?.[t] ?? null);
-			S.append(nn("Classification", i.classification, "classification", i.id, ut.map((e) => [e, Pt[e]])), tn("Identifier", i.fieldDrafts?.identifier ?? i.identifier, "identifier", i.id, "text", i.fieldErrors?.identifier ?? null), nn("Linked waypoint", i.linkedWaypoint ?? "", "linkedWaypoint", i.id, t), nn("Route leg override", i.manualLegIndex?.toString() ?? "", "manualLegIndex", i.id, n), E("Task/object latitude", "taskLatitude", i.taskLatitude.value), E("Task/object longitude", "taskLongitude", i.taskLongitude.value)), T.append(E("Latitude", "latitude", i.metadata.latitude.value), E("Longitude", "longitude", i.metadata.longitude.value), E("Heading (°)", "headingDeg", i.metadata.headingDeg.value), E("Altitude AGL (ft)", "altitudeAglFt", i.metadata.altitudeAglFt.value), E("35 mm equiv. focal (mm)", "focalLength35Mm", i.metadata.focalLength35Mm.value), tn("Capture time", i.metadata.captureTime.value ?? "", "captureTime", i.id));
+			let E = (e, t, n) => nn(e, i.fieldDrafts?.[t] ?? n?.toString() ?? "", t, i.id, "number", i.fieldErrors?.[t] ?? null);
+			S.append(rn("Classification", i.classification, "classification", i.id, ut.map((e) => [e, Pt[e]])), nn("Identifier", i.fieldDrafts?.identifier ?? i.identifier, "identifier", i.id, "text", i.fieldErrors?.identifier ?? null), rn("Linked waypoint", i.linkedWaypoint ?? "", "linkedWaypoint", i.id, t), rn("Route leg override", i.manualLegIndex?.toString() ?? "", "manualLegIndex", i.id, n), E("Task/object latitude", "taskLatitude", i.taskLatitude.value), E("Task/object longitude", "taskLongitude", i.taskLongitude.value)), T.append(E("Latitude", "latitude", i.metadata.latitude.value), E("Longitude", "longitude", i.metadata.longitude.value), E("Heading (°)", "headingDeg", i.metadata.headingDeg.value), E("Altitude AGL (ft)", "altitudeAglFt", i.metadata.altitudeAglFt.value), E("35 mm equiv. focal (mm)", "focalLength35Mm", i.metadata.focalLength35Mm.value), nn("Capture time", i.metadata.captureTime.value ?? "", "captureTime", i.id));
 			let D = document.createElement("p");
 			D.className = "photo-provenance";
 			let O = [i.originalMetadata.latitude.value, i.originalMetadata.longitude.value].every((e) => e !== null) ? `; original EXIF GPS: ${i.originalMetadata.latitude.value}, ${i.originalMetadata.longitude.value}` : "", k = i.generatedOrthophoto ? `; GURS DOF025 crop ${i.generatedOrthophoto.coverageWidthM.toFixed(0)}×${i.generatedOrthophoto.coverageHeightM.toFixed(0)} m modeled at ${i.generatedOrthophoto.modeledAltitudeM} m AGL, ${i.generatedOrthophoto.modeledFocalLength35Mm} mm, ${i.generatedOrthophoto.modeledDepressionDeg}° depression` : "", A = i.generatedOrthophoto?.targetSource ? `; OSM target: ${i.generatedOrthophoto.targetSource.name ?? i.generatedOrthophoto.targetSource.featureType} (${i.generatedOrthophoto.targetSource.featureType}, score ${i.generatedOrthophoto.targetSource.score}${i.generatedOrthophoto.targetSource.selectionSalt ? `, selection mix ${i.generatedOrthophoto.targetSource.selectionSalt.slice(0, 8)}` : ""})` : "";
@@ -2365,7 +2378,7 @@ var rn = class {
 		}
 		this.auditFindings.replaceChildren(s), this.auditSummary.textContent = `Technical & rulebook audit details (${o.length})`, this.auditDetails.hidden = o.length === 0, document.dispatchEvent(new CustomEvent("photo-workflow-change"));
 	}
-}, an = class {
+}, on = class {
 	options;
 	stages;
 	stepButtons;
@@ -2448,15 +2461,15 @@ var rn = class {
 			});
 		}), e[0] && n(e[0]);
 	}
-}, on = new URL("./", document.baseURI), sn = (e) => new URL(e, on).href, cn = te(x, on), ln = "2.4.0", un = "vfr", dn = un, fn = 2.5, pn = 20, mn = 12, hn = 18, gn = 60, _n = 7, vn = 1.2, yn = 10, bn = 4, xn = .35, Sn = 4, Cn = 72 / 25.4, wn = 3e4, Tn = 3, En = 5, Dn = 12;
+}, sn = new URL("./", document.baseURI), cn = (e) => new URL(e, sn).href, ln = te(x, sn), un = "2.4.0", dn = "vfr", fn = dn, pn = 2.5, mn = 20, hn = 12, gn = 18, _n = 60, vn = 7, yn = 1.2, bn = 10, xn = 4, Sn = .35, Cn = 4, wn = 72 / 25.4, Tn = 3e4, En = 3, Dn = 5, On = 12;
 function U(e) {
 	let t = document.getElementById(e);
 	if (!t) throw Error(`Required page element is missing: #${e}`);
 	return t;
 }
-var On = U("status"), kn = U("generate"), An = U("cancelGeneration"), jn = U("workflowShell"), Mn = U("artifactStatuses"), Nn = U("mapPresetGrid"), Pn = U("osmConsentRow"), Fn = U("osmThirdPartyConsent"), In = Array.from(Nn.querySelectorAll("[data-map-key]")), Ln = U("outputs"), Rn = U("summary"), zn = U("legsTable"), Bn = U("waypointTable"), Vn = U("summaryText"), Hn = U("routeCompliance"), Un = U("complianceBadge"), Wn = U("complianceTitle"), Gn = U("complianceSummary"), Kn = U("complianceChecks"), qn = U("manualComplianceChecks"), Jn = U("speed"), Yn = U("minuteInterval"), Xn = U("takeoffBuffer"), Zn = U("styleRouteWidth"), Qn = U("styleWaypointFont"), $n = U("styleHeadingFont"), er = U("styleMinuteLabelFont"), tr = U("styleMinuteMarkerSize"), nr = U("styleMinuteLineWidth"), W = U("waypoints"), rr = U("waypointLibrary"), ir = U("toggleWaypointLibrary"), ar = U("waypointLibraryStatus"), or = U("locationTypeFilter"), sr = U("locationCountryFilter"), cr = U("libraryControls"), lr = U("locationsList"), ur = U("addAllFiltered"), dr = U("orthophotoRandomCount"), fr = U("orthophotoAltitude"), pr = U("orthophotoFocalLength"), mr = U("orthophotoDepression"), hr = U("orthophotoCoveragePreview"), gr = U("handoutSplit"), _r = U("addRandomOrthophotos"), vr = U("loadWaypointOrthophotos"), yr = U("osmCandidateReview"), br = U("osmCandidateSummary"), xr = U("osmCandidateList"), Sr = U("osmCandidateSelectionStatus"), Cr = U("refreshOsmCandidates"), wr = U("selectAllOsmCandidates"), Tr = U("clearOsmCandidateSelection"), Er = U("importOsmCandidates"), Dr = U("osmDiscoveryProgress"), Or = U("osmDiscoveryProgressText"), kr = U("osmDiscoveryProgressPercent"), Ar = U("osmDiscoveryProgressBar"), jr = U("osmDiscoveryLegs"), Mr = U("osmDiscoveryWarning"), Nr = U("cancelOsmDiscovery"), Pr = U("findControlPhotoOptions"), Fr = U("controlPhotoReview"), Ir = U("controlPhotoStatus"), Lr = U("controlPhotoList"), Rr = U("importControlPhotos"), zr = U("generationProgress"), Br = U("routeSetupError"), Vr = U("speedError"), Hr = U("takeoffBufferError"), Ur = U("minuteIntervalError"), Wr = U("routeControlSummary"), Gr = U("routeLegSummary"), Kr = U("routeDistanceSummary"), qr = U("routeDurationSummary"), Jr = U("controlPreparationBadge"), Yr = U("competitionPreparationBadge"), Xr = U("selectedPhotoCount"), Zr = U("photoLegCoverage"), Qr = U("photoSplitBalance"), $r = U("photoCoverageWarning"), ei = U("readinessRoute"), ti = U("readinessCount"), ni = U("readinessCoverage"), ri = U("readinessSplit"), ii = U("readinessControls"), ai = U("readinessRules"), oi = U("readinessManual"), si = U("readinessExceptions"), ci = U("routeOnlyNote"), li = U("workflowFindingGroups"), ui = U("downloadPdf"), di = U("downloadOverlay"), fi = U("downloadCropped"), pi = U("downloadSummary"), mi = U("downloadPhotoAnalysis"), hi = U("downloadPhotoKey"), gi = U("downloadPhotoHandout"), _i = U("downloadCompetitorPhotoHandout");
-fi.style.display = "none";
-var vi = {
+var kn = U("status"), An = U("generate"), jn = U("cancelGeneration"), Mn = U("workflowShell"), Nn = U("artifactStatuses"), Pn = U("mapPresetGrid"), Fn = U("osmConsentRow"), In = U("osmThirdPartyConsent"), Ln = Array.from(Pn.querySelectorAll("[data-map-key]")), Rn = U("outputs"), zn = U("summary"), Bn = U("legsTable"), Vn = U("waypointTable"), Hn = U("summaryText"), Un = U("routeCompliance"), Wn = U("complianceBadge"), Gn = U("complianceTitle"), Kn = U("complianceSummary"), qn = U("complianceChecks"), Jn = U("manualComplianceChecks"), Yn = U("speed"), Xn = U("minuteInterval"), Zn = U("takeoffBuffer"), Qn = U("styleRouteWidth"), $n = U("styleWaypointFont"), er = U("styleHeadingFont"), tr = U("styleMinuteLabelFont"), nr = U("styleMinuteMarkerSize"), rr = U("styleMinuteLineWidth"), W = U("waypoints"), ir = U("waypointLibrary"), ar = U("toggleWaypointLibrary"), or = U("waypointLibraryStatus"), sr = U("locationTypeFilter"), cr = U("locationCountryFilter"), lr = U("libraryControls"), ur = U("locationsList"), dr = U("addAllFiltered"), fr = U("orthophotoRandomCount"), pr = U("orthophotoAltitude"), mr = U("orthophotoFocalLength"), hr = U("orthophotoDepression"), gr = U("orthophotoCoveragePreview"), _r = U("handoutSplit"), vr = U("addRandomOrthophotos"), yr = U("loadWaypointOrthophotos"), br = U("osmCandidateReview"), xr = U("osmCandidateSummary"), Sr = U("osmCandidateList"), Cr = U("osmCandidateSelectionStatus"), wr = U("refreshOsmCandidates"), Tr = U("selectAllOsmCandidates"), Er = U("clearOsmCandidateSelection"), Dr = U("importOsmCandidates"), Or = U("osmDiscoveryProgress"), kr = U("osmDiscoveryProgressText"), Ar = U("osmDiscoveryProgressPercent"), jr = U("osmDiscoveryProgressBar"), Mr = U("osmDiscoveryLegs"), Nr = U("osmDiscoveryWarning"), Pr = U("cancelOsmDiscovery"), Fr = U("findControlPhotoOptions"), Ir = U("controlPhotoReview"), Lr = U("controlPhotoStatus"), Rr = U("controlPhotoProgress"), zr = U("controlPhotoProgressCount"), Br = U("controlPhotoProgressPhase"), Vr = U("controlPhotoProgressBar"), Hr = U("controlPhotoList"), Ur = U("importControlPhotos"), Wr = U("generationProgress"), Gr = U("routeSetupError"), Kr = U("speedError"), qr = U("takeoffBufferError"), Jr = U("minuteIntervalError"), Yr = U("routeControlSummary"), Xr = U("routeLegSummary"), Zr = U("routeDistanceSummary"), Qr = U("routeDurationSummary"), $r = U("controlPreparationBadge"), ei = U("competitionPreparationBadge"), ti = U("selectedPhotoCount"), ni = U("photoLegCoverage"), ri = U("photoSplitBalance"), ii = U("photoCoverageWarning"), ai = U("readinessRoute"), oi = U("readinessCount"), si = U("readinessCoverage"), ci = U("readinessSplit"), li = U("readinessControls"), ui = U("readinessRules"), di = U("readinessManual"), fi = U("readinessExceptions"), pi = U("routeOnlyNote"), mi = U("workflowFindingGroups"), hi = U("downloadPdf"), gi = U("downloadOverlay"), _i = U("downloadCropped"), vi = U("downloadSummary"), yi = U("downloadPhotoAnalysis"), bi = U("downloadPhotoKey"), xi = U("downloadPhotoHandout"), Si = U("downloadCompetitorPhotoHandout");
+_i.style.display = "none";
+var Ci = {
 	pdf: null,
 	overlay: null,
 	cropped: null,
@@ -2465,9 +2478,9 @@ var vi = {
 	photoKey: null,
 	photoHandout: null,
 	competitorPhotoHandout: null
-}, yi = null, bi = null, xi = null, Si = /* @__PURE__ */ new Map();
+}, wi = null, Ti = null, Ei = null, Di = /* @__PURE__ */ new Map();
 function G(e, t, n) {
-	let r = Mn.querySelector(`[data-artifact="${e}"]`);
+	let r = Nn.querySelector(`[data-artifact="${e}"]`);
 	r && (r.dataset.state = t, r.textContent = `${{
 		map: "Judge map",
 		overlay: "Competitor route",
@@ -2476,10 +2489,10 @@ function G(e, t, n) {
 		data: "CSV/JSON",
 		handout: "Judge photo handout",
 		competitorHandout: "Competitor photo handout"
-	}[e] ?? e}: ${n}`, zr.value = Mn.querySelectorAll("[data-state=\"ok\"], [data-state=\"manual-review\"], [data-state=\"failed\"], [data-state=\"cancelled\"]").length);
+	}[e] ?? e}: ${n}`, Wr.value = Nn.querySelectorAll("[data-state=\"ok\"], [data-state=\"manual-review\"], [data-state=\"failed\"], [data-state=\"cancelled\"]").length);
 }
-function Ci() {
-	zr.value = 0;
+function Oi() {
+	Wr.value = 0;
 	for (let e of [
 		"map",
 		"overlay",
@@ -2490,15 +2503,15 @@ function Ci() {
 		"competitorHandout"
 	]) G(e, "not-started", "not started");
 }
-function wi(e) {
-	let t = [...jn.querySelectorAll("input,textarea,select,button"), ...document.querySelectorAll(".workflow-stepper button")];
-	e ? (Si.clear(), t.forEach((e) => {
-		Si.set(e, e.disabled), e.disabled = !0;
-	})) : (Si.forEach((e, t) => {
+function ki(e) {
+	let t = [...Mn.querySelectorAll("input,textarea,select,button"), ...document.querySelectorAll(".workflow-stepper button")];
+	e ? (Di.clear(), t.forEach((e) => {
+		Di.set(e, e.disabled), e.disabled = !0;
+	})) : (Di.forEach((e, t) => {
 		t.isConnected && (t.disabled = e);
-	}), Si.clear()), An.hidden = !e, An.disabled = !e, On.setAttribute("aria-busy", String(e)), jn.setAttribute("aria-busy", String(e)), X.setExternalBusy(e);
+	}), Di.clear()), jn.hidden = !e, jn.disabled = !e, kn.setAttribute("aria-busy", String(e)), Mn.setAttribute("aria-busy", String(e)), X.setExternalBusy(e);
 }
-function Ti(e, t) {
+function Ai(e, t) {
 	if (!e) {
 		Y(`Generate the overlay before opening ${t}.`);
 		return;
@@ -2510,10 +2523,10 @@ function Ti(e, t) {
 	}
 	n.opener = null, n.location = e;
 }
-function Ei(e, t) {
+function ji(e, t) {
 	if (!e) return;
 	let n = e.textContent.trim() || t, r = (e) => {
-		e.preventDefault(), Ti(vi[t], n);
+		e.preventDefault(), Ai(Ci[t], n);
 	};
 	e.addEventListener("click", (e) => {
 		(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && r(e);
@@ -2523,29 +2536,29 @@ function Ei(e, t) {
 		(e.key === "Enter" || e.key === " ") && (e.metaKey || e.ctrlKey) && r(e);
 	}), e.setAttribute("title", `${n} — click to download, Cmd/Ctrl-click to open in a new tab`);
 }
-Ei(ui, "pdf"), Ei(di, "overlay"), Ei(fi, "cropped"), Ei(pi, "summary"), Ei(mi, "photoAnalysis"), Ei(hi, "photoKey"), Ei(gi, "photoHandout"), Ei(_i, "competitorPhotoHandout");
-var Di = U("croppedPreviewContainer"), Oi = U("croppedPreviewLink"), ki = U("croppedPreviewImage"), Ai = U("croppedPreviewMessage"), ji = U("resultsPlaceholder"), Mi = U("resultsContent"), Ni = !1, Pi = null, Fi = null, Ii = U("mapStatus"), Li = U("chartWarning"), Ri = U("osmMapContainer"), zi = U("osmMap"), Bi = 1, Vi = Sn, Hi = sn("locations.txt"), Ui = null, Wi = {
+ji(hi, "pdf"), ji(gi, "overlay"), ji(_i, "cropped"), ji(vi, "summary"), ji(yi, "photoAnalysis"), ji(bi, "photoKey"), ji(xi, "photoHandout"), ji(Si, "competitorPhotoHandout");
+var Mi = U("croppedPreviewContainer"), Ni = U("croppedPreviewLink"), Pi = U("croppedPreviewImage"), Fi = U("croppedPreviewMessage"), Ii = U("resultsPlaceholder"), Li = U("resultsContent"), Ri = !1, zi = null, Bi = null, Vi = U("mapStatus"), Hi = U("chartWarning"), Ui = U("osmMapContainer"), Wi = U("osmMap"), Gi = 1, Ki = Cn, qi = cn("locations.txt"), Ji = null, Yi = {
 	search: "",
 	type: "all",
 	country: "all"
-}, K = null, Gi = [], q = null, Ki = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", J = {
+}, K = null, Xi = [], q = null, Zi = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", J = {
 	a: 6378137,
 	invF: 298.257222101,
 	k0: .9999,
 	lon0Rad: 15 * Math.PI / 180,
 	falseEasting: 5e5,
 	falseNorthing: -5e6
-}, qi = /[&<>"']/g, Ji = /* @__PURE__ */ new Map([
+}, Qi = /[&<>"']/g, $i = /* @__PURE__ */ new Map([
 	["&", "&amp;"],
 	["<", "&lt;"],
 	[">", "&gt;"],
 	["\"", "&quot;"],
 	["'", "&#39;"]
 ]);
-function Yi(e) {
-	return e ? String(e).replace(qi, (e) => Ji.get(e) || e) : "";
+function ea(e) {
+	return e ? String(e).replace(Qi, (e) => $i.get(e) || e) : "";
 }
-function Xi(e, t) {
+function ta(e, t) {
 	let n = document.createDocumentFragment();
 	for (let e of t) {
 		let t = document.createElement("tr");
@@ -2557,11 +2570,11 @@ function Xi(e, t) {
 	}
 	e.replaceChildren(n);
 }
-function Zi(e) {
+function na(e) {
 	let t = Uint8Array.from(e);
 	return URL.createObjectURL(new Blob([t.buffer], { type: "application/pdf" }));
 }
-async function Qi(e, t, n) {
+async function ra(e, t, n) {
 	if (e.startsWith("data:")) return b(e).bytes;
 	let r;
 	try {
@@ -2572,41 +2585,41 @@ async function Qi(e, t, n) {
 	if (!r.ok) throw Error(`Could not load ${t} (${r.status} ${r.statusText}).`);
 	return new Uint8Array(await r.arrayBuffer());
 }
-function $i(e, t, n, r) {
-	vi[e] && URL.revokeObjectURL(vi[e]), vi[e] = t, r.onclick = null, r.href = t, r.download = n, e === "pdf" && (r.textContent = "Marked Map (PDF)"), ta();
+function ia(e, t, n, r) {
+	Ci[e] && URL.revokeObjectURL(Ci[e]), Ci[e] = t, r.onclick = null, r.href = t, r.download = n, e === "pdf" && (r.textContent = "Marked Map (PDF)"), oa();
 }
-function ea(e, t) {
-	vi[e] && (URL.revokeObjectURL(vi[e]), vi[e] = null), t.removeAttribute("href"), t.removeAttribute("download"), t.onclick = null, ta();
+function aa(e, t) {
+	Ci[e] && (URL.revokeObjectURL(Ci[e]), Ci[e] = null), t.removeAttribute("href"), t.removeAttribute("download"), t.onclick = null, oa();
 }
-function ta() {
-	if (!Mi) return;
-	let e = Ln && !Ln.hidden || Rn && !Rn.hidden || Di && !Di.hidden || !Hn.hidden;
-	ji && !Ni && (ji.hidden = e), Mi.hidden = !e;
+function oa() {
+	if (!Li) return;
+	let e = Rn && !Rn.hidden || zn && !zn.hidden || Mi && !Mi.hidden || !Un.hidden;
+	Ii && !Ri && (Ii.hidden = e), Li.hidden = !e;
 }
 function Y(e, t = e.startsWith("Error:") ? "error" : "neutral") {
-	On.textContent = e, On.classList.toggle("is-error", t === "error"), On.classList.toggle("is-success", t === "success"), On.classList.toggle("is-warning", t === "warning");
+	kn.textContent = e, kn.classList.toggle("is-error", t === "error"), kn.classList.toggle("is-success", t === "success"), kn.classList.toggle("is-warning", t === "warning");
 }
-function na(e, t) {
+function sa(e, t) {
 	if (e.taskLatitude.reliable && e.taskLongitude.reliable && e.taskLatitude.value !== null && e.taskLongitude.value !== null) return [e.taskLatitude.value, e.taskLongitude.value];
 	if (!e.linkedWaypoint) return null;
 	let n = t.find(([t]) => t.trim().toUpperCase() === e.linkedWaypoint.trim().toUpperCase());
 	return n ? [n[1], n[2]] : null;
 }
-function ra(e) {
+function ca(e) {
 	let t = (e.linkedWaypoint || e.identifier).trim().toUpperCase();
 	return t === "SP" || t === "FP" || !!(t && /^TP\d+$/.test(t));
 }
-function ia(e) {
+function la(e) {
 	let t = document.createElement("span");
 	return t.textContent = e, t;
 }
-var X = new rn(Y), aa = null, Z = [], Q = /* @__PURE__ */ new Set(), oa = "", sa = !1, ca = "", la = /* @__PURE__ */ new Set(), ua = /* @__PURE__ */ new Map(), da = 5, fa = 6e5, pa = 0, ma = null, ha = null, ga = [], _a = /* @__PURE__ */ new Map(), va = "", ya = null;
+var X = new an(Y), ua = null, Z = [], Q = /* @__PURE__ */ new Set(), da = "", fa = !1, pa = "", ma = /* @__PURE__ */ new Set(), ha = /* @__PURE__ */ new Map(), ga = 5, _a = 6e5, va = 0, ya = null, ba = null, xa = [], Sa = /* @__PURE__ */ new Map(), Ca = "", wa = null;
 W.addEventListener("input", () => {
-	ya !== null && clearTimeout(ya), ya = setTimeout(() => {
-		if (ya = null, !(xi || X.isBusy)) {
+	wa !== null && clearTimeout(wa), wa = setTimeout(() => {
+		if (wa = null, !(Ei || X.isBusy)) {
 			try {
-				let e = po(W.value);
-				X.analyze(e), oa && oa !== JSON.stringify(e) && Ia(), va && va !== JSON.stringify(e) && Ma(), Y("Route changed: photo analysis refreshed. Generate again to rebuild outputs.");
+				let e = vo(W.value);
+				X.analyze(e), da && da !== JSON.stringify(e) && Va(), Ca && Ca !== JSON.stringify(e) && La(), Y("Route changed: photo analysis refreshed. Generate again to rebuild outputs.");
 			} catch {
 				Y("Route changed: photo analysis is waiting for a valid route.", "warning");
 			}
@@ -2614,11 +2627,11 @@ W.addEventListener("input", () => {
 		}
 	}, 300);
 });
-function ba() {
+function Ta() {
 	let e = {
-		altitudeM: Number(fr.value),
-		focalLength35Mm: Number(pr.value),
-		depressionDeg: Number(mr.value),
+		altitudeM: Number(pr.value),
+		focalLength35Mm: Number(mr.value),
+		depressionDeg: Number(hr.value),
 		aspectRatio: 16 / 9
 	};
 	if (!Number.isFinite(e.altitudeM) || e.altitudeM < 10 || e.altitudeM > 1e3) throw Error("DOF025 height must be between 10 and 1,000 m AGL.");
@@ -2626,20 +2639,20 @@ function ba() {
 	if (!Number.isFinite(e.depressionDeg) || e.depressionDeg < 10 || e.depressionDeg > 90) throw Error("DOF025 depression angle must be between 10° and 90°.");
 	return ie(e), e;
 }
-function xa() {
+function Ea() {
 	try {
-		let e = ie(ba());
-		hr.textContent = `≈ ${e.widthM.toFixed(0)} × ${e.heightM.toFixed(0)} m`, hr.removeAttribute("data-invalid");
+		let e = ie(Ta());
+		gr.textContent = `≈ ${e.widthM.toFixed(0)} × ${e.heightM.toFixed(0)} m`, gr.removeAttribute("data-invalid");
 	} catch {
-		hr.textContent = "Invalid capture model", hr.dataset.invalid = "true";
+		gr.textContent = "Invalid capture model", gr.dataset.invalid = "true";
 	}
 }
-function Sa() {
-	let e = Number(dr.value);
+function Da() {
+	let e = Number(fr.value);
 	if (!Number.isInteger(e) || e < 1 || e > 12) throw Error("Target count must be an integer from 1 to 12.");
 	return e;
 }
-function Ca(e, t, n) {
+function Oa(e, t, n) {
 	return JSON.stringify({
 		version: 2,
 		points: e,
@@ -2647,59 +2660,59 @@ function Ca(e, t, n) {
 		splitAfterM: n
 	});
 }
-function wa(e) {
-	let t = ua.get(e);
-	return t ? Date.now() - t.cachedAt > fa ? (ua.delete(e), null) : (ua.delete(e), ua.set(e, t), t.data) : null;
+function ka(e) {
+	let t = ha.get(e);
+	return t ? Date.now() - t.cachedAt > _a ? (ha.delete(e), null) : (ha.delete(e), ha.set(e, t), t.data) : null;
 }
-function Ta(e, t) {
-	if (!t.warnings?.length) for (ua.set(e, {
+function Aa(e, t) {
+	if (!t.warnings?.length) for (ha.set(e, {
 		data: t,
 		cachedAt: Date.now()
-	}); ua.size > da;) {
-		let e = ua.keys().next().value;
+	}); ha.size > ga;) {
+		let e = ha.keys().next().value;
 		if (typeof e != "string") break;
-		ua.delete(e);
+		ha.delete(e);
 	}
 }
-function Ea(e) {
-	sa = e, _r.disabled = e, dr.disabled = e, W.disabled = e, Cr.disabled = e, wr.disabled = e, Tr.disabled = e, Er.disabled = e, vr.disabled = e, Pr.disabled = e, Rr.disabled = e, gr.disabled = e || gr.options.length === 0, Nr.hidden = !e || ha === null, Nr.disabled = !e || ha === null, yr.setAttribute("aria-busy", String(e)), X.setExternalBusy(e), !e && Z.length > 0 && za(), !e && ga.length > 0 && Na();
+function ja(e) {
+	fa = e, vr.disabled = e, fr.disabled = e, W.disabled = e, wr.disabled = e, Tr.disabled = e, Er.disabled = e, Dr.disabled = e, yr.disabled = e, Fr.disabled = e, Ur.disabled = e, _r.disabled = e || _r.options.length === 0, Pr.hidden = !e || ba === null, Pr.disabled = !e || ba === null, br.setAttribute("aria-busy", String(e)), Ir.setAttribute("aria-busy", String(e)), X.setExternalBusy(e), !e && Z.length > 0 && Wa(), !e && xa.length > 0 && Ra();
 }
-function Da() {
-	ma !== null && clearInterval(ma), ma = null;
+function Ma() {
+	ya !== null && clearInterval(ya), ya = null;
 }
-function Oa() {
-	kr.textContent = `${Math.round(Ar.value / Ar.max * 100)}% · ${Math.max(0, Math.floor((Date.now() - pa) / 1e3))}s`;
+function Na() {
+	Ar.textContent = `${Math.round(jr.value / jr.max * 100)}% · ${Math.max(0, Math.floor((Date.now() - va) / 1e3))}s`;
 }
-function ka(e) {
-	Da(), pa = Date.now(), la.clear(), Dr.hidden = !1, Dr.dataset.state = "working", Or.textContent = "Starting per-leg OpenStreetMap discovery…", kr.textContent = "0%", Ar.max = Math.max(1, (e.length - 1) * 3), Ar.value = 0, ma = setInterval(Oa, 1e3), Mr.textContent = "Each route leg is checked separately. Building searches run only if stronger targets are insufficient.", jr.replaceChildren(...e.slice(0, -1).map(([t], n) => {
+function Pa(e) {
+	Ma(), va = Date.now(), ma.clear(), Or.hidden = !1, Or.dataset.state = "working", kr.textContent = "Starting per-leg OpenStreetMap discovery…", Ar.textContent = "0%", jr.max = Math.max(1, (e.length - 1) * 3), jr.value = 0, ya = setInterval(Na, 1e3), Nr.textContent = "Each route leg is checked separately. Building searches run only if stronger targets are insufficient.", Mr.replaceChildren(...e.slice(0, -1).map(([t], n) => {
 		let r = document.createElement("span");
 		return r.className = "osm-leg-progress", r.dataset.legIndex = String(n), r.dataset.state = "pending", r.textContent = `${t}–${e[n + 1][0]}`, r.setAttribute("aria-label", `${r.textContent}: pending`), r;
 	}));
 }
-function Aa(e, t) {
+function Fa(e, t) {
 	e && (e.dataset.state = t, e.setAttribute("aria-label", `${e.textContent}: ${t}`));
 }
-function ja(e) {
+function Ia(e) {
 	let t = {
 		features: "identifiable features",
 		roads: "road junctions",
 		buildings: "building fallback"
 	};
-	Ar.max = e.totalSteps, Ar.value = e.completedSteps, Oa();
-	let n = jr.querySelector(`[data-leg-index="${e.legIndex}"]`);
+	jr.max = e.totalSteps, jr.value = e.completedSteps, Na();
+	let n = Mr.querySelector(`[data-leg-index="${e.legIndex}"]`);
 	if (e.state === "started" || e.state === "retrying") {
 		let r = e.state === "retrying" ? "Retrying after the first leg pass · " : "";
-		e.detail?.includes("shared route feature index") ? (Or.textContent = `Downloading the shared OpenStreetMap feature index for all ${e.legCount} legs…`, Y(`Downloading OpenStreetMap features for all ${e.legCount} route legs…`), jr.querySelectorAll(".osm-leg-progress").forEach((e) => {
-			Aa(e, "active");
-		})) : (Or.textContent = `${r}Leg ${e.legIndex + 1} of ${e.legCount} · ${e.legName}: checking ${t[e.stage]}…`, Y(`Searching OpenStreetMap · leg ${e.legIndex + 1} of ${e.legCount} · ${t[e.stage]}…`), Aa(n, "active"));
-	} else e.state === "warning" ? (la.add(e.legIndex), Mr.textContent = `${e.legName} ${t[e.stage]} could not be loaded (${e.detail ?? "request failed"}). Continuing with completed results.`, Aa(n, "warning")) : e.state === "recovered" ? (la.delete(e.legIndex), Mr.textContent = `${e.legName} ${t[e.stage]} recovered on the deferred retry pass.`, Aa(n, "recovered")) : e.stage === "features" || e.stage === "roads" ? Aa(n, la.has(e.legIndex) ? "warning" : "scanned") : e.stage === "buildings" && Aa(n, la.has(e.legIndex) ? "warning" : "done");
+		e.detail?.includes("shared route feature index") ? (kr.textContent = `Downloading the shared OpenStreetMap feature index for all ${e.legCount} legs…`, Y(`Downloading OpenStreetMap features for all ${e.legCount} route legs…`), Mr.querySelectorAll(".osm-leg-progress").forEach((e) => {
+			Fa(e, "active");
+		})) : (kr.textContent = `${r}Leg ${e.legIndex + 1} of ${e.legCount} · ${e.legName}: checking ${t[e.stage]}…`, Y(`Searching OpenStreetMap · leg ${e.legIndex + 1} of ${e.legCount} · ${t[e.stage]}…`), Fa(n, "active"));
+	} else e.state === "warning" ? (ma.add(e.legIndex), Nr.textContent = `${e.legName} ${t[e.stage]} could not be loaded (${e.detail ?? "request failed"}). Continuing with completed results.`, Fa(n, "warning")) : e.state === "recovered" ? (ma.delete(e.legIndex), Nr.textContent = `${e.legName} ${t[e.stage]} recovered on the deferred retry pass.`, Fa(n, "recovered")) : e.stage === "features" || e.stage === "roads" ? Fa(n, ma.has(e.legIndex) ? "warning" : "scanned") : e.stage === "buildings" && Fa(n, ma.has(e.legIndex) ? "warning" : "done");
 }
-function Ma() {
-	ga = [], _a.clear(), va = "", Lr.replaceChildren(), Fr.hidden = !0;
+function La() {
+	xa = [], Sa.clear(), Ca = "", Hr.replaceChildren(), Rr.hidden = !0, Rr.removeAttribute("data-state"), Vr.value = 0, Vr.max = 1, Ir.hidden = !0;
 }
-function Na() {
-	let e = ie(ba()), t = document.createDocumentFragment();
-	for (let n of ga) {
+function Ra() {
+	let e = ie(Ta()), t = document.createDocumentFragment();
+	for (let n of xa) {
 		let [r] = n.waypoint, i = document.createElement("section");
 		i.className = "control-photo-row";
 		let a = document.createElement("h5");
@@ -2712,7 +2725,7 @@ function Na() {
 			let o = document.createElement("label");
 			o.className = "control-photo-choice";
 			let s = document.createElement("input");
-			s.type = "radio", s.name = `control-photo-${r}`, s.value = t, s.dataset.controlWaypoint = r, s.checked = _a.get(r) === t;
+			s.type = "radio", s.name = `control-photo-${r}`, s.value = t, s.dataset.controlWaypoint = r, s.checked = Sa.get(r) === t;
 			let c = document.createElement("strong");
 			c.textContent = t === "true" ? `True · exact ${r} position` : `False · ${n.name}`;
 			let l = document.createElement("span");
@@ -2728,37 +2741,37 @@ function Na() {
 		}
 		t.appendChild(i);
 	}
-	Lr.replaceChildren(t), Fr.hidden = !1, Rr.disabled = ga.length === 0 || sa, $();
+	Hr.replaceChildren(t), Ir.hidden = !1, Ur.disabled = xa.length === 0 || fa, $();
 }
-function Pa(e, t) {
-	Da(), Ar.value = Ar.max, kr.textContent = "100%", Dr.dataset.state = t.length ? "warning" : "complete", Or.textContent = `Discovery complete · ${e} eligible feature${e === 1 ? "" : "s"} found`, jr.querySelectorAll(".osm-leg-progress").forEach((e) => {
-		e.dataset.state !== "warning" && Aa(e, "done");
-	}), Mr.textContent = t.length ? `${t.length} OpenStreetMap request${t.length === 1 ? "" : "s"} could not be loaded. Candidates from completed stages were retained. ${t.slice(0, 3).join(" | ")}${t.length > 3 ? ` | ${t.length - 3} more` : ""}` : "Every required leg stage completed. Unnecessary building searches were skipped.";
+function za(e, t) {
+	Ma(), jr.value = jr.max, Ar.textContent = "100%", Or.dataset.state = t.length ? "warning" : "complete", kr.textContent = `Discovery complete · ${e} eligible feature${e === 1 ? "" : "s"} found`, Mr.querySelectorAll(".osm-leg-progress").forEach((e) => {
+		e.dataset.state !== "warning" && Fa(e, "done");
+	}), Nr.textContent = t.length ? `${t.length} OpenStreetMap request${t.length === 1 ? "" : "s"} could not be loaded. Candidates from completed stages were retained. ${t.slice(0, 3).join(" | ")}${t.length > 3 ? ` | ${t.length - 3} more` : ""}` : "Every required leg stage completed. Unnecessary building searches were skipped.";
 }
-function Fa(e) {
-	Da(), Dr.hidden = !1, Dr.dataset.state = "error", Or.textContent = "OpenStreetMap discovery stopped", Mr.textContent = e;
+function Ba(e) {
+	Ma(), Or.hidden = !1, Or.dataset.state = "error", kr.textContent = "OpenStreetMap discovery stopped", Nr.textContent = e;
 }
-function Ia() {
-	Da(), Z = [], Q.clear(), oa = "", ca = "", xr.replaceChildren(), yr.hidden = !0, Dr.hidden = !0, la.clear();
+function Va() {
+	Ma(), Z = [], Q.clear(), da = "", pa = "", Sr.replaceChildren(), br.hidden = !0, Or.hidden = !0, ma.clear();
 }
-function La() {
+function Ha() {
 	return Z.filter((e) => Q.has(e.id));
 }
-function Ra(e) {
+function Ua(e) {
 	if (e.length === 0) return [];
-	let t = [], n = lt(e, Sa(), X.handoutOptions.splitAfterM);
+	let t = [], n = lt(e, Da(), X.handoutOptions.splitAfterM);
 	n && t.push(n);
 	let r = X.records.filter((e) => e.classification === "enroute").length;
 	r + e.length > 12 && t.push(`Rule A2.4.5 warning: importing all selected targets would create ${r + e.length} en-route photos; permitted maximum 12.`);
 	try {
-		let n = po(W.value), r = X.records.filter((e) => f(e, n)).length;
+		let n = vo(W.value), r = X.records.filter((e) => f(e, n)).length;
 		r + e.length > 15 && t.push(`Rule A2.4.6 warning: importing all selected targets would create ${r + e.length} route tasks; permitted maximum 15.`);
 	} catch {}
 	return t;
 }
-function za() {
-	let e = La(), t = Ra(e), n = X.records.length + e.length > V.maximumCount;
-	br.textContent = `All ${Z.length} eligible OSM feature${Z.length === 1 ? " is" : "s are"} shown. ${e.length} selected. Selection mix ${ca.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`, Sr.textContent = e.length === 0 ? "Select at least one target to import." : n ? `${e.length} selected · app safety limit: a maximum of ${V.maximumCount} total photos can be loaded.` : t.length ? `${e.length} selected · ${t.join(" ")}` : `${e.length} selected · ready for DOF025 import`, Sr.dataset.tone = e.length === 0 || n || t.length ? "warning" : "ok", Er.disabled = sa || e.length === 0 || n;
+function Wa() {
+	let e = Ha(), t = Ua(e), n = X.records.length + e.length > V.maximumCount;
+	xr.textContent = `All ${Z.length} eligible OSM feature${Z.length === 1 ? " is" : "s are"} shown. ${e.length} selected. Selection mix ${pa.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`, Cr.textContent = e.length === 0 ? "Select at least one target to import." : n ? `${e.length} selected · app safety limit: a maximum of ${V.maximumCount} total photos can be loaded.` : t.length ? `${e.length} selected · ${t.join(" ")}` : `${e.length} selected · ready for DOF025 import`, Cr.dataset.tone = e.length === 0 || n || t.length ? "warning" : "ok", Dr.disabled = fa || e.length === 0 || n;
 	let r = document.createDocumentFragment();
 	for (let e of Z) {
 		let t = document.createElement("article");
@@ -2782,66 +2795,66 @@ function za() {
 		let d = document.createElement("p");
 		d.textContent = `${((e.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${e.lateralDistanceM.toFixed(0)} m lateral · ${e.distanceAfterControlM.toFixed(0)} m after ${e.previousControlPoint} · ${e.source.elementId} · ${e.source.attribution}`, l.append(u, d), t.append(n, l), r.appendChild(t);
 	}
-	xr.replaceChildren(r), yr.hidden = !1, $();
+	Sr.replaceChildren(r), br.hidden = !1, $();
 }
-function Ba() {
-	let e = ct(Z, Sa(), X.handoutOptions.splitAfterM, Pe(ca));
-	Q = new Set(e.map((e) => e.id)), za();
+function Ga() {
+	let e = ct(Z, Da(), X.handoutOptions.splitAfterM, Pe(pa));
+	Q = new Set(e.map((e) => e.id)), Wa();
 }
-function Va() {
+function Ka() {
 	let e = crypto.getRandomValues(/* @__PURE__ */ new Uint32Array(2));
 	return Array.from(e, (e) => e.toString(16).padStart(8, "0")).join("");
 }
-function Ha(e) {
+function qa(e) {
 	let t = e.map((e) => `PHOTO_${e.label},${e.latitude.toFixed(6)},${e.longitude.toFixed(6)}`), n = W.value.trimEnd();
 	W.value = `${n}${n ? "\n" : ""}${t.join("\n")}`, W.dispatchEvent(new Event("input"));
 }
 for (let e of [
-	fr,
 	pr,
-	mr
-]) e.addEventListener("input", xa);
-dr.addEventListener("input", () => {
+	mr,
+	hr
+]) e.addEventListener("input", Ea);
+fr.addEventListener("input", () => {
 	if (Z.length !== 0) try {
-		Ba();
+		Ga();
 	} catch {
-		Sr.textContent = "Enter a target count from 1 to 12.", Er.disabled = !0;
+		Cr.textContent = "Enter a target count from 1 to 12.", Dr.disabled = !0;
 	}
-}), gr.addEventListener("change", () => {
-	if (!(Z.length === 0 || sa)) try {
-		ca = Va(), Ba(), Y("Handout split changed: the proposed OSM targets were reselected and revalidated.", "warning");
+}), _r.addEventListener("change", () => {
+	if (!(Z.length === 0 || fa)) try {
+		pa = Ka(), Ga(), Y("Handout split changed: the proposed OSM targets were reselected and revalidated.", "warning");
 	} catch (e) {
 		Y(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
 	}
-}), xa(), _r.addEventListener("click", async () => {
-	if (!(X.isBusy || sa)) try {
-		let e = Sa(), t = po(W.value);
+}), Ea(), vr.addEventListener("click", async () => {
+	if (!(X.isBusy || fa)) try {
+		let e = Da(), t = vo(W.value);
 		X.analyze(t);
-		let r = n(t), i = JSON.stringify(t), a = oa === i ? [...Z] : [], o = X.handoutOptions.splitAfterM, s = Ca(t, e, o), c = wa(s);
-		Ia(), ca = Va(), ka(t), c || (ha = new AbortController()), Ea(!0), Y(c ? "Reusing the complete cached OpenStreetMap discovery with a new selection mix…" : `Searching OpenStreetMap leg by leg (1 of ${t.length - 1})…`);
+		let r = n(t), i = JSON.stringify(t), a = da === i ? [...Z] : [], o = X.handoutOptions.splitAfterM, s = Oa(t, e, o), c = ka(s);
+		Va(), pa = Ka(), Pa(t), c || (ba = new AbortController()), ja(!0), Y(c ? "Reusing the complete cached OpenStreetMap discovery with a new selection mix…" : `Searching OpenStreetMap leg by leg (1 of ${t.length - 1})…`);
 		let l = c ?? await Ue(t, {
 			route: r,
 			requestedCount: e,
 			splitAfterM: o,
-			signal: ha?.signal,
-			onProgress: ja
+			signal: ba?.signal,
+			onProgress: Ia
 		}), u = Ze(l, r, t);
-		if (Z = [...new Map([...a, ...u].map((e) => [e.id, e])).values()].sort((e, t) => (e.alongRouteM ?? 0) - (t.alongRouteM ?? 0) || t.score - e.score), oa = i, Z.length === 0) throw Error("No identifiable OSM targets met the route, clearance, and distance requirements.");
-		c || Ta(s, l), Pa(Z.length, l.warnings ?? []), Ba();
+		if (Z = [...new Map([...a, ...u].map((e) => [e.id, e])).values()].sort((e, t) => (e.alongRouteM ?? 0) - (t.alongRouteM ?? 0) || t.score - e.score), da = i, Z.length === 0) throw Error("No identifiable OSM targets met the route, clearance, and distance requirements.");
+		c || Aa(s, l), za(Z.length, l.warnings ?? []), Ga();
 		let d = Q.size, f = l.warnings?.length ? ` ${l.warnings.length} OpenStreetMap request${l.warnings.length === 1 ? "" : "s"} could not be loaded; completed results were retained.` : "", p = a.length ? ` Results were merged with ${a.length} candidates retained from the previous attempt.` : "";
 		Y(`${`Found ${Z.length} eligible OSM features and displayed all of them. ${d} are initially selected; choose any number before importing.`}${f}${p}`, l.warnings?.length ? "warning" : "success");
 	} catch (e) {
 		let t = e instanceof Error ? e.message : String(e);
-		Fa(t), Y(`Error: ${t}`, "error");
+		Ba(t), Y(`Error: ${t}`, "error");
 	} finally {
-		ha = null, sa && Ea(!1);
+		ba = null, fa && ja(!1);
 	}
-}), Nr.addEventListener("click", () => {
-	ha?.abort(/* @__PURE__ */ Error("OpenStreetMap discovery cancelled by the user."));
-}), Cr.addEventListener("click", () => {
-	if (!(Z.length === 0 || sa)) try {
+}), Pr.addEventListener("click", () => {
+	ba?.abort(/* @__PURE__ */ Error("OpenStreetMap discovery cancelled by the user."));
+}), wr.addEventListener("click", () => {
+	if (!(Z.length === 0 || fa)) try {
 		let e = [...Q].sort().join("|"), t = !1;
-		for (let n = 0; n < 12; n += 1) if (ca = Va(), Ba(), [...Q].sort().join("|") !== e) {
+		for (let n = 0; n < 12; n += 1) if (pa = Ka(), Ga(), [...Q].sort().join("|") !== e) {
 			t = !0;
 			break;
 		}
@@ -2849,23 +2862,23 @@ dr.addEventListener("input", () => {
 	} catch (e) {
 		Y(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
 	}
-}), wr.addEventListener("click", () => {
-	Q = new Set(Z.map((e) => e.id)), za(), Y(`Selected all ${Q.size} discovered OSM targets.`, "warning");
 }), Tr.addEventListener("click", () => {
-	Q.clear(), za(), Y("Cleared the OSM target selection.");
-}), xr.addEventListener("change", (e) => {
+	Q = new Set(Z.map((e) => e.id)), Wa(), Y(`Selected all ${Q.size} discovered OSM targets.`, "warning");
+}), Er.addEventListener("click", () => {
+	Q.clear(), Wa(), Y("Cleared the OSM target selection.");
+}), Sr.addEventListener("change", (e) => {
 	let t = e.target.closest("input[data-osm-candidate-id]");
 	if (!t) return;
 	let n = t.dataset.osmCandidateId;
 	if (!n) return;
 	t.checked ? Q.add(n) : Q.delete(n);
-	let r = xr.scrollTop;
-	za(), xr.scrollTop = r, xr.querySelector(`[data-osm-candidate-id="${CSS.escape(n)}"]`)?.focus();
-}), Er.addEventListener("click", async () => {
-	if (!(X.isBusy || sa)) try {
-		let e = La();
+	let r = Sr.scrollTop;
+	Wa(), Sr.scrollTop = r, Sr.querySelector(`[data-osm-candidate-id="${CSS.escape(n)}"]`)?.focus();
+}), Dr.addEventListener("click", async () => {
+	if (!(X.isBusy || fa)) try {
+		let e = Ha();
 		if (e.length === 0) throw Error("Select at least one proposed target.");
-		let t = new Set(yo(W.value).map((e) => e.label.toLocaleUpperCase())), n = e.map((e, n) => {
+		let t = new Set(wo(W.value).map((e) => e.label.toLocaleUpperCase())), n = e.map((e, n) => {
 			let r = e.category.replace(/[^A-Z0-9]+/gi, "_").toUpperCase().slice(0, 14), i = n + 1, a = `OSM_${r}_${String(i).padStart(2, "0")}`;
 			for (; t.has(a);) i += 1, a = `OSM_${r}_${String(i).padStart(2, "0")}`;
 			return t.add(a), {
@@ -2873,45 +2886,53 @@ dr.addEventListener("input", () => {
 				label: a,
 				source: {
 					...e.source,
-					selectionSalt: ca
+					selectionSalt: pa
 				}
 			};
-		}), r = ba(), i = await X.importOrthophotoTargets(n, r);
-		if (i.importedTargets.length > 0 && Ha(i.importedTargets), i.failedTargets.length === 0 && !i.cancelled) Ia();
+		}), r = Ta(), i = await X.importOrthophotoTargets(n, r);
+		if (i.importedTargets.length > 0 && qa(i.importedTargets), i.failedTargets.length === 0 && !i.cancelled) Va();
 		else {
 			let e = new Set(i.failedTargets.map(({ target: e }) => e.source?.elementId).filter((e) => !!e));
-			Q = new Set(Z.filter((t) => e.has(t.source.elementId)).map((e) => e.id)), za();
+			Q = new Set(Z.filter((t) => e.has(t.source.elementId)).map((e) => e.id)), Wa();
 		}
 	} catch (e) {
 		Y(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
 	}
-}), Pr.addEventListener("click", async () => {
-	if (!(X.isBusy || sa)) try {
-		let e = po(W.value);
-		X.analyze(e), Ma(), ha = new AbortController(), Ea(!0), Fr.hidden = !1, Ir.textContent = "Finding the nearest identifiable object for each control…", Y("Searching OpenStreetMap for SP/TP/FP photo options…");
-		let t = await at(e, {
-			signal: ha.signal,
+}), Fr.addEventListener("click", async () => {
+	if (!(X.isBusy || fa)) try {
+		let e = vo(W.value);
+		X.analyze(e), La(), ba = new AbortController(), ja(!0), Ir.hidden = !1;
+		let t = Math.max(1, e.length * 2 - 2);
+		Rr.hidden = !1, Rr.dataset.state = "working", Vr.max = t, Vr.value = 0, zr.textContent = `Preparing control 1 of ${e.length}`, Br.textContent = `0 of ${t} lookup steps`, Lr.textContent = "Finding the nearest identifiable object for each control…", Y("Searching OpenStreetMap for SP/TP/FP photo options…");
+		let n = await at(e, {
+			signal: ba.signal,
 			onProgress: ({ waypointIndex: e, waypointCount: t, waypointName: n, stage: r, state: i }) => {
-				let a = i === "retrying" ? "retrying after the first pass" : r === "true" ? "finding the true object" : "finding a similar false object 1-10 NM away";
-				Ir.textContent = `${e + 1} of ${t} · ${n} · ${a}`;
+				let a = +!![
+					"completed",
+					"recovered",
+					"warning"
+				].includes(i), o = r === "true" ? e + a : t + e - 1 + a;
+				Vr.value = Math.max(Vr.value, Math.min(Vr.max, o));
+				let s = i === "retrying" ? "retrying after the first pass" : r === "true" ? "finding the true object" : "finding a similar false object 1-10 NM away";
+				zr.textContent = `Preparing control ${e + 1} of ${t} · ${n}`, Br.textContent = `${s} · ${Vr.value} of ${Vr.max} lookup steps`, Lr.textContent = `${e + 1} of ${t} · ${n} · ${s}`;
 			}
 		});
-		ga = t.proposals, va = JSON.stringify(e), _a = new Map(t.proposals.map(({ waypoint: e }) => [e[0], "true"])), Na(), Ir.textContent = `${t.proposals.length} of ${e.length} controls have a true-photo proposal.${t.warnings.length ? ` ${t.warnings.length} warning${t.warnings.length === 1 ? "" : "s"}: ${t.warnings.join(" | ")}` : " Choose true or false for each TP."}`, Y(t.warnings.length ? `Control-photo discovery completed with ${t.warnings.length} warning${t.warnings.length === 1 ? "" : "s"}. Review the available choices.` : "Control-photo options are ready. SP and FP are fixed to true; choose true or false for every TP.", t.warnings.length ? "warning" : "success");
+		xa = n.proposals, Ca = JSON.stringify(e), Sa = new Map(n.proposals.map(({ waypoint: e }) => [e[0], "true"])), Ra(), Vr.value = Vr.max, Rr.dataset.state = n.warnings.length ? "warning" : "complete", zr.textContent = `${e.length} of ${e.length} controls processed`, Br.textContent = `${n.proposals.length} photo proposal${n.proposals.length === 1 ? "" : "s"} ready`, Lr.textContent = `${n.proposals.length} of ${e.length} controls have a true-photo proposal.${n.warnings.length ? ` ${n.warnings.length} warning${n.warnings.length === 1 ? "" : "s"}: ${n.warnings.join(" | ")}` : " Choose true or false for each TP."}`, Y(n.warnings.length ? `Control-photo discovery completed with ${n.warnings.length} warning${n.warnings.length === 1 ? "" : "s"}. Review the available choices.` : "Control-photo options are ready. SP and FP are fixed to true; choose true or false for every TP.", n.warnings.length ? "warning" : "success");
 	} catch (e) {
 		let t = e instanceof Error ? e.message : String(e);
-		Ir.textContent = t, Y(`Error: ${t}`, "error");
+		Rr.dataset.state = "error", Br.textContent = "Discovery stopped", Lr.textContent = t, Y(`Error: ${t}`, "error");
 	} finally {
-		ha = null, sa && Ea(!1);
+		ba = null, fa && ja(!1);
 	}
-}), Lr.addEventListener("change", (e) => {
+}), Hr.addEventListener("change", (e) => {
 	let t = e.target.closest("input[data-control-waypoint]");
 	if (!t) return;
 	let n = t.dataset.controlWaypoint;
-	!n || t.value !== "true" && t.value !== "false" || (_a.set(n, t.value), Na(), $(), Lr.querySelector(`input[data-control-waypoint="${CSS.escape(n)}"][value="${t.value}"]`)?.focus());
-}), Rr.addEventListener("click", async () => {
-	if (!(X.isBusy || sa)) try {
-		let e = ga.flatMap((e) => {
-			let t = e.waypoint[0], n = t === "SP" || t === "FP" ? "true" : _a.get(t), r = n === "false" ? e.falseTarget : e.trueTarget;
+	!n || t.value !== "true" && t.value !== "false" || (Sa.set(n, t.value), Ra(), $(), Hr.querySelector(`input[data-control-waypoint="${CSS.escape(n)}"][value="${t.value}"]`)?.focus());
+}), Ur.addEventListener("click", async () => {
+	if (!(X.isBusy || fa)) try {
+		let e = xa.flatMap((e) => {
+			let t = e.waypoint[0], n = t === "SP" || t === "FP" ? "true" : Sa.get(t), r = n === "false" ? e.falseTarget : e.trueTarget;
 			return !n || !r ? [] : [{
 				...r,
 				label: `CONTROL_${t}_${n.toUpperCase()}`,
@@ -2931,24 +2952,24 @@ dr.addEventListener("input", () => {
 				}
 			}];
 		});
-		if (e.length !== ga.length) throw Error("Choose an available true or false photo for every proposed control.");
-		let t = await X.importOrthophotoTargets(e, ba());
-		t.failedTargets.length === 0 && !t.cancelled && Ma();
+		if (e.length !== xa.length) throw Error("Choose an available true or false photo for every proposed control.");
+		let t = await X.importOrthophotoTargets(e, Ta());
+		t.failedTargets.length === 0 && !t.cancelled && La();
 	} catch (e) {
 		Y(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
 	}
-}), vr.addEventListener("click", async () => {
+}), yr.addEventListener("click", async () => {
 	if (!X.isBusy) try {
-		let e = po(W.value);
+		let e = vo(W.value);
 		X.analyze(e);
-		let t = new Set(X.records.map((e) => e.generatedOrthophoto?.targetLabel.toLocaleUpperCase()).filter((e) => !!e)), n = yo(W.value).filter((e) => !t.has(e.label.toLocaleUpperCase()));
+		let t = new Set(X.records.map((e) => e.generatedOrthophoto?.targetLabel.toLocaleUpperCase()).filter((e) => !!e)), n = wo(W.value).filter((e) => !t.has(e.label.toLocaleUpperCase()));
 		if (n.length === 0) throw Error("No unloaded PHOTO_name,latitude,longitude rows were found.");
-		await X.importOrthophotoTargets(n, ba());
+		await X.importOrthophotoTargets(n, Ta());
 	} catch (e) {
 		Y(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
 	}
 });
-function Ua(e, t) {
+function Ja(e, t) {
 	let n = document.createDocumentFragment();
 	for (let e of t) {
 		let t = document.createElement("li");
@@ -2958,20 +2979,20 @@ function Ua(e, t) {
 	}
 	e.replaceChildren(n);
 }
-function Wa(e) {
+function Ya(e) {
 	let t = e.status === "ok";
-	Hn.classList.toggle("is-ok", t), Hn.classList.toggle("is-fail", !t), Un.textContent = t ? "OK" : "FAIL", Wn.textContent = t ? "OK for automated route rules" : "Route is against the rules", Gn.textContent = t ? "No violations were detected in the rules this app can calculate. Manual judge checks below are still required." : `${e.violations.length} automated rule ${e.violations.length === 1 ? "violation was" : "violations were"} detected. Generated files are available for correction and review.`, Ua(Kn, e.checks), Ua(qn, e.manualChecks), Hn.hidden = !1;
+	Un.classList.toggle("is-ok", t), Un.classList.toggle("is-fail", !t), Wn.textContent = t ? "OK" : "FAIL", Gn.textContent = t ? "OK for automated route rules" : "Route is against the rules", Kn.textContent = t ? "No violations were detected in the rules this app can calculate. Manual judge checks below are still required." : `${e.violations.length} automated rule ${e.violations.length === 1 ? "violation was" : "violations were"} detected. Generated files are available for correction and review.`, Ja(qn, e.checks), Ja(Jn, e.manualChecks), Un.hidden = !1;
 }
-function Ga() {
-	bi?.abort("A newer operation replaced this preview."), bi = null, Di.hidden = !0, ki.removeAttribute("src"), ki.hidden = !0, yi &&= (URL.revokeObjectURL(yi), null), Oi && (Oi.setAttribute("aria-disabled", "true"), Oi.removeAttribute("href")), Ai.textContent = "JPEG preview generated from the cropped PDF.", ta();
+function Xa() {
+	Ti?.abort("A newer operation replaced this preview."), Ti = null, Mi.hidden = !0, Pi.removeAttribute("src"), Pi.hidden = !0, wi &&= (URL.revokeObjectURL(wi), null), Ni && (Ni.setAttribute("aria-disabled", "true"), Ni.removeAttribute("href")), Fi.textContent = "JPEG preview generated from the cropped PDF.", oa();
 }
 if (typeof MutationObserver < "u") {
-	let e = new MutationObserver(ta);
+	let e = new MutationObserver(oa);
 	[
-		Ln,
 		Rn,
-		Di,
-		Hn
+		zn,
+		Mi,
+		Un
 	].forEach((t) => {
 		t && e.observe(t, {
 			attributes: !0,
@@ -2979,83 +3000,83 @@ if (typeof MutationObserver < "u") {
 		});
 	});
 }
-ta();
-function Ka(e, t = !1) {
-	Ii && (Ii.textContent = e, Ii.style.color = t ? "#c62828" : "#555");
+oa();
+function Za(e, t = !1) {
+	Vi && (Vi.textContent = e, Vi.style.color = t ? "#c62828" : "#555");
 }
-function qa(e) {
-	if (Li) {
+function Qa(e) {
+	if (Hi) {
 		if (!e?.requiresValidityReview) {
-			Li.hidden = !0, Li.textContent = "";
+			Hi.hidden = !0, Hi.textContent = "";
 			return;
 		}
-		Li.textContent = `${e.label} (${e.edition} edition): confirm the chart is current and approved for this event before use.`, Li.hidden = !1;
+		Hi.textContent = `${e.label} (${e.edition} edition): confirm the chart is current and approved for this event before use.`, Hi.hidden = !1;
 	}
 }
-function Ja(e = dn) {
-	return cn[e] || cn[un];
+function $a(e = fn) {
+	return ln[e] || ln[dn];
 }
-function Ya(e = dn) {
-	return (Ja(e)?.type ?? "pdf") !== "osm";
+function eo(e = fn) {
+	return ($a(e)?.type ?? "pdf") !== "osm";
 }
-async function Xa() {
-	return zi ? (K || (q ??= await import("./leaflet-src-C8oZK-S4.js").then((t) => /* @__PURE__ */ e(t.default, 1)), await Promise.resolve({            }), K = q.map(zi, {
+async function to() {
+	return Wi ? (K || (q ??= await import("./leaflet-src-C8oZK-S4.js").then((t) => /* @__PURE__ */ e(t.default, 1)), await Promise.resolve({            }), K = q.map(Wi, {
 		center: [46.05, 14.5],
 		zoom: 7,
 		preferCanvas: !0
-	}), q.tileLayer(Ki, {
+	}), q.tileLayer(Zi, {
 		maxZoom: 19,
 		attribution: "© OpenStreetMap contributors"
 	}).addTo(K)), setTimeout(() => {
 		K && K.invalidateSize();
 	}, 0), K) : null;
 }
-function Za() {
-	let e = Ya(), t = Ja();
-	qa(t), Ri && (Ri.hidden = e), Pn.hidden = e, e ? Ka(`Using preset map: ${t.label}`) : Ka(Fn.checked ? "Interactive OpenStreetMap view active; third-party tiles receive the displayed route area." : "OpenStreetMap requires consent to third-party tile requests. Choose a bundled map for local-only processing.", !Fn.checked);
+function no() {
+	let e = eo(), t = $a();
+	Qa(t), Ui && (Ui.hidden = e), Fn.hidden = e, e ? Za(`Using preset map: ${t.label}`) : Za(In.checked ? "Interactive OpenStreetMap view active; third-party tiles receive the displayed route area." : "OpenStreetMap requires consent to third-party tile requests. Choose a bundled map for local-only processing.", !In.checked);
 }
-async function Qa(e, t = {}) {
-	let n = Ja(e);
+async function ro(e, t = {}) {
+	let n = $a(e);
 	if (!n) throw Error(`Unknown map preset: ${e}`);
 	if (n.type !== "pdf") return null;
-	if (!t.forceReload && Pi === e && Fi) return e === dn && Ka(`Using preset map: ${n.label}`), Fi;
+	if (!t.forceReload && zi === e && Bi) return e === fn && Za(`Using preset map: ${n.label}`), Bi;
 	if (!n.url) throw Error(`Preset '${e}' does not include a bundled PDF URL.`);
-	e === dn && Ka(`Loading preset map: ${n.label}...`);
+	e === fn && Za(`Loading preset map: ${n.label}...`);
 	let r = await fetch(encodeURI(n.url), { signal: t.signal });
 	if (!r.ok) throw Error(`Failed to load preset PDF (${r.status} ${r.statusText})`);
 	let i = await r.arrayBuffer();
-	return Pi = e, Fi = i, e === dn && Ka(`Using preset map: ${n.label}`), i;
+	return zi = e, Bi = i, e === fn && Za(`Using preset map: ${n.label}`), i;
 }
-function $a(e) {
-	dn = cn[e] ? e : un, In.forEach((e) => {
-		let t = e.dataset.mapKey === dn;
+function io(e) {
+	fn = ln[e] ? e : dn, Ln.forEach((e) => {
+		let t = e.dataset.mapKey === fn;
 		e.classList.toggle("is-selected", t), e.setAttribute("aria-pressed", String(t));
 	});
 }
-function eo(e = dn) {
-	$a(e), Za();
+function ao(e = fn) {
+	io(e), no();
 }
-async function to(e) {
-	bi?.abort("A newer preview was requested.");
+async function oo(e) {
+	Ti?.abort("A newer preview was requested.");
 	let t = new AbortController();
-	bi = t, Di.hidden = !1, Ai.classList.remove("danger-text"), Ai.textContent = "Rendering cropped map preview...", ki.hidden = !0, G("preview", "processing", "rendering bounded preview");
-	let n = setTimeout(() => t.abort(`Preview exceeded ${wn / 1e3} seconds.`), wn);
+	Ti = t, Mi.hidden = !1, Fi.classList.remove("danger-text"), Fi.textContent = "Rendering cropped map preview...", Pi.hidden = !0, G("preview", "processing", "rendering bounded preview");
+	let n = setTimeout(() => t.abort(`Preview exceeded ${Tn / 1e3} seconds.`), Tn);
 	try {
 		let n = await ee({
 			...e,
 			signal: t.signal
 		});
-		if (t.signal.aborted || bi !== t) return !1;
-		yi &&= (URL.revokeObjectURL(yi), null), yi = URL.createObjectURL(n);
-		let r = yi;
-		return ki.src = r, await D(ki.decode(), t.signal), ki.hidden = !1, ki.alt = "Preview of the true-scale judge solution map", Oi.href = r, Oi.setAttribute("aria-disabled", "false"), Ai.textContent = "High-resolution judge-solution preview generated from native-detail map tiles. Use the three PDFs for print.", G("preview", "ok", "ready"), !0;
+		if (t.signal.aborted || Ti !== t) return !1;
+		wi &&= (URL.revokeObjectURL(wi), null), wi = URL.createObjectURL(n);
+		let r = wi;
+		return Pi.src = r, await D(Pi.decode(), t.signal), Pi.hidden = !1, Pi.alt = "Preview of the true-scale judge solution map", Ni.href = r, Ni.setAttribute("aria-disabled", "false"), Fi.textContent = "High-resolution judge-solution preview generated from native-detail map tiles. Use the three PDFs for print.", G("preview", "ok", "ready"), !0;
 	} catch (e) {
-		return console.error("Could not render cropped map preview", e), bi === t && (ki.removeAttribute("src"), ki.hidden = !0, Oi.removeAttribute("href"), Oi.setAttribute("aria-disabled", "true"), Ai.classList.add("danger-text"), Ai.textContent = `Preview could not be rendered: ${e instanceof Error ? e.message : String(e)}. The cropped PDF is still available.`, G("preview", t.signal.aborted ? "cancelled" : "failed", t.signal.aborted ? "cancelled" : "failed; cropped PDF remains available"), !1);
+		return console.error("Could not render cropped map preview", e), Ti === t && (Pi.removeAttribute("src"), Pi.hidden = !0, Ni.removeAttribute("href"), Ni.setAttribute("aria-disabled", "true"), Fi.classList.add("danger-text"), Fi.textContent = `Preview could not be rendered: ${e instanceof Error ? e.message : String(e)}. The cropped PDF is still available.`, G("preview", t.signal.aborted ? "cancelled" : "failed", t.signal.aborted ? "cancelled" : "failed; cropped PDF remains available"), !1);
 	} finally {
-		clearTimeout(n), bi === t && (bi = null);
+		clearTimeout(n), Ti === t && (Ti = null);
 	}
 }
-function no(e, t) {
+function so(e, t) {
 	let n = e?.value?.trim();
 	if (!n) return e.value = String(t), t;
 	let r = Number.parseFloat(n);
@@ -3063,33 +3084,33 @@ function no(e, t) {
 	let i = Math.round(r * 100) / 100;
 	return e.value = i % 1 == 0 ? String(Math.round(i)) : String(i), i;
 }
-function ro() {
+function co() {
 	return {
-		routeWidth: no(Zn, fn),
-		waypointFont: no(Qn, mn),
-		headingFont: no($n, hn),
-		minuteLabelFont: no(er, yn),
-		minuteMarkerHalf: no(tr, _n),
-		minuteLineWidth: no(nr, vn)
+		routeWidth: so(Qn, pn),
+		waypointFont: so($n, hn),
+		headingFont: so(er, gn),
+		minuteLabelFont: so(tr, bn),
+		minuteMarkerHalf: so(nr, vn),
+		minuteLineWidth: so(rr, yn)
 	};
 }
-function io(e) {
+function lo(e) {
 	if (typeof e != "string") return NaN;
 	let t = e.trim().match(/^([NSEW])?\s*([+-]?\d+(?:[.,]\d+)?)$/i);
 	if (!t) return NaN;
 	let n = t[1]?.toUpperCase(), r = Number.parseFloat(t[2].replace(",", "."));
 	return (n === "S" || n === "W") && r > 0 && (r *= -1), r;
 }
-function ao(e, t) {
+function uo(e, t) {
 	return !Number.isFinite(e) || !Number.isFinite(t) || Math.abs(e) > 90 || Math.abs(t) > 180 ? null : {
 		lat: e,
 		lon: t
 	};
 }
-function oo(e, t) {
+function fo(e, t) {
 	return !Number.isFinite(e) || !Number.isFinite(t) || Math.abs(e) < 1e3 || Math.abs(t) < 1e3 ? !1 : e >= 2e5 && e <= 8e5 && t >= -6e5 && t <= 4e5;
 }
-function so(e, t) {
+function po(e, t) {
 	if (!Number.isFinite(e) || !Number.isFinite(t)) return null;
 	let n = e * Math.PI / 180, r = t * Math.PI / 180, i = 1 / J.invF, a = 2 * i - i * i, o = a / (1 - a), s = r - J.lon0Rad;
 	for (; s > Math.PI;) s -= 2 * Math.PI;
@@ -3100,7 +3121,7 @@ function so(e, t) {
 		northing: J.falseNorthing + J.k0 * (b + d * u * (h / 2 + (5 - f + 9 * p + 4 * p * p) * _ / 24 + (61 - 58 * f + f * f + 600 * p - 330 * o) * y / 720))
 	};
 }
-function co(e, t) {
+function mo(e, t) {
 	if (!Number.isFinite(e) || !Number.isFinite(t)) return null;
 	let n = 1 / J.invF, r = 2 * n - n * n, i = r / (1 - r), a = e - J.falseEasting, o = (t - J.falseNorthing) / J.k0 / (J.a * (1 - r / 4 - 3 * r * r / 64 - 5 * r ** 3 / 256)), s = (1 - Math.sqrt(1 - r)) / (1 + Math.sqrt(1 - r)), c = s * s, l = c * s, u = c * c, d = Math.sin(2 * o), f = Math.sin(4 * o), p = Math.sin(6 * o), m = Math.sin(8 * o), h = o + (3 * s / 2 - 27 * l / 32) * d + (21 * c / 16 - 55 * u / 32) * f + 151 * l / 96 * p + 1097 * u / 512 * m, g = Math.sin(h), _ = Math.cos(h), v = Math.tan(h), y = i * _ * _, b = v * v, x = J.a / Math.sqrt(1 - r * g * g), S = J.a * (1 - r) / (1 - r * g * g) ** 1.5, C = a / (x * J.k0), w = C * C, T = w * w, E = T * w, D = h - x * v / S * (w / 2 - (5 + 3 * b + 10 * y - 4 * y * y - 9 * i) * T / 24 + (61 + 90 * b + 298 * y + 45 * b * b - 252 * i - 3 * y * y) * E / 720), O = J.lon0Rad + (C - (1 + 2 * b + y) * w * C / 6 + (5 - 2 * y + 28 * b - 3 * y * y + 8 * i + 24 * b * b) * T * C / 120) / _;
 	return {
@@ -3108,27 +3129,27 @@ function co(e, t) {
 		lon: O * 180 / Math.PI
 	};
 }
-function lo(e, t) {
-	if (oo(e, t)) {
-		let n = co(e, t);
-		if (n && ao(n.lat, n.lon)) return n;
+function ho(e, t) {
+	if (fo(e, t)) {
+		let n = mo(e, t);
+		if (n && uo(n.lat, n.lon)) return n;
 	}
-	if (oo(t, e)) {
-		let n = co(t, e);
-		if (n && ao(n.lat, n.lon)) return n;
+	if (fo(t, e)) {
+		let n = mo(t, e);
+		if (n && uo(n.lat, n.lon)) return n;
 	}
 	return null;
 }
-function uo(e) {
+function go(e) {
 	return /^PHOTO_[A-Z0-9][A-Z0-9_-]{0,30}$/i.test(e);
 }
-function fo(e) {
+function _o(e) {
 	return e.split(/\r?\n/).map((e) => e.trim()).filter((e) => e && !e.startsWith("#")).map((e) => {
 		let t = e.split(",").map((e) => e.trim());
 		if (t.length !== 3) throw Error(`Invalid waypoint line: ${e}`);
 		let [n, r, i] = t;
 		if (!n) throw Error(`Invalid waypoint line: ${e}`);
-		let a = io(r), o = io(i), s = ao(a, o) || lo(a, o);
+		let a = lo(r), o = lo(i), s = uo(a, o) || ho(a, o);
 		if (!s) throw Error(`Invalid waypoint line: ${e}`);
 		return [
 			n,
@@ -3137,8 +3158,8 @@ function fo(e) {
 		];
 	});
 }
-function po(e) {
-	let t = fo(e).filter(([e]) => !uo(e));
+function vo(e) {
+	let t = _o(e).filter(([e]) => !go(e));
 	if (t.length < 2) throw Error("At least two waypoints are required");
 	let n = /* @__PURE__ */ new Set();
 	for (let [e] of t) {
@@ -3152,19 +3173,19 @@ function po(e) {
 	}
 	return t;
 }
-function mo(e, t) {
+function yo(e, t) {
 	let n = Number(e.value);
 	if (!Number.isFinite(n) || n <= 0) throw Error(`${t} must be a positive number.`);
 	return n;
 }
-function ho() {
+function bo() {
 	try {
-		return po(W.value), c(Jn.value), mo(Xn, "Takeoff-to-SP time"), mo(Yn, "Minute-marker interval"), null;
+		return vo(W.value), c(Yn.value), yo(Zn, "Takeoff-to-SP time"), yo(Xn, "Minute-marker interval"), null;
 	} catch (e) {
 		return e instanceof Error ? e.message : String(e);
 	}
 }
-function go(e, t, n) {
+function xo(e, t, n) {
 	try {
 		return n(), t.textContent = "", e.removeAttribute("aria-invalid"), null;
 	} catch (n) {
@@ -3172,10 +3193,10 @@ function go(e, t, n) {
 		return t.textContent = r, e.setAttribute("aria-invalid", "true"), r;
 	}
 }
-function _o(e, t) {
+function So(e, t) {
 	e.parentElement?.setAttribute("data-tone", t);
 }
-function vo(e, t, n, r) {
+function Co(e, t, n, r) {
 	let i = document.createElement("details");
 	i.className = "finding-group", i.dataset.tone = n, i.open = n === "blocking" || n === "violation";
 	let a = document.createElement("summary");
@@ -3189,28 +3210,28 @@ function vo(e, t, n, r) {
 }
 function $() {
 	let e = [], t = [], i = [], a = [], o = [], s = [], u = 0, f = 0, p = 0, m = 0, h = 0, g = 0, _ = [
-		go(W, Br, () => {
-			po(W.value);
+		xo(W, Gr, () => {
+			vo(W.value);
 		}),
-		go(Jn, Vr, () => {
-			c(Jn.value);
+		xo(Yn, Kr, () => {
+			c(Yn.value);
 		}),
-		go(Xn, Hr, () => {
-			mo(Xn, "Takeoff-to-SP time");
+		xo(Zn, qr, () => {
+			yo(Zn, "Takeoff-to-SP time");
 		}),
-		go(Yn, Ur, () => {
-			mo(Yn, "Minute-marker interval");
+		xo(Xn, Jr, () => {
+			yo(Xn, "Minute-marker interval");
 		})
 	].find((e) => e !== null) ?? null;
-	if (_) e.push(_), Wr.textContent = "Invalid route", Gr.textContent = "—", Kr.textContent = "—", qr.textContent = "—", ei.textContent = "Needs correction", _o(ei, "fail");
+	if (_) e.push(_), Yr.textContent = "Invalid route", Xr.textContent = "—", Zr.textContent = "—", Qr.textContent = "—", ai.textContent = "Needs correction", So(ai, "fail");
 	else {
-		s = po(W.value);
-		let e = n(s), i = c(Jn.value), l = mo(Xn, "Takeoff-to-SP time") + e.totalDistance / (i.metersPerSecond * 60), f = s.filter(([e]) => /^TP\d+$/i.test(e.trim())).length;
-		u = e.legs.length, Wr.textContent = `SP · ${f} TP · FP`, Gr.textContent = String(u), Kr.textContent = `${d(e.totalDistance).toFixed(1)} NM`, qr.textContent = `${l.toFixed(1)} min`, ei.textContent = `${s.length} controls · ${u} legs`, _o(ei, "ok");
-		let p = Ja(), m = r(e, s, i, p?.scaleDenominator ?? null);
+		s = vo(W.value);
+		let e = n(s), i = c(Yn.value), l = yo(Zn, "Takeoff-to-SP time") + e.totalDistance / (i.metersPerSecond * 60), f = s.filter(([e]) => /^TP\d+$/i.test(e.trim())).length;
+		u = e.legs.length, Yr.textContent = `SP · ${f} TP · FP`, Xr.textContent = String(u), Zr.textContent = `${d(e.totalDistance).toFixed(1)} NM`, Qr.textContent = `${l.toFixed(1)} min`, ai.textContent = `${s.length} controls · ${u} legs`, So(ai, "ok");
+		let p = $a(), m = r(e, s, i, p?.scaleDenominator ?? null);
 		h = m.violations.length, g = m.manualChecks.length, t.push(...m.violations.map((e) => `${e.rule} · ${e.title}: ${e.message}`)), a.push(...m.manualChecks.map((e) => `${e.rule}: ${e.message}`)), o.push(`${m.checks.length - m.violations.length} automated route checks passed.`);
 	}
-	let v = X.records.filter((e) => e.classification === "enroute"), y = La(), b = v.length + y.length, x = X.records.filter((e) => e.classification === "control-correct" || e.classification === "control-false"), S = new Set(v.map((e) => e.analysis?.legIndex).filter((e) => e !== void 0));
+	let v = X.records.filter((e) => e.classification === "enroute"), y = Ha(), b = v.length + y.length, x = X.records.filter((e) => e.classification === "control-correct" || e.classification === "control-false"), S = new Set(v.map((e) => e.analysis?.legIndex).filter((e) => e !== void 0));
 	f = S.size;
 	let C = /* @__PURE__ */ new Set([...S, ...y.map((e) => e.routeLegIndex)]), w = (() => {
 		try {
@@ -3220,10 +3241,10 @@ function $() {
 		}
 	})(), T = v.filter((e) => e.analysis !== null);
 	p = T.filter((e) => w !== null && (e.analysis?.alongRouteM ?? 0) <= w).length, m = T.filter((e) => w !== null && (e.analysis?.alongRouteM ?? 0) > w).length;
-	let E = y.filter((e) => w !== null && (e.alongRouteM ?? 0) <= w).length, D = y.filter((e) => w !== null && (e.alongRouteM ?? 0) > w).length, O = new Set(s.map(([e]) => e.toUpperCase())), k = new Set(x.map((e) => e.linkedWaypoint?.toUpperCase()).filter(Boolean)), A = [...O].filter((e) => k.has(e)).length, j = [...O].filter((e) => _a.has(e)).length;
-	Xr.textContent = String(b), Zr.textContent = `${C.size} / ${u}`, Qr.textContent = `${p + E} / ${m + D}`, Yr.textContent = `${v.length} competition photo${v.length === 1 ? "" : "s"}`, Jr.textContent = A === O.size && O.size > 0 ? `${A} imported` : j > 0 ? `${j} of ${O.size} choices ready` : "Not prepared";
+	let E = y.filter((e) => w !== null && (e.alongRouteM ?? 0) <= w).length, D = y.filter((e) => w !== null && (e.alongRouteM ?? 0) > w).length, O = new Set(s.map(([e]) => e.toUpperCase())), k = new Set(x.map((e) => e.linkedWaypoint?.toUpperCase()).filter(Boolean)), A = [...O].filter((e) => k.has(e)).length, j = [...O].filter((e) => Sa.has(e)).length;
+	ti.textContent = String(b), ni.textContent = `${C.size} / ${u}`, ri.textContent = `${p + E} / ${m + D}`, ei.textContent = `${v.length} competition photo${v.length === 1 ? "" : "s"}`, $r.textContent = A === O.size && O.size > 0 ? `${A} imported` : j > 0 ? `${j} of ${O.size} choices ready` : "Not prepared";
 	let M = [];
-	v.length > 12 && M.push(`${v.length} exceeds the 12-photo limit.`), v.length > 0 && f < u && M.push(`${u - f} route leg(s) have no competition photo.`), v.length > 0 && (p === 0 || m === 0) && M.push("The selected split must leave photos in both route parts."), $r.textContent = M.join(" "), ti.textContent = `${v.length} / 12`, _o(ti, v.length > 12 ? "fail" : "ok"), ni.textContent = `${f} / ${u} legs`, _o(ni, v.length > 0 && f < u ? "warning" : "ok"), ri.textContent = `${p} before / ${m} after`, _o(ri, v.length > 0 && (!p || !m) ? "warning" : "ok"), ii.textContent = `${A} / ${O.size}`, _o(ii, A === O.size && O.size > 0 ? "ok" : "warning");
+	v.length > 12 && M.push(`${v.length} exceeds the 12-photo limit.`), v.length > 0 && f < u && M.push(`${u - f} route leg(s) have no competition photo.`), v.length > 0 && (p === 0 || m === 0) && M.push("The selected split must leave photos in both route parts."), ii.textContent = M.join(" "), oi.textContent = `${v.length} / 12`, So(oi, v.length > 12 ? "fail" : "ok"), si.textContent = `${f} / ${u} legs`, So(si, v.length > 0 && f < u ? "warning" : "ok"), ci.textContent = `${p} before / ${m} after`, So(ci, v.length > 0 && (!p || !m) ? "warning" : "ok"), li.textContent = `${A} / ${O.size}`, So(li, A === O.size && O.size > 0 ? "ok" : "warning");
 	for (let t of X.records) t.importError && e.push(`${t.fileName}: ${t.importError}`);
 	for (let e of X.compliance.findings) {
 		if (e.severity === "pass") continue;
@@ -3231,12 +3252,12 @@ function $() {
 		e.severity === "violation" ? t.push(n) : l(e) === "primary" ? i.push(n) : a.push(n);
 	}
 	let N = X.records.filter((e) => e.exceptionAccepted).length, P = h + X.compliance.violationCount, ee = g + a.length;
-	ai.textContent = P ? `${P} violation(s)` : "No violations", _o(ai, P ? "fail" : "ok"), oi.textContent = `${ee} to review`, _o(oi, ee ? "warning" : "ok"), si.textContent = String(N), _o(si, N ? "warning" : "ok"), ci.hidden = X.records.length > 0;
+	ui.textContent = P ? `${P} violation(s)` : "No violations", So(ui, P ? "fail" : "ok"), di.textContent = `${ee} to review`, So(di, ee ? "warning" : "ok"), fi.textContent = String(N), So(fi, N ? "warning" : "ok"), pi.hidden = X.records.length > 0;
 	let F = document.createDocumentFragment();
-	vo(F, "Blocking problems", "blocking", e), vo(F, "Against-rules findings", "violation", t), vo(F, "Warnings", "warning", i), vo(F, "Manual review", "manual", a), vo(F, "Information", "info", o), li.replaceChildren(F), aa?.setStepSummary(1, _ ? "Route needs correction" : `${u} legs · ${Kr.textContent}`), aa?.setStepSummary(2, `${A}/${O.size} controls · ${v.length} competition photos`), aa?.setStepSummary(3, e.length || t.length ? `${e.length + t.length} issue(s) need attention` : `${ee} manual check(s) remain`);
+	Co(F, "Blocking problems", "blocking", e), Co(F, "Against-rules findings", "violation", t), Co(F, "Warnings", "warning", i), Co(F, "Manual review", "manual", a), Co(F, "Information", "info", o), mi.replaceChildren(F), ua?.setStepSummary(1, _ ? "Route needs correction" : `${u} legs · ${Zr.textContent}`), ua?.setStepSummary(2, `${A}/${O.size} controls · ${v.length} competition photos`), ua?.setStepSummary(3, e.length || t.length ? `${e.length + t.length} issue(s) need attention` : `${ee} manual check(s) remain`);
 }
-function yo(e) {
-	let t = fo(e).filter(([e]) => uo(e)).map(([e, t, n]) => ({
+function wo(e) {
+	let t = _o(e).filter(([e]) => go(e)).map(([e, t, n]) => ({
 		label: e.slice(6),
 		latitude: t,
 		longitude: n
@@ -3248,7 +3269,7 @@ function yo(e) {
 	}
 	return t;
 }
-function bo(e) {
+function To(e) {
 	let t = (e || "").trim().replace(/\s+/g, " ");
 	if (!t) return null;
 	let n = t.split(" "), [r, i] = [n[0][0].toUpperCase(), n[0].slice(1)];
@@ -3271,7 +3292,7 @@ function bo(e) {
 	let c = a + o / 60 + s / 3600;
 	return (r === "S" || r === "W") && (c *= -1), Number(c.toFixed(6));
 }
-function xo(e) {
+function Eo(e) {
 	let t = y(e);
 	if (t.length <= 1) return {
 		records: [],
@@ -3280,7 +3301,7 @@ function xo(e) {
 	};
 	let n = [], r = /* @__PURE__ */ new Set(), i = /* @__PURE__ */ new Set(), a = /* @__PURE__ */ new Set();
 	for (let e = 1; e < t.length; e++) {
-		let [o, s, c, l, u, d] = t[e], f = bo(u), p = bo(d);
+		let [o, s, c, l, u, d] = t[e], f = To(u), p = To(d);
 		if (!o || f === null || p === null) continue;
 		let m = `${o}|${f}|${p}`;
 		if (a.has(m)) continue;
@@ -3301,65 +3322,65 @@ function xo(e) {
 		countries: Array.from(i).sort()
 	};
 }
-async function So() {
-	if (Ui) return Ui;
+async function Do() {
+	if (Ji) return Ji;
 	try {
-		wo("Loading locations...");
-		let e = await fetch(Hi);
+		ko("Loading locations...");
+		let e = await fetch(qi);
 		if (!e.ok) throw Error(`${e.status} ${e.statusText}`);
-		let t = xo(await e.text());
-		Ui = t, Co(or, t.types, "All types"), Co(sr, t.countries, "All countries"), Eo(), wo(t.records.length ? `Loaded ${t.records.length} locations.` : "No locations found.");
+		let t = Eo(await e.text());
+		Ji = t, Oo(sr, t.types, "All types"), Oo(cr, t.countries, "All countries"), jo(), ko(t.records.length ? `Loaded ${t.records.length} locations.` : "No locations found.");
 	} catch (e) {
-		console.error("Failed to load locations", e), wo("Could not load saved locations.", !0), Ui = {
+		console.error("Failed to load locations", e), ko("Could not load saved locations.", !0), Ji = {
 			records: [],
 			types: [],
 			countries: []
 		};
 	}
-	return Ui;
+	return Ji;
 }
-function Co(e, t, n) {
+function Oo(e, t, n) {
 	e.innerHTML = `<option value="all">${n}</option>`;
-	for (let n of t) e.innerHTML += `<option value="${Yi(n)}">${Yi(n)}</option>`;
+	for (let n of t) e.innerHTML += `<option value="${ea(n)}">${ea(n)}</option>`;
 }
-function wo(e, t = !1) {
-	ar && (ar.textContent = e, ar.style.color = t ? "var(--color-danger)" : "var(--color-text-muted)");
+function ko(e, t = !1) {
+	or && (or.textContent = e, or.style.color = t ? "var(--color-danger)" : "var(--color-text-muted)");
 }
-var To = (e) => {
-	let t = (Wi.search || "").toLowerCase();
-	return (!t || `${e.name} ${e.id}`.toLowerCase().includes(t)) && (Wi.type === "all" || e.type === Wi.type) && (Wi.country === "all" || e.country === Wi.country);
+var Ao = (e) => {
+	let t = (Yi.search || "").toLowerCase();
+	return (!t || `${e.name} ${e.id}`.toLowerCase().includes(t)) && (Yi.type === "all" || e.type === Yi.type) && (Yi.country === "all" || e.country === Yi.country);
 };
-function Eo() {
-	if (!lr || !Ui) return;
-	let e = Ui.records.filter(To);
+function jo() {
+	if (!ur || !Ji) return;
+	let e = Ji.records.filter(Ao);
 	if (e.length === 0) {
-		lr.innerHTML = "<div style=\"padding: 0.5rem; color: #6c757d;\">No locations match filters.</div>";
+		ur.innerHTML = "<div style=\"padding: 0.5rem; color: #6c757d;\">No locations match filters.</div>";
 		return;
 	}
-	lr.innerHTML = e.map((e) => `
+	ur.innerHTML = e.map((e) => `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid #eee; gap: 0.75rem;">
                 <div>
-                    <div>${Yi(e.name)}</div>
-                    <div style="font-size: 0.8rem; color: #6c757d;">${Yi(e.id || "—")} &bull; ${Yi(e.type)}</div>
+                    <div>${ea(e.name)}</div>
+                    <div style="font-size: 0.8rem; color: #6c757d;">${ea(e.id || "—")} &bull; ${ea(e.type)}</div>
                 </div>
-                <button class="btn btn-secondary" data-lat="${e.lat}" data-lon="${e.lon}" data-name="${Yi(e.name)}" data-id="${Yi(e.id || "")}" data-type="${Yi(e.type)}">Add</button>
+                <button class="btn btn-secondary" data-lat="${e.lat}" data-lon="${e.lon}" data-name="${ea(e.name)}" data-id="${ea(e.id || "")}" data-type="${ea(e.type)}">Add</button>
             </div>
         `).join("");
 }
-function Do(e, t, n) {
+function Mo(e, t, n) {
 	let r = `${e},${t.toFixed(6)},${n.toFixed(6)}`, i = W.value.trim();
 	W.value = i ? `${i}\n${r}` : r, W.dispatchEvent(new Event("change"));
 }
-async function Oo() {
-	let e = rr.hidden;
-	ir.disabled = !0;
+async function No() {
+	let e = ir.hidden;
+	ar.disabled = !0;
 	try {
-		e ? (rr.hidden = !1, await So()) : rr.hidden = !0;
+		e ? (ir.hidden = !1, await Do()) : ir.hidden = !0;
 	} finally {
-		ir.disabled = !1;
+		ar.disabled = !1;
 	}
 }
-function ko(e) {
+function Po(e) {
 	if (!Array.isArray(e) || e.length !== 3) throw Error("Affine map calibration requires exactly three control points.");
 	let [t, n, r] = [
 		e.map(([, e, t]) => [t, e]),
@@ -3380,7 +3401,7 @@ function ko(e) {
 		return [c * t + l * e + u, d * t + f * e + p];
 	} };
 }
-function Ao(e) {
+function Fo(e) {
 	let t = e.tfw;
 	if (!t) throw Error("TFW parameters are missing.");
 	let n = t.pixelSizeX, r = t.rotationX, i = t.rotationY, a = t.pixelSizeY, o = t.originX, s = t.originY, c = Number.isFinite(t.scaleX) ? t.scaleX : 1, l = Number.isFinite(t.scaleY) ? t.scaleY : 1, u = Number.isFinite(t.offsetX) ? t.offsetX : 0, d = Number.isFinite(t.offsetY) ? t.offsetY : 0;
@@ -3399,26 +3420,26 @@ function Ao(e) {
 	let f = n * a - r * i;
 	if (Math.abs(f) < 1e-9) throw Error("TFW transform is not invertible.");
 	return { project(e, t) {
-		let p = so(e, t);
+		let p = po(e, t);
 		if (!p) throw Error("Lat/Lon could not be projected into D96/TM.");
 		let m = p.easting - o, h = p.northing - s, g = (a * m - r * h) / f, _ = (-i * m + n * h) / f;
 		return [c * g + u, l * _ + d];
 	} };
 }
-function jo(e) {
+function Io(e) {
 	let t = (e.transform || (e.tfw ? "tfw" : "affine")).toLowerCase();
-	if (t === "tfw") return Ao(e);
+	if (t === "tfw") return Fo(e);
 	if (t !== "affine") throw Error(`Unsupported map transform: ${e.transform}`);
-	return ko(e.controlPoints);
+	return Po(e.controlPoints);
 }
-function Mo(e, t, n, r, i, a) {
+function Lo(e, t, n, r, i, a) {
 	return [e / i * n, r - t / a * r];
 }
-function No(e, t) {
+function Ro(e, t) {
 	let n = Math.hypot(e, t);
 	return n === 0 ? [0, 0] : [e / n, t / n];
 }
-function Po(e, t, n, r, i) {
+function zo(e, t, n, r, i) {
 	let a = Math.cos(i), o = Math.sin(i), s = [], c = [];
 	return [
 		[0, 0],
@@ -3429,13 +3450,13 @@ function Po(e, t, n, r, i) {
 		let i = e + n * a - r * o, l = t + n * o + r * a;
 		s.push(i), c.push(l);
 	}), [
-		Math.min(...s) - Tn,
-		Math.min(...c) - Tn,
-		Math.max(...s) + Tn,
-		Math.max(...c) + Tn
+		Math.min(...s) - En,
+		Math.min(...c) - En,
+		Math.max(...s) + En,
+		Math.max(...c) + En
 	];
 }
-function Fo(e, t, n, r, i) {
+function Bo(e, t, n, r, i) {
 	let a = Math.cos(i), o = Math.sin(i);
 	return [
 		[0, 0],
@@ -3444,10 +3465,10 @@ function Fo(e, t, n, r, i) {
 		[0, r]
 	].map(([n, r]) => [e + n * a - r * o, t + n * o + r * a]);
 }
-function Io(e, t) {
+function Vo(e, t) {
 	return !(e[2] <= t[0] || t[2] <= e[0] || e[3] <= t[1] || t[3] <= e[1]);
 }
-function Lo(e, t) {
+function Ho(e, t) {
 	if (!Number.isFinite(e)) return "";
 	let n = Math.max(0, e), r = Math.round(n * 60);
 	if (n >= 60 - 1e-6 || t && n >= 60) {
@@ -3456,21 +3477,21 @@ function Lo(e, t) {
 	}
 	return String(Math.round(n)).padStart(2, "0");
 }
-function Ro(e) {
+function Uo(e) {
 	if (!Number.isFinite(e)) return "";
 	let t = Math.max(0, e), n = Math.round(t * 60), r = Math.floor(n % 3600 / 60), i = n % 60;
 	if (t >= 60 - 1e-6) return `${Math.floor(n / 3600)}:${String(r).padStart(2, "0")}:${String(i).padStart(2, "0")}`;
 	let a = Math.floor(n / 60);
 	return `${String(a).padStart(2, "0")}:${String(i).padStart(2, "0")}`;
 }
-function zo(e, t, n, r, i, a, o, s, c = {}) {
-	let l = c.step ?? En, u = c.maxSteps ?? Dn, d = c.fallbackAngleRad ?? null, f = c.allowNegative ?? !0, p = Math.hypot(n, r), m = p === 0 ? [1, 0] : [n / p, r / p], h = [m, d == null ? [m[1], -m[0]] : [Math.cos(d), Math.sin(d)]], g = (n) => {
+function Wo(e, t, n, r, i, a, o, s, c = {}) {
+	let l = c.step ?? Dn, u = c.maxSteps ?? On, d = c.fallbackAngleRad ?? null, f = c.allowNegative ?? !0, p = Math.hypot(n, r), m = p === 0 ? [1, 0] : [n / p, r / p], h = [m, d == null ? [m[1], -m[0]] : [Math.cos(d), Math.sin(d)]], g = (n) => {
 		let [r, c] = n;
 		for (let n = 0; n <= u; n += 1) {
 			let u = n === 0 ? [0] : f ? [n, -n] : [n];
 			for (let n of u) {
-				let u = e + r * n * l, d = t + c * n * l, f = Po(u, d, i, a, o);
-				if (!s.some((e) => Io(f, e))) return {
+				let u = e + r * n * l, d = t + c * n * l, f = zo(u, d, i, a, o);
+				if (!s.some((e) => Vo(f, e))) return {
 					x: u,
 					y: d,
 					box: f
@@ -3486,11 +3507,11 @@ function zo(e, t, n, r, i, a, o, s, c = {}) {
 	return {
 		x: e,
 		y: t,
-		box: Po(e, t, i, a, o)
+		box: zo(e, t, i, a, o)
 	};
 }
-async function Bo() {
-	if (xi) {
+async function Go() {
+	if (Ei) {
 		Y("Generation is already running. Cancel it before starting another run.", "warning");
 		return;
 	}
@@ -3498,20 +3519,20 @@ async function Bo() {
 		Y("Wait for the current photo import to finish before generating.", "warning");
 		return;
 	}
-	let e = ho();
+	let e = bo();
 	if (e) {
-		$(), aa?.activate(1), Y(`Error: ${e}`, "error");
+		$(), ua?.activate(1), Y(`Error: ${e}`, "error");
 		return;
 	}
-	aa?.markComplete(3), aa?.activate(4);
+	ua?.markComplete(3), ua?.activate(4);
 	let i = new AbortController();
-	xi = i;
-	let o = dn, l = [], u = kn.innerHTML;
+	Ei = i;
+	let o = fn, l = [], u = An.innerHTML;
 	try {
-		wi(!0), kn.classList.add("is-loading"), Y("Processing..."), Ci(), G("map", "processing", "preparing route map"), G("overlay", "processing", "preparing overlay"), Mi.hidden = !0, ji && !Ni && (ji.hidden = !1), ea("pdf", ui), ea("overlay", di), ea("cropped", fi), ea("summary", pi), ea("photoAnalysis", mi), ea("photoKey", hi), ea("photoHandout", gi), ea("competitorPhotoHandout", _i), di.style.display = "none", fi.style.display = "none", pi.style.display = "none", mi.style.display = "none", hi.style.display = "none", gi.style.display = "none", _i.style.display = "none", Ga(), Ln && (Ln.hidden = !0), Rn && (Rn.hidden = !0), Hn.hidden = !0, Ri && (Ri.hidden = !0), ta();
-		let e = Ja(o);
+		ki(!0), An.classList.add("is-loading"), Y("Processing..."), Oi(), G("map", "processing", "preparing route map"), G("overlay", "processing", "preparing overlay"), Li.hidden = !0, Ii && !Ri && (Ii.hidden = !1), aa("pdf", hi), aa("overlay", gi), aa("cropped", _i), aa("summary", vi), aa("photoAnalysis", yi), aa("photoKey", bi), aa("photoHandout", xi), aa("competitorPhotoHandout", Si), gi.style.display = "none", _i.style.display = "none", vi.style.display = "none", yi.style.display = "none", bi.style.display = "none", xi.style.display = "none", Si.style.display = "none", Xa(), Rn && (Rn.hidden = !0), zn && (zn.hidden = !0), Un.hidden = !0, Ui && (Ui.hidden = !0), oa();
+		let e = $a(o);
 		if (!e) throw Error(`Unknown map preset: ${o}`);
-		let u = c(Jn.value), f = no(Yn, Bi), _ = no(Xn, Vi), y = po(W.value), b = n(y), x = r(b, y, u, e.scaleDenominator), S = X.analyze(y), C = ro(), w = { ...X.layerOptions }, T = { ...X.handoutOptions }, E = [...X.records], D = E.filter(t), O = D.filter((e) => e.analysis !== null), k = m(D, y);
+		let u = c(Yn.value), f = so(Xn, Gi), _ = so(Zn, Ki), y = vo(W.value), b = n(y), x = r(b, y, u, e.scaleDenominator), S = X.analyze(y), C = co(), w = { ...X.layerOptions }, T = { ...X.handoutOptions }, E = [...X.records], D = E.filter(t), O = D.filter((e) => e.analysis !== null), k = m(D, y);
 		i.signal.throwIfAborted();
 		let A = u.metersPerSecond * 60, j = h(b, y, _, A), M = b.legs.map((e) => ({
 			id: `${e.fromName}-${e.toName}`,
@@ -3520,29 +3541,29 @@ async function Bo() {
 			bearingDeg: a(p(e.fromLat, e.fromLon, e.toLat, e.toLon))
 		})), N = _ + b.totalDistance / A, P = N >= 60 - 1e-6, ee = s(b, _, A, f), F = ee.map((e) => ({
 			minute: e.minute,
-			timeLabel: Lo(e.minute, P),
+			timeLabel: Ho(e.minute, P),
 			leg: `${e.leg.fromName}-${e.leg.toName}`,
 			fraction: e.ratio
 		})), te = null, I = e.type === "pdf" ? e.fileName : null;
 		if (e.type === "pdf") {
-			let [{ degrees: t, PDFDocument: n, rgb: r }, { default: a }] = await Promise.all([import("./es-DLUcyPiH.js"), import("./fontkit.es-B5FHmNtr.js")]), s = await Qa(o, { signal: i.signal });
+			let [{ degrees: t, PDFDocument: n, rgb: r }, { default: a }] = await Promise.all([import("./es-DLUcyPiH.js"), import("./fontkit.es-B5FHmNtr.js")]), s = await ro(o, { signal: i.signal });
 			if (!s) throw Error("Map PDF unavailable.");
-			Ka(`Using ${e.label}`);
-			let c = jo(e), l = await n.load(s), u = await n.create();
+			Za(`Using ${e.label}`);
+			let c = Io(e), l = await n.load(s), u = await n.create();
 			l.registerFontkit(a), u.registerFontkit(a);
 			let [d] = l.getPages(), [f, p] = [d.getWidth(), d.getHeight()], m = u.addPage([f, p]), h = Number.isFinite(e.styleScale) ? e.styleScale : 1, _ = (f / e.baseWidth + p / e.baseHeight) / 2 * h, x = (t, n) => {
 				let [r, i] = c.project(t, n);
-				return Mo(r, i, f, p, e.baseWidth, e.baseHeight);
+				return Lo(r, i, f, p, e.baseWidth, e.baseHeight);
 			}, S = {
 				routeLineWidth: Math.max(.4, C.routeWidth * _),
-				tpRadius: pn * _,
+				tpRadius: mn * _,
 				tpFontSize: Math.max(4, C.waypointFont * _),
 				minuteCrossHalf: C.minuteMarkerHalf * _,
 				minuteLineWidth: Math.max(.4, C.minuteLineWidth * _),
 				minuteFontSize: Math.max(3, C.minuteLabelFont * _),
 				headingFontSize: Math.max(4, C.headingFont * _),
-				headingOffset: gn * _
-			}, T = await Qi(g, "the PDF label font", i.signal), E = await u.embedFont(T, { subset: !0 }), k = await l.embedFont(T, { subset: !0 }), A = [{
+				headingOffset: _n * _
+			}, T = await ra(g, "the PDF label font", i.signal), E = await u.embedFont(T, { subset: !0 }), k = await l.embedFont(T, { subset: !0 }), A = [{
 				page: m,
 				fontBold: E
 			}, {
@@ -3575,7 +3596,7 @@ async function Bo() {
 			for (let e = 0; e < R.length - 1; e++) {
 				let [t, n] = R[e].pdf, [r, i] = R[e + 1].pdf, [a, o] = [r - t, i - n], s = Math.hypot(a, o);
 				if (s === 0) continue;
-				let [c, l] = No(a, o), u = Math.min(S.tpRadius, Math.max(0, s / 2 - S.routeLineWidth)), [d, f, p, m] = [
+				let [c, l] = Ro(a, o), u = Math.min(S.tpRadius, Math.max(0, s / 2 - S.routeLineWidth)), [d, f, p, m] = [
 					t + c * u,
 					n + l * u,
 					r - c * u,
@@ -3609,15 +3630,15 @@ async function Bo() {
 				});
 				let o = e < R.length - 1 ? [R[e + 1].pdf[0] - i, R[e + 1].pdf[1] - a] : [0, 0], s = e > 0 ? [i - R[e - 1].pdf[0], a - R[e - 1].pdf[1]] : [0, 0], c = o, l = s;
 				Math.hypot(c[0], c[1]) < 1e-6 && Math.hypot(l[0], l[1]) < 1e-6 && (c = [1, 0]);
-				let u = No(c[0], c[1]), d = Math.hypot(l[0], l[1]) < 1e-6 ? [-u[0], -u[1]] : No(l[0], l[1]), f = [d[0] + u[0], d[1] + u[1]], p = Math.hypot(f[0], f[1]), m = p > 1e-6 ? [-f[0] / p, -f[1] / p] : No(-u[1], u[0]);
-				Math.hypot(m[0], m[1]) < 1e-6 && (m = No(u[1], -u[0]));
+				let u = Ro(c[0], c[1]), d = Math.hypot(l[0], l[1]) < 1e-6 ? [-u[0], -u[1]] : Ro(l[0], l[1]), f = [d[0] + u[0], d[1] + u[1]], p = Math.hypot(f[0], f[1]), m = p > 1e-6 ? [-f[0] / p, -f[1] / p] : Ro(-u[1], u[0]);
+				Math.hypot(m[0], m[1]) < 1e-6 && (m = Ro(u[1], -u[0]));
 				let h = d;
-				e === 0 && R.length > 1 && (h = No(R[1].pdf[0] - i, R[1].pdf[1] - a)), Math.hypot(h[0], h[1]) < 1e-6 && (h = u);
-				let g = Math.atan2(h[1], h[0]) - Math.PI / 2, _ = g * 180 / Math.PI, v = No(m[0], m[1]);
+				e === 0 && R.length > 1 && (h = Ro(R[1].pdf[0] - i, R[1].pdf[1] - a)), Math.hypot(h[0], h[1]) < 1e-6 && (h = u);
+				let g = Math.atan2(h[1], h[0]) - Math.PI / 2, _ = g * 180 / Math.PI, v = Ro(m[0], m[1]);
 				Math.hypot(v[0], v[1]) < 1e-6 && (v = [1, 0]);
-				let y = No(-v[1], v[0]);
+				let y = Ro(-v[1], v[0]);
 				Math.hypot(y[0], y[1]) < 1e-6 && (y = [0, 1]);
-				let b = Math.max(S.tpFontSize * xn, S.routeLineWidth * 2.5, S.minuteCrossHalf * 2.2), x = S.tpRadius + b, C = [
+				let b = Math.max(S.tpFontSize * Sn, S.routeLineWidth * 2.5, S.minuteCrossHalf * 2.2), x = S.tpRadius + b, C = [
 					[1, 0],
 					[.95, .25],
 					[.95, -.25],
@@ -3626,8 +3647,8 @@ async function Bo() {
 				], w = n, T = E.widthOfTextAtSize(w, S.tpFontSize), D = S.tpFontSize, O = null, k = v;
 				for (let [e, t] of C) {
 					let n = [v[0] * e + y[0] * t, v[1] * e + y[1] * t];
-					if (Math.hypot(n[0], n[1]) < 1e-6 || (n = No(n[0], n[1]), n[0] * v[0] + n[1] * v[1] <= .25)) continue;
-					let r = i + n[0] * x, o = a + n[1] * x, s = Math.atan2(n[1], n[0]), c = zo(r, o, n[0], n[1], T, D, g, ne, {
+					if (Math.hypot(n[0], n[1]) < 1e-6 || (n = Ro(n[0], n[1]), n[0] * v[0] + n[1] * v[1] <= .25)) continue;
+					let r = i + n[0] * x, o = a + n[1] * x, s = Math.atan2(n[1], n[0]), c = Wo(r, o, n[0], n[1], T, D, g, ne, {
 						fallbackAngleRad: s,
 						allowNegative: !1
 					}), l = Math.hypot(c.x - i, c.y - a);
@@ -3637,7 +3658,7 @@ async function Bo() {
 					}, k = n);
 				}
 				if (!O) {
-					let e = zo(i + v[0] * x, a + v[1] * x, v[0], v[1], T, D, g, ne, { allowNegative: !1 });
+					let e = Wo(i + v[0] * x, a + v[1] * x, v[0], v[1], T, D, g, ne, { allowNegative: !1 });
 					O = {
 						distance: Math.hypot(e.x - i, e.y - a),
 						position: e
@@ -3645,9 +3666,9 @@ async function Bo() {
 				}
 				if (O.distance < x - .5) {
 					let e = [O.position.x - i, O.position.y - a];
-					Math.hypot(e[0], e[1]) < 1e-6 && (e = k), e = No(e[0], e[1]);
-					let t = i + e[0] * x, n = a + e[1] * x, r = Po(t, n, T, D, g);
-					ne.some((e) => Io(r, e)) || (O = {
+					Math.hypot(e[0], e[1]) < 1e-6 && (e = k), e = Ro(e[0], e[1]);
+					let t = i + e[0] * x, n = a + e[1] * x, r = zo(t, n, T, D, g);
+					ne.some((e) => Vo(r, e)) || (O = {
 						distance: x,
 						position: {
 							x: t,
@@ -3657,11 +3678,11 @@ async function Bo() {
 					});
 				}
 				(() => {
-					let e = Fo(O.position.x, O.position.y, T, D, g), t = Math.min(...e.map(([e, t]) => Math.hypot(e - i, t - a))), n = S.tpRadius + S.routeLineWidth * 1.5;
+					let e = Bo(O.position.x, O.position.y, T, D, g), t = Math.min(...e.map(([e, t]) => Math.hypot(e - i, t - a))), n = S.tpRadius + S.routeLineWidth * 1.5;
 					if (t < n) {
-						let e = No(k[0], k[1]);
+						let e = Ro(k[0], k[1]);
 						Math.hypot(e[0], e[1]) < 1e-6 && (e = [...v]);
-						let r = n - t + 1.5, o = O.position.x + e[0] * r, s = O.position.y + e[1] * r, c = Po(o, s, T, D, g);
+						let r = n - t + 1.5, o = O.position.x + e[0] * r, s = O.position.y + e[1] * r, c = zo(o, s, T, D, g);
 						O = {
 							distance: Math.hypot(o - i, s - a),
 							position: {
@@ -3681,11 +3702,11 @@ async function Bo() {
 						rotate: t(_)
 					});
 				});
-				let M = j.get(n), N = typeof M == "number" ? Ro(M) : null;
+				let M = j.get(n), N = typeof M == "number" ? Uo(M) : null;
 				if (N) {
-					let e = No(-k[1], k[0]);
+					let e = Ro(-k[1], k[0]);
 					Math.hypot(e[0], e[1]) < 1e-6 && (e = [0, 1]);
-					let n = Math.max(4, S.tpFontSize * .75), r = x + Math.max(n * .6, S.routeLineWidth * 1.4, S.minuteCrossHalf), o = i + e[0] * r, s = a + e[1] * r, c = Math.atan2(k[1], k[0]), l = E.widthOfTextAtSize(N, n), u = n, d = zo(o, s, e[0], e[1], l, u, g, ne, { fallbackAngleRad: c });
+					let n = Math.max(4, S.tpFontSize * .75), r = x + Math.max(n * .6, S.routeLineWidth * 1.4, S.minuteCrossHalf), o = i + e[0] * r, s = a + e[1] * r, c = Math.atan2(k[1], k[0]), l = E.widthOfTextAtSize(N, n), u = n, d = Wo(o, s, e[0], e[1], l, u, g, ne, { fallbackAngleRad: c });
 					re(d.box), A.forEach((e) => {
 						e.page.drawText(N, {
 							x: d.x,
@@ -3725,7 +3746,7 @@ async function Bo() {
 						color: F.minute
 					});
 				});
-				let v = Lo(e.minute, P), y = p * bn, b = d + l * y, C = f + u * y, w = Math.atan2(a, i) * 180 / Math.PI - 90, T = w * Math.PI / 180, D = E.widthOfTextAtSize(v, S.minuteFontSize), O = S.minuteFontSize, k = Math.atan2(u, l) + Math.PI / 2, j = zo(b, C, l, u, D, O, T, ne, { fallbackAngleRad: k });
+				let v = Ho(e.minute, P), y = p * xn, b = d + l * y, C = f + u * y, w = Math.atan2(a, i) * 180 / Math.PI - 90, T = w * Math.PI / 180, D = E.widthOfTextAtSize(v, S.minuteFontSize), O = S.minuteFontSize, k = Math.atan2(u, l) + Math.PI / 2, j = Wo(b, C, l, u, D, O, T, ne, { fallbackAngleRad: k });
 				re(j.box), A.forEach((e) => {
 					e.page.drawText(v, {
 						x: j.x,
@@ -3740,7 +3761,7 @@ async function Bo() {
 			for (let e = 0; e < b.legs.length; e++) {
 				let n = R[e].pdf, r = R[e + 1].pdf, [i, a] = [r[0] - n[0], r[1] - n[1]], o = Math.hypot(i, a);
 				if (o === 0) continue;
-				let [s, c] = [i / o, a / o], [l, u] = [-c, s], d = (n[0] + r[0]) / 2, f = (n[1] + r[1]) / 2, p = d + l * S.headingOffset, m = f + u * S.headingOffset, h = `${M[e].bearingDeg}°`.padStart(4, "0"), g = Math.atan2(a, i) * 180 / Math.PI - 90, _ = g * Math.PI / 180, v = E.widthOfTextAtSize(h, S.headingFontSize), y = S.headingFontSize, b = zo(p, m, l, u, v, y, _, ne, { fallbackAngleRad: Math.atan2(u, l) + Math.PI / 2 });
+				let [s, c] = [i / o, a / o], [l, u] = [-c, s], d = (n[0] + r[0]) / 2, f = (n[1] + r[1]) / 2, p = d + l * S.headingOffset, m = f + u * S.headingOffset, h = `${M[e].bearingDeg}°`.padStart(4, "0"), g = Math.atan2(a, i) * 180 / Math.PI - 90, _ = g * Math.PI / 180, v = E.widthOfTextAtSize(h, S.headingFontSize), y = S.headingFontSize, b = Wo(p, m, l, u, v, y, _, ne, { fallbackAngleRad: Math.atan2(u, l) + Math.PI / 2 });
 				re(b.box), A.forEach((e) => {
 					e.page.drawText(h, {
 						x: b.x,
@@ -3754,7 +3775,7 @@ async function Bo() {
 			}
 			let oe = r(.45, .12, .66), se = Math.max(5, 7 * _), ce = Math.max(1.2, 2.6 * _);
 			for (let e of D) {
-				let t = ra(e), n = e.metadata.latitude.value, i = e.metadata.longitude.value, a = n === null || i === null ? null : x(n, i), o = e.analysis ? x(e.analysis.closestLatitude, e.analysis.closestLongitude) : null;
+				let t = ca(e), n = e.metadata.latitude.value, i = e.metadata.longitude.value, a = n === null || i === null ? null : x(n, i), o = e.analysis ? x(e.analysis.closestLatitude, e.analysis.closestLongitude) : null;
 				if (!t && w.connectors && a && o && Math.hypot(a[0] - o[0], a[1] - o[1]) > 1 && N.forEach((e) => {
 					e.page.drawLine({
 						start: {
@@ -3799,7 +3820,7 @@ async function Bo() {
 							color: oe
 						});
 					});
-					let l = e.identifier || "?", u = Math.max(5, 12 * _), d = E.widthOfTextAtSize(l, u), f = t ? Math.max(se * 4, S.tpRadius + u) : se * 4, p = zo(o[0] + a[0] * f, o[1] + a[1] * f, a[0], a[1], d, u, 0, ne, { allowNegative: !1 });
+					let l = e.identifier || "?", u = Math.max(5, 12 * _), d = E.widthOfTextAtSize(l, u), f = t ? Math.max(se * 4, S.tpRadius + u) : se * 4, p = Wo(o[0] + a[0] * f, o[1] + a[1] * f, a[0], a[1], d, u, 0, ne, { allowNegative: !1 });
 					re(p.box), N.forEach((e) => {
 						e.page.drawText(l, {
 							x: p.x,
@@ -3877,14 +3898,14 @@ async function Bo() {
 			i.signal.throwIfAborted();
 			let he = null, ge = null, _e = null, ve = null;
 			if (Object.values(I).every(Number.isFinite)) {
-				let t = 10 * Cn, [r, i, a, o] = [
+				let t = 10 * wn, [r, i, a, o] = [
 					Math.max(0, I.minX - t),
 					Math.max(0, I.minY - t),
 					Math.min(f, I.maxX + t),
 					Math.min(p, I.maxY + t)
 				];
 				if (a > r + 1 && o > i + 1) {
-					let t = a - r, c = o - i, l = v(t, c, [210 * Cn, 297 * Cn]), u = async (e) => {
+					let t = a - r, c = o - i, l = v(t, c, [210 * wn, 297 * wn]), u = async (e) => {
 						let a = await n.create(), [o] = await a.embedPdf(e, [0]);
 						return a.addPage([l.width, l.height]).drawPage(o, {
 							x: -r + (l.width - t) / 2,
@@ -3924,25 +3945,25 @@ async function Bo() {
 								label: e.identifier || "?",
 								color: "#7331a5",
 								tickVector: [-(i[1] - r[1]) / a, (i[0] - r[0]) / a],
-								showTick: !ra(e)
+								showTick: !ca(e)
 							}];
 						})
 					}, te = {
 						available: !0,
-						widthMm: l.width / Cn,
-						heightMm: l.height / Cn,
+						widthMm: l.width / wn,
+						heightMm: l.height / wn,
 						format: l.format,
 						scale: "100%"
 					};
 				}
 			}
-			he && ge && _e && ve ? (ui.textContent = "Judge Solutions (PDF)", ui.onclick = null, $i("pdf", Zi(he), "judge_solution_map.pdf", ui), G("map", "ok", `${D.length} accepted photo(s); ${O.length} positioned on map`), $i("overlay", Zi(ge), "competitor_route_map.pdf", di), di.style.display = "inline-flex", G("overlay", "ok", "route-only PDF ready"), $i("cropped", Zi(_e), "empty_map.pdf", fi), fi.style.display = "inline-flex", G("crop", "ok", "clean base-map PDF ready"), to(ve)) : (G("map", "manual-review", "no valid crop bounds"), G("overlay", "manual-review", "no valid crop bounds"), G("crop", "manual-review", "no valid crop bounds"), G("preview", "manual-review", "not available without crop bounds"));
+			he && ge && _e && ve ? (hi.textContent = "Judge Solutions (PDF)", hi.onclick = null, ia("pdf", na(he), "judge_solution_map.pdf", hi), G("map", "ok", `${D.length} accepted photo(s); ${O.length} positioned on map`), ia("overlay", na(ge), "competitor_route_map.pdf", gi), gi.style.display = "inline-flex", G("overlay", "ok", "route-only PDF ready"), ia("cropped", na(_e), "empty_map.pdf", _i), _i.style.display = "inline-flex", G("crop", "ok", "clean base-map PDF ready"), oo(ve)) : (G("map", "manual-review", "no valid crop bounds"), G("overlay", "manual-review", "no valid crop bounds"), G("crop", "manual-review", "no valid crop bounds"), G("preview", "manual-review", "not available without crop bounds"));
 		} else {
-			if (!Fn.checked) throw Error("Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.");
-			if (Ri && (Ri.hidden = !1), await Xa(), !K) throw Error("Interactive map unavailable.");
-			Gi.forEach((e) => {
+			if (!In.checked) throw Error("Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.");
+			if (Ui && (Ui.hidden = !1), await to(), !K) throw Error("Interactive map unavailable.");
+			Xi.forEach((e) => {
 				e.remove();
-			}), Gi = [];
+			}), Xi = [];
 			let e = y.map(([, e, t]) => [e, t]);
 			if (e.length === 0) throw Error("No waypoints.");
 			let t = q.polyline(e, {
@@ -3950,18 +3971,18 @@ async function Bo() {
 				weight: 3.5,
 				opacity: .85
 			}).addTo(K);
-			Gi.push(t);
+			Xi.push(t);
 			let n = t.getBounds();
 			y.forEach(([e, t, n]) => {
-				Gi.push(q.circleMarker([t, n], {
+				Xi.push(q.circleMarker([t, n], {
 					radius: 6,
 					color: "#D21F26",
 					fillColor: "#FFFFFF",
 					fillOpacity: .9,
 					weight: 2
 				}).addTo(K));
-				let r = j.get(e), i = typeof r == "number" ? Ro(r) : "", a = `<div class="osm-label"><span>${Yi(e)}</span>${i ? `<span class="osm-label-time">${Yi(i)}</span>` : ""}</div>`;
-				Gi.push(q.marker([t, n], {
+				let r = j.get(e), i = typeof r == "number" ? Uo(r) : "", a = `<div class="osm-label"><span>${ea(e)}</span>${i ? `<span class="osm-label-time">${ea(i)}</span>` : ""}</div>`;
+				Xi.push(q.marker([t, n], {
 					icon: q.divIcon({
 						className: "leaflet-marker-icon osm-label-icon",
 						html: a
@@ -3969,17 +3990,17 @@ async function Bo() {
 					interactive: !1
 				}).addTo(K));
 			}), ee.forEach((e) => {
-				let t = Lo(e.minute, P);
-				Gi.push(q.circleMarker([e.lat, e.lon], {
+				let t = Ho(e.minute, P);
+				Xi.push(q.circleMarker([e.lat, e.lon], {
 					radius: 4,
 					color: "#153E73",
 					fillColor: "#153E73",
 					fillOpacity: .85,
 					weight: 1
-				}).addTo(K)), Gi.push(q.marker([e.lat, e.lon], {
+				}).addTo(K)), Xi.push(q.marker([e.lat, e.lon], {
 					icon: q.divIcon({
 						className: "leaflet-marker-icon osm-minute-label-icon",
-						html: `<div class="osm-minute-label">${Yi(t)}</div>`
+						html: `<div class="osm-minute-label">${ea(t)}</div>`
 					}),
 					interactive: !1
 				}).addTo(K));
@@ -3992,33 +4013,33 @@ async function Bo() {
 				reference: "#5b6166"
 			};
 			for (let e of E) {
-				let t = e.metadata.latitude.value, n = e.metadata.longitude.value, i = t === null || n === null ? null : [t, n], a = na(e, y), o = e.taskAnalysis ? [e.taskAnalysis.closestLatitude, e.taskAnalysis.closestLongitude] : null, s = r[e.classification], c = e.findings.some((e) => e.severity === "violation");
-				if (w.connectors && a && o && Gi.push(q.polyline([a, o], {
+				let t = e.metadata.latitude.value, n = e.metadata.longitude.value, i = t === null || n === null ? null : [t, n], a = sa(e, y), o = e.taskAnalysis ? [e.taskAnalysis.closestLatitude, e.taskAnalysis.closestLongitude] : null, s = r[e.classification], c = e.findings.some((e) => e.severity === "violation");
+				if (w.connectors && a && o && Xi.push(q.polyline([a, o], {
 					color: s,
 					weight: 1.5,
 					opacity: .7,
 					dashArray: "4 4"
-				}).addTo(K)), w.exactDots && i && Gi.push(q.circleMarker(i, {
+				}).addTo(K)), w.exactDots && i && Xi.push(q.circleMarker(i, {
 					radius: 4,
 					color: c ? "#c90000" : "#fff",
 					fillColor: s,
 					fillOpacity: 1,
 					weight: 2
-				}).bindTooltip(ia(`${e.identifier}: exact camera position`)).addTo(K)), w.projectedMarkers && a && (Gi.push(q.circleMarker(a, {
+				}).bindTooltip(la(`${e.identifier}: exact camera position`)).addTo(K)), w.projectedMarkers && a && (Xi.push(q.circleMarker(a, {
 					radius: e.classification === "enroute" ? 7 : 9,
 					color: c ? "#c90000" : s,
 					fillColor: "#fff",
 					fillOpacity: .9,
 					weight: c ? 3 : 2
-				}).bindTooltip(ia(`${e.identifier} · ${e.classification} task position`)).addTo(K)), Gi.push(q.marker(a, {
+				}).bindTooltip(la(`${e.identifier} · ${e.classification} task position`)).addTo(K)), Xi.push(q.marker(a, {
 					icon: q.divIcon({
 						className: "leaflet-marker-icon osm-photo-label-icon",
-						html: `<div class="osm-photo-label" style="border-color:${s};color:${s}">${Yi(e.identifier || "?")}</div>`
+						html: `<div class="osm-photo-label" style="border-color:${s};color:${s}">${ea(e.identifier || "?")}</div>`
 					}),
 					interactive: !1
 				}).addTo(K))), w.headingArrows && i && t !== null && n !== null && e.metadata.headingDeg.value !== null && e.metadata.headingReference.value === "true" && e.metadata.headingReference.reliable) {
 					let r = e.metadata.headingDeg.value * Math.PI / 180, a = t + 300 * Math.cos(r) / 6371008.8 * (180 / Math.PI), o = n + 300 * Math.sin(r) / (6371008.8 * Math.cos(t * Math.PI / 180)) * (180 / Math.PI);
-					Gi.push(q.polyline([i, [a, o]], {
+					Xi.push(q.polyline([i, [a, o]], {
 						color: s,
 						weight: 2,
 						opacity: .9
@@ -4038,14 +4059,14 @@ async function Bo() {
 				typeof requestAnimationFrame == "function" ? requestAnimationFrame(e) : setTimeout(e, 16);
 			})(() => {
 				K && (K.invalidateSize(), i());
-			}), ui.textContent = "Print Map to PDF", ui.removeAttribute("download"), ui.href = "#", ui.onclick = (e) => {
+			}), hi.textContent = "Print Map to PDF", hi.removeAttribute("download"), hi.href = "#", hi.onclick = (e) => {
 				e.preventDefault(), window.print();
 			}, G("map", "manual-review", "interactive OSM print view"), G("overlay", "manual-review", "included in interactive view"), G("crop", "manual-review", "not available for OSM"), G("preview", "manual-review", "interactive map is the preview");
 		}
-		if (Ln && (Ln.hidden = !1), Mi.hidden = !1, ta(), i.signal.throwIfAborted(), E.length === 0) G("data", "processing", "summary pending; photo CSV files omitted"), G("handout", "manual-review", "omitted for route-only package"), G("competitorHandout", "manual-review", "omitted for route-only package");
+		if (Rn && (Rn.hidden = !1), Li.hidden = !1, oa(), i.signal.throwIfAborted(), E.length === 0) G("data", "processing", "summary pending; photo CSV files omitted"), G("handout", "manual-review", "omitted for route-only package"), G("competitorHandout", "manual-review", "omitted for route-only package");
 		else {
 			let e = jt(E), t = Mt(E);
-			$i("photoAnalysis", URL.createObjectURL(new Blob([e], { type: "text/csv;charset=utf-8" })), "photo_analysis.csv", mi), $i("photoKey", URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })), "photo_overlay_key.csv", hi), mi.style.display = "inline-flex", hi.style.display = "inline-flex", G("data", "ok", "CSV files ready; summary pending"), G("handout", "processing", "preparing photos"), G("competitorHandout", "processing", "preparing photos");
+			ia("photoAnalysis", URL.createObjectURL(new Blob([e], { type: "text/csv;charset=utf-8" })), "photo_analysis.csv", yi), ia("photoKey", URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })), "photo_overlay_key.csv", bi), yi.style.display = "inline-flex", bi.style.display = "inline-flex", G("data", "ok", "CSV files ready; summary pending"), G("handout", "processing", "preparing photos"), G("competitorHandout", "processing", "preparing photos");
 			try {
 				Y(`Preparing ${D.length} accepted photo${D.length === 1 ? "" : "s"} for the judge and competitor handouts...`);
 				let e = [];
@@ -4053,16 +4074,16 @@ async function Bo() {
 					record: t,
 					jpeg: await Tt(t.file, t.metadata.orientation.value ?? 1, 1600)
 				}), await new Promise((e) => setTimeout(e, 0));
-				let t = await Qi(g, "the photo handout font", i.signal), { buildCompetitorPhotoHandout: n, buildPhotoHandout: r } = await import("./photo-handout-DqrUVDEs.js");
+				let t = await ra(g, "the photo handout font", i.signal), { buildCompetitorPhotoHandout: n, buildPhotoHandout: r } = await import("./photo-handout-DqrUVDEs.js");
 				try {
-					$i("photoHandout", Zi(await r(e, k, t, T)), "judge_photo_handout.pdf", gi), gi.style.display = "inline-flex", G("handout", "ok", "PDF ready");
+					ia("photoHandout", na(await r(e, k, t, T)), "judge_photo_handout.pdf", xi), xi.style.display = "inline-flex", G("handout", "ok", "PDF ready");
 				} catch (e) {
 					if (i.signal.aborted) throw e;
 					let t = e instanceof Error ? e.message : String(e);
 					l.push(`judge photo handout: ${t}`), G("handout", "failed", t);
 				}
 				try {
-					$i("competitorPhotoHandout", Zi(await n(e, t, T)), "competitor_photo_handout.pdf", _i), _i.style.display = "inline-flex", G("competitorHandout", "ok", "PDF ready");
+					ia("competitorPhotoHandout", na(await n(e, t, T)), "competitor_photo_handout.pdf", Si), Si.style.display = "inline-flex", G("competitorHandout", "ok", "PDF ready");
 				} catch (e) {
 					if (i.signal.aborted) throw e;
 					let t = e instanceof Error ? e.message : String(e);
@@ -4076,7 +4097,7 @@ async function Bo() {
 		}
 		let L = {
 			schemaVersion: 4,
-			appVersion: ln,
+			appVersion: un,
 			generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
 			speedLabel: u.label,
 			speedKnots: u.knots,
@@ -4097,7 +4118,7 @@ async function Bo() {
 				longitude: n
 			})),
 			legs: M,
-			waypointTimes: Object.fromEntries(Array.from(j.entries()).map(([e, t]) => [e, Ro(t)])),
+			waypointTimes: Object.fromEntries(Array.from(j.entries()).map(([e, t]) => [e, Uo(t)])),
 			minuteMarkers: F,
 			minuteInterval: f,
 			takeoffToSp: _,
@@ -4113,60 +4134,60 @@ async function Bo() {
 			photos: Nt(E, S),
 			warnings: e.requiresValidityReview ? [`Confirm that ${e.label} (${e.edition} edition) is current and event-approved.`] : []
 		};
-		$i("summary", URL.createObjectURL(new Blob([JSON.stringify(L, null, 2)], { type: "application/json" })), "route_summary.json", pi), pi.style.display = "inline-flex", G("data", "ok", E.length ? "CSV and JSON ready" : "summary JSON ready; photo CSV files omitted"), Ln && (Ln.hidden = !1), Xi(zn, M.map((e) => [
+		ia("summary", URL.createObjectURL(new Blob([JSON.stringify(L, null, 2)], { type: "application/json" })), "route_summary.json", vi), vi.style.display = "inline-flex", G("data", "ok", E.length ? "CSV and JSON ready" : "summary JSON ready; photo CSV files omitted"), Rn && (Rn.hidden = !1), ta(Bn, M.map((e) => [
 			e.id,
 			e.distanceNm.toFixed(2),
 			e.distanceKm.toFixed(2),
 			e.bearingDeg.toString().padStart(3, "0")
-		])), Xi(Bn, Array.from(j.entries()).map(([e, t]) => [e, Ro(t)])), Vn.textContent = `${L.speedLabel} - ${L.totalDistanceNm.toFixed(2)} NM (${L.totalDistanceKm.toFixed(2)} km) course - ${e.label}`, Wa(x), Rn && (Rn.hidden = !1), Ri && (Ri.hidden = e.type === "pdf"), ji && (Ni ? ji.hidden = !0 : (ji.remove(), Ni = !0)), Mi.hidden = !1, ta();
+		])), ta(Vn, Array.from(j.entries()).map(([e, t]) => [e, Uo(t)])), Hn.textContent = `${L.speedLabel} - ${L.totalDistanceNm.toFixed(2)} NM (${L.totalDistanceKm.toFixed(2)} km) course - ${e.label}`, Ya(x), zn && (zn.hidden = !1), Ui && (Ui.hidden = e.type === "pdf"), Ii && (Ri ? Ii.hidden = !0 : (Ii.remove(), Ri = !0)), Li.hidden = !1, oa();
 		let ne = x.status !== "ok" || S.status === "against-rules" ? "against-rules" : S.status === "manual-review" ? "manual-review" : "ok", re = E.filter((e) => e.exceptionAccepted).length;
-		Y(l.length ? `Generated with partial failures: ${l.join(" | ")}. Completed downloads remain available.` : ne === "against-rules" ? `Generated: Against the rules · ${x.violations.length + S.violationCount} automated violation(s)${re ? `; ${re} photo exception(s) accepted by the judge` : ""}. Review the retained findings.` : ne === "manual-review" ? `Generated: Manual review required · no automated violation was found, but ${S.warningCount} photo/judge review item(s) remain.` : "Generated: OK for automated checks. Complete the listed manual judge checks.", ne === "ok" && l.length === 0 ? "success" : "warning"), aa?.setStepSummary(4, l.length ? `Generated with ${l.length} partial failure(s)` : "Package ready");
+		Y(l.length ? `Generated with partial failures: ${l.join(" | ")}. Completed downloads remain available.` : ne === "against-rules" ? `Generated: Against the rules · ${x.violations.length + S.violationCount} automated violation(s)${re ? `; ${re} photo exception(s) accepted by the judge` : ""}. Review the retained findings.` : ne === "manual-review" ? `Generated: Manual review required · no automated violation was found, but ${S.warningCount} photo/judge review item(s) remain.` : "Generated: OK for automated checks. Complete the listed manual judge checks.", ne === "ok" && l.length === 0 ? "success" : "warning"), ua?.setStepSummary(4, l.length ? `Generated with ${l.length} partial failure(s)` : "Package ready");
 	} catch (e) {
 		console.error(e);
 		let t = i.signal.aborted;
-		Y(t ? "Generation cancelled. Any completed downloads remain available." : `Error: ${e instanceof Error ? e.message : String(e)}`), aa?.setStepSummary(4, t ? "Generation cancelled" : "Generation failed"), (!Ln || Ln.hidden) && (Mi.hidden = !0), ji && !Ni && (ji.hidden = !1), ta();
+		Y(t ? "Generation cancelled. Any completed downloads remain available." : `Error: ${e instanceof Error ? e.message : String(e)}`), ua?.setStepSummary(4, t ? "Generation cancelled" : "Generation failed"), (!Rn || Rn.hidden) && (Li.hidden = !0), Ii && !Ri && (Ii.hidden = !1), oa();
 	} finally {
-		xi === i && (xi = null), wi(!1), kn.classList.remove("is-loading"), kn.innerHTML = u;
+		Ei === i && (Ei = null), ki(!1), An.classList.remove("is-loading"), An.innerHTML = u;
 	}
 }
-kn.addEventListener("click", Bo), An.addEventListener("click", () => {
-	xi?.abort("Cancelled by the user."), bi?.abort("Cancelled by the user.");
-}), ir.addEventListener("click", Oo), cr && cr.addEventListener("input", (e) => {
+An.addEventListener("click", Go), jn.addEventListener("click", () => {
+	Ei?.abort("Cancelled by the user."), Ti?.abort("Cancelled by the user.");
+}), ar.addEventListener("click", No), lr && lr.addEventListener("input", (e) => {
 	let t = e.target;
-	t.id === "locationSearch" && (Wi.search = t.value.trim()), t.id === "locationTypeFilter" && (Wi.type = t.value), t.id === "locationCountryFilter" && (Wi.country = t.value), Eo();
-}), ur.addEventListener("click", () => {
-	Ui?.records.filter(To).forEach((e) => {
-		Do(e.name, e.lat, e.lon);
+	t.id === "locationSearch" && (Yi.search = t.value.trim()), t.id === "locationTypeFilter" && (Yi.type = t.value), t.id === "locationCountryFilter" && (Yi.country = t.value), jo();
+}), dr.addEventListener("click", () => {
+	Ji?.records.filter(Ao).forEach((e) => {
+		Mo(e.name, e.lat, e.lon);
 	});
-}), lr.addEventListener("click", (e) => {
+}), ur.addEventListener("click", (e) => {
 	let t = e.target;
 	if (t.tagName === "BUTTON" && t.dataset.name) {
 		let { name: e, lat: n, lon: r, id: i, type: a } = t.dataset, o = (a || "").toLowerCase();
-		Do(i && (o.includes("aerodrome") || o.includes("heliport")) ? i.toUpperCase() : e, parseFloat(n), parseFloat(r));
+		Mo(i && (o.includes("aerodrome") || o.includes("heliport")) ? i.toUpperCase() : e, parseFloat(n), parseFloat(r));
 	}
-}), In.forEach((e) => {
+}), Ln.forEach((e) => {
 	e.addEventListener("click", () => {
-		eo(e.dataset.mapKey), $();
+		ao(e.dataset.mapKey), $();
 	});
-}), Fn.addEventListener("change", () => {
-	Za(), $();
+}), In.addEventListener("change", () => {
+	no(), $();
 }), window.addEventListener("beforeunload", () => {
-	Object.values(vi).forEach((e) => {
+	Object.values(Ci).forEach((e) => {
 		e && URL.revokeObjectURL(e);
-	}), yi && URL.revokeObjectURL(yi);
-}), aa = new an({
-	canEnter: (e) => e > 1 ? ho() : null,
+	}), wi && URL.revokeObjectURL(wi);
+}), ua = new on({
+	canEnter: (e) => e > 1 ? bo() : null,
 	onBlocked: (e) => {
 		$(), Y(`Error: ${e}`, "error"), W.focus();
 	},
 	onStageChange: (e) => {
-		e === 3 && !ho() && X.analyze(po(W.value)), $();
+		e === 3 && !bo() && X.analyze(vo(W.value)), $();
 	}
 });
 for (let e of [
-	Jn,
-	Xn,
-	Yn
+	Yn,
+	Zn,
+	Xn
 ]) e.addEventListener("input", $);
-gr.addEventListener("change", $), document.addEventListener("photo-workflow-change", $), Y(""), eo(dn), X.analyze(po(W.value)), $();
+_r.addEventListener("change", $), document.addEventListener("photo-workflow-change", $), Y(""), ao(fn), X.analyze(vo(W.value)), $();
 //#endregion
