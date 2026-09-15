@@ -10,6 +10,10 @@ describe('map preset validation', () => {
       expect(presets.vfr.url).toBe('https://example.test/app/maps/00_VFRspredaj_25_SC_WEB_flat.pdf');
       expect(presets.vfr.previewUrl).toBe('https://example.test/app/maps/previews/vfr.webp');
       expect(presets.vfr.previewTiles.baseUrl).toBe('https://example.test/app/maps/previews/vfr-hq/');
+      expect(presets.vfr.printScale).toBe(1);
+    }
+    if (presets.p250.type === 'pdf') {
+      expect(presets.p250.printScale).toBeCloseTo(0.2834645669);
     }
   });
 

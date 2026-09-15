@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import Ajv2020 from 'ajv/dist/2020.js';
+import { unzipSync } from 'fflate';
+import { PDFDocument, PrintScaling } from 'pdf-lib';
 
 async function expectPdfBlob(page, selector: string): Promise<void> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
@@ -16,6 +18,31 @@ async function downloadBytes(page, selector: string): Promise<Buffer> {
   const path = await download.path();
   expect(path).not.toBeNull();
   return readFile(path as string);
+}
+
+async function expectTrueScaleMapPdf(page, selector: string): Promise<void> {
+  const bytes = await downloadBytes(page, selector);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+  const document = await PDFDocument.load(bytes);
+  const pages = document.getPages();
+  expect(pages).toHaveLength(1);
+  const { width, height } = pages[0].getSize();
+  const millimetersToPoints = 72 / 25.4;
+  const supportedSizes = [
+    [210 * millimetersToPoints, 297 * millimetersToPoints],
+    [297 * millimetersToPoints, 210 * millimetersToPoints],
+    [297 * millimetersToPoints, 420 * millimetersToPoints],
+    [420 * millimetersToPoints, 297 * millimetersToPoints],
+  ];
+  expect(
+    supportedSizes.some(
+      ([expectedWidth, expectedHeight]) =>
+        Math.abs(width - expectedWidth) < 0.1 && Math.abs(height - expectedHeight) < 0.1
+    )
+  ).toBe(true);
+  const viewerPreferences = document.catalog.getViewerPreferences();
+  expect(viewerPreferences?.getPrintScaling()).toBe(PrintScaling.None);
+  expect(viewerPreferences?.getPickTrayByPDFSize()).toBe(true);
 }
 
 async function expectSummarySchemas(summary): Promise<void> {
@@ -139,9 +166,9 @@ async function generateAndVerify(page, mapKey: 'vfr' | 'p250', browserName: stri
       .locator('#croppedPreviewImage')
       .evaluate((image: HTMLImageElement) => Math.max(image.naturalWidth, image.naturalHeight))
   ).toBeGreaterThan(1800);
-  await expectPdfBlob(page, '#downloadPdf');
-  await expectPdfBlob(page, '#downloadOverlay');
-  await expectPdfBlob(page, '#downloadCropped');
+  await expectTrueScaleMapPdf(page, '#downloadPdf');
+  await expectTrueScaleMapPdf(page, '#downloadOverlay');
+  await expectTrueScaleMapPdf(page, '#downloadCropped');
   await expectStructuredDownloads(page, false);
   await expect(page.locator('#downloadPhotoAnalysis')).toBeHidden();
   await expect(page.locator('[data-artifact="handout"]')).toContainText('omitted');
@@ -238,6 +265,77 @@ test('removing a competition photo closes identifier gaps', async ({ page }) => 
     .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
   expect(identifiers).toEqual(['A', 'B']);
   await expect(page.locator('#status')).toContainText('without letter gaps');
+});
+
+test('a saved project restores route settings and embedded photos', async ({ page }) => {
+  const jpeg = await readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url));
+  await page.goto('/');
+  await page.locator('#speed').fill('83kt');
+  await page.locator('[data-map-key="p250"]').click();
+  await goToStage(page, 2);
+  await page.locator('#photoFiles').setInputFiles({
+    name: 'IMG_saved_project.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpeg,
+  });
+  await expect(page.locator('#photoProgressText')).toContainText('1 of 1 photos imported');
+  await goToStage(page, 3);
+  await page.locator('.photo-editor-details summary').click();
+  const identifier = page.locator('input[data-field="identifier"]');
+  await identifier.fill('Z');
+  await identifier.press('Tab');
+  await page.locator('#workflowStage3 > .panel-content > .advanced-panel > summary').click();
+  await page.locator('#photoCropBounds').uncheck();
+
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#saveProject').click()]);
+  const projectPath = await download.path();
+  expect(projectPath).not.toBeNull();
+
+  await page.locator('.photo-card [data-action="remove"]').click();
+  await goToStage(page, 1);
+  await page.locator('#speed').fill('55kt');
+  await page.locator('#projectFile').setInputFiles(projectPath as string);
+  await expect(page.locator('#status')).toContainText('Loaded project');
+  await expect(page.locator('#speed')).toHaveValue('83kt');
+  await expect(page.locator('[data-map-key="p250"]')).toHaveAttribute('aria-pressed', 'true');
+  await goToStage(page, 3);
+  await expect(page.locator('.photo-card')).toHaveCount(1);
+  await expect(page.locator('input[data-field="identifier"]')).toHaveValue('Z');
+  await expect(page.locator('#photoCropBounds')).not.toBeChecked();
+});
+
+test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'The full archive structure only needs one browser engine.');
+  test.setTimeout(120_000);
+  const document = await PDFDocument.create();
+  const pageTemplate = document.addPage([2862, 1985]);
+  pageTemplate.drawLine({ start: { x: 0, y: 0 }, end: { x: 1, y: 1 } });
+  const blankMap = Buffer.from(await document.save());
+  await page.route('**/maps/00_VFRspredaj_25_SC_WEB_flat.pdf', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/pdf', body: blankMap })
+  );
+  await page.goto('/');
+  await goToStage(page, 3);
+  await page.locator('#generate').click();
+  await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
+  await expect(page.locator('#status')).toContainText('Generated');
+  await page.locator('#generateSpeedSet').click();
+  await expect(page.locator('#speedSetProgress')).toHaveAttribute('data-state', 'complete', {
+    timeout: 120_000,
+  });
+  await expect(page.locator('#speedSetProgressCount')).toHaveText('11 of 11');
+  const archive = unzipSync(await downloadBytes(page, '#downloadSpeedSet'));
+  const pdfNames = Object.keys(archive).filter((name) => name.endsWith('.pdf'));
+  expect(pdfNames).toHaveLength(22);
+  for (const speed of [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]) {
+    const judge = archive[`${speed}kt/judge_solution_map_${speed}kt.pdf`];
+    const competitor = archive[`${speed}kt/competitor_route_map_${speed}kt.pdf`];
+    expect(Buffer.from(judge.subarray(0, 5)).toString()).toBe('%PDF-');
+    expect(Buffer.from(competitor.subarray(0, 5)).toString()).toBe('%PDF-');
+  }
 });
 
 test('OSM requires explicit third-party tile consent', async ({ page }) => {

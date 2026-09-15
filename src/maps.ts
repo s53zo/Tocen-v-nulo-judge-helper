@@ -23,6 +23,7 @@ export interface PdfMapPreset {
   baseWidth: number;
   baseHeight: number;
   scaleDenominator: number;
+  printScale?: number;
   styleScale?: number;
   transform?: 'affine' | 'tfw';
   controlPoints?: ControlPoint[];
@@ -98,6 +99,7 @@ export function loadMapPresets(raw: unknown, baseUrl: URL): MapPresets {
       baseWidth: positiveNumber(preset.baseWidth, `${id}.baseWidth`),
       baseHeight: positiveNumber(preset.baseHeight, `${id}.baseHeight`),
       scaleDenominator: positiveNumber(preset.scaleDenominator, `${id}.scaleDenominator`),
+      printScale: preset.printScale === undefined ? 1 : positiveNumber(preset.printScale, `${id}.printScale`),
       url: new URL(preset.assetPath, baseUrl).href,
       previewUrl: new URL(preset.previewAssetPath, baseUrl).href,
       previewTiles: {

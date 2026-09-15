@@ -67,6 +67,39 @@ export const PHOTO_IMPORT_LIMITS = {
   thumbnailEdge: 480,
 } as const;
 
+type RestorablePhotoState = Omit<
+  PhotoRecord,
+  'file' | 'previewUrl' | 'analysis' | 'taskAnalysis' | 'findings'
+>;
+
+export interface SavedProjectPhoto {
+  file: {
+    name: string;
+    type: string;
+    lastModified: number;
+    base64: string;
+  };
+  state: RestorablePhotoState;
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  return btoa(chunks.join(''));
+}
+
+export function base64ToBytes(value: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) {
+    throw new Error('Saved photo data is not valid base64.');
+  }
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 export interface OrthophotoImportResult {
   importedTargets: OrthophotoTarget[];
   failedTargets: Array<{ target: OrthophotoTarget; error: string }>;
@@ -555,6 +588,119 @@ export class PhotoWorkflow {
       splitAfterM,
       includeSummary: required<HTMLInputElement>('handoutSummary').checked,
     };
+  }
+
+  async saveProjectPhotos(): Promise<SavedProjectPhoto[]> {
+    const totalBytes = this.records.reduce((sum, record) => sum + record.file.size, 0);
+    if (totalBytes > PHOTO_IMPORT_LIMITS.maximumTotalBytes) {
+      throw new Error('The selected photos exceed the project export size limit.');
+    }
+    const saved: SavedProjectPhoto[] = [];
+    for (const record of this.records) {
+      const {
+        file,
+        previewUrl: _previewUrl,
+        analysis: _analysis,
+        taskAnalysis: _taskAnalysis,
+        findings: _findings,
+        ...state
+      } = record;
+      saved.push({
+        file: {
+          name: file.name,
+          type: file.type || 'image/jpeg',
+          lastModified: file.lastModified,
+          base64: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
+        },
+        state,
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    return saved;
+  }
+
+  async restoreProjectPhotos(saved: SavedProjectPhoto[], route: Waypoint[]): Promise<void> {
+    if (!Array.isArray(saved) || saved.length > PHOTO_IMPORT_LIMITS.maximumCount) {
+      throw new Error(`A project may contain at most ${PHOTO_IMPORT_LIMITS.maximumCount} photos.`);
+    }
+    const restored: PhotoRecord[] = [];
+    let totalBytes = 0;
+    try {
+      for (const [index, entry] of saved.entries()) {
+        if (!entry || typeof entry !== 'object' || !entry.file || !entry.state) {
+          throw new Error(`Saved photo ${index + 1} is malformed.`);
+        }
+        if (typeof entry.file.name !== 'string' || typeof entry.file.base64 !== 'string') {
+          throw new Error(`Saved photo ${index + 1} has invalid file data.`);
+        }
+        const bytes = base64ToBytes(entry.file.base64);
+        totalBytes += bytes.byteLength;
+        if (bytes.byteLength > PHOTO_IMPORT_LIMITS.maximumFileBytes) {
+          throw new Error(`${entry.file.name} exceeds the per-photo size limit.`);
+        }
+        if (totalBytes > PHOTO_IMPORT_LIMITS.maximumTotalBytes) {
+          throw new Error('The saved project exceeds the total photo size limit.');
+        }
+        const file = new File([Uint8Array.from(bytes).buffer], entry.file.name, {
+          type: entry.file.type || 'image/jpeg',
+          lastModified: Number(entry.file.lastModified) || Date.now(),
+        });
+        const state = entry.state;
+        if (
+          typeof state.id !== 'string' ||
+          typeof state.identifier !== 'string' ||
+          !PHOTO_CLASSIFICATIONS.includes(state.classification)
+        ) {
+          throw new Error(`Saved photo ${index + 1} has invalid editable state.`);
+        }
+        let previewUrl: string;
+        try {
+          const thumbnail = await preparePhotoJpeg(
+            file,
+            state.metadata.orientation.value ?? 1,
+            PHOTO_IMPORT_LIMITS.thumbnailEdge
+          );
+          previewUrl = URL.createObjectURL(
+            new Blob([Uint8Array.from(thumbnail).buffer], { type: 'image/jpeg' })
+          );
+        } catch {
+          previewUrl = URL.createObjectURL(file);
+        }
+        restored.push({
+          ...state,
+          file,
+          previewUrl,
+          order: index,
+          analysis: null,
+          taskAnalysis: null,
+          findings: [],
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    } catch (error) {
+      restored.forEach((record) => {
+        URL.revokeObjectURL(record.previewUrl);
+      });
+      throw error;
+    }
+    const previousRecords = this.records;
+    const previousRoute = this.route;
+    this.records = restored;
+    this.route = route;
+    try {
+      this.analyze(route);
+    } catch (error) {
+      this.records = previousRecords;
+      this.route = previousRoute;
+      restored.forEach((record) => {
+        URL.revokeObjectURL(record.previewUrl);
+      });
+      this.analyze(previousRoute);
+      throw error;
+    }
+    previousRecords.forEach((record) => {
+      URL.revokeObjectURL(record.previewUrl);
+    });
   }
 
   private mixEnrouteIdentifiers(announce = true): boolean {

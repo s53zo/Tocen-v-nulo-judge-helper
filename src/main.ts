@@ -1,3 +1,4 @@
+import { strToU8, Zip, ZipPassThrough } from 'fflate';
 import type { LatLngExpression } from 'leaflet';
 import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
 import { chooseTrueScaleCropPage } from './crop';
@@ -44,6 +45,13 @@ import {
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PHOTO_IMPORT_LIMITS, PhotoWorkflow } from './photo-workflow';
+import {
+  PROJECT_FILE_SCHEMA_VERSION,
+  parseSavedRouteProject,
+  type SavedProjectSettings,
+  type SavedRouteProject,
+  SPEED_EDITION_KNOTS,
+} from './project-file';
 import { GuidedWorkflow, type WorkflowStage } from './workflow';
 import './styles.css';
 
@@ -78,6 +86,9 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 }
 
 const statusEl = requiredElement<HTMLElement>('status');
+const saveProjectBtn = requiredElement<HTMLButtonElement>('saveProject');
+const loadProjectBtn = requiredElement<HTMLButtonElement>('loadProject');
+const projectFileInput = requiredElement<HTMLInputElement>('projectFile');
 const generateBtn = requiredElement<HTMLButtonElement>('generate');
 const cancelGenerationBtn = requiredElement<HTMLButtonElement>('cancelGeneration');
 const workflowShell = requiredElement<HTMLElement>('workflowShell');
@@ -148,6 +159,12 @@ const controlPhotoProgressBar = requiredElement<HTMLProgressElement>('controlPho
 const controlPhotoList = requiredElement<HTMLElement>('controlPhotoList');
 const importControlPhotos = requiredElement<HTMLButtonElement>('importControlPhotos');
 const generationProgress = requiredElement<HTMLProgressElement>('generationProgress');
+const generateSpeedSetBtn = requiredElement<HTMLButtonElement>('generateSpeedSet');
+const speedSetProgress = requiredElement<HTMLElement>('speedSetProgress');
+const speedSetProgressText = requiredElement<HTMLElement>('speedSetProgressText');
+const speedSetProgressCount = requiredElement<HTMLElement>('speedSetProgressCount');
+const speedSetProgressBar = requiredElement<HTMLProgressElement>('speedSetProgressBar');
+const downloadSpeedSetLink = requiredElement<HTMLAnchorElement>('downloadSpeedSet');
 const routeSetupError = requiredElement<HTMLElement>('routeSetupError');
 const speedError = requiredElement<HTMLElement>('speedError');
 const takeoffBufferError = requiredElement<HTMLElement>('takeoffBufferError');
@@ -195,14 +212,26 @@ const downloadUrls = {
   competitorPhotoHandout: null,
 };
 let previewObjectUrl = null;
+let speedSetObjectUrl: string | null = null;
 let croppedPreviewController: AbortController | null = null;
 let generationController: AbortController | null = null;
+let speedSetGenerationActive = false;
 const disabledControlState = new Map<
   HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement,
   boolean
 >();
 
 type ArtifactState = 'not-started' | 'processing' | 'ok' | 'manual-review' | 'failed' | 'cancelled';
+
+interface GeneratedMapPair {
+  judge: Uint8Array;
+  competitor: Uint8Array;
+}
+
+interface GenerateOptions {
+  speedKnots?: number;
+  mapsOnly?: boolean;
+}
 
 function setArtifactState(artifact: string, state: ArtifactState, detail: string): void {
   const item = artifactStatuses.querySelector<HTMLElement>(`[data-artifact="${artifact}"]`);
@@ -237,6 +266,8 @@ function setGenerationBusy(busy: boolean): void {
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
     >('input,textarea,select,button'),
     ...document.querySelectorAll<HTMLButtonElement>('.workflow-stepper button'),
+    saveProjectBtn,
+    loadProjectBtn,
   ];
   if (busy) {
     disabledControlState.clear();
@@ -431,11 +462,206 @@ function syncResultsVisibility() {
   resultsContent.hidden = !hasVisibleOutputs;
 }
 
+function clearSpeedSetDownload(): void {
+  if (speedSetGenerationActive) return;
+  if (speedSetObjectUrl) {
+    URL.revokeObjectURL(speedSetObjectUrl);
+    speedSetObjectUrl = null;
+  }
+  downloadSpeedSetLink.removeAttribute('href');
+  downloadSpeedSetLink.removeAttribute('download');
+  downloadSpeedSetLink.hidden = true;
+  speedSetProgress.hidden = true;
+  speedSetProgress.removeAttribute('data-state');
+}
+
+function invalidateGeneratedPackage(): void {
+  clearSpeedSetDownload();
+  const downloads = [
+    ['pdf', downloadPdfLink],
+    ['overlay', downloadOverlayLink],
+    ['cropped', downloadCroppedLink],
+    ['summary', downloadSummaryLink],
+    ['photoAnalysis', downloadPhotoAnalysisLink],
+    ['photoKey', downloadPhotoKeyLink],
+    ['photoHandout', downloadPhotoHandoutLink],
+    ['competitorPhotoHandout', downloadCompetitorPhotoHandoutLink],
+  ] as const;
+  downloads.forEach(([key, link]) => {
+    clearDownloadUrl(key, link);
+    link.style.display = 'none';
+  });
+  clearCroppedPreview();
+  outputsSection.hidden = true;
+  summarySection.hidden = true;
+  routeComplianceSection.hidden = true;
+  resultsContent.hidden = true;
+}
+
 function setStatus(message, tone = message.startsWith('Error:') ? 'error' : 'neutral') {
   statusEl.textContent = message;
   statusEl.classList.toggle('is-error', tone === 'error');
   statusEl.classList.toggle('is-success', tone === 'success');
   statusEl.classList.toggle('is-warning', tone === 'warning');
+}
+
+function currentProjectSettings(): SavedProjectSettings {
+  return {
+    waypoints: waypointTextarea.value,
+    speed: speedInput.value,
+    takeoffBuffer: takeoffBufferInput.value,
+    minuteInterval: minuteIntervalInput.value,
+    mapKey: selectedMapKey,
+    handoutSplit: handoutSplit.value,
+    orthophotoRandomCount: orthophotoRandomCount.value,
+    orthophotoAltitude: orthophotoAltitude.value,
+    orthophotoFocalLength: orthophotoFocalLength.value,
+    orthophotoDepression: orthophotoDepression.value,
+    styleRouteWidth: styleRouteWidthInput.value,
+    styleWaypointFont: styleWaypointFontInput.value,
+    styleHeadingFont: styleHeadingFontInput.value,
+    styleMinuteLabelFont: styleMinuteLabelFontInput.value,
+    styleMinuteMarkerSize: styleMinuteMarkerSizeInput.value,
+    styleMinuteLineWidth: styleMinuteLineWidthInput.value,
+    photoExactDots: requiredElement<HTMLInputElement>('photoExactDots').checked,
+    photoProjectedMarkers: requiredElement<HTMLInputElement>('photoProjectedMarkers').checked,
+    photoHeadingArrows: requiredElement<HTMLInputElement>('photoHeadingArrows').checked,
+    photoConnectors: requiredElement<HTMLInputElement>('photoConnectors').checked,
+    photoLegend: requiredElement<HTMLInputElement>('photoLegend').checked,
+    photoCropBounds: requiredElement<HTMLInputElement>('photoCropBounds').checked,
+    handoutSummary: requiredElement<HTMLInputElement>('handoutSummary').checked,
+  };
+}
+
+function validateProjectSettings(settings: SavedProjectSettings): void {
+  parseWaypoints(settings.waypoints);
+  parseSpeed(settings.speed);
+  for (const [label, value] of [
+    ['Takeoff-to-SP time', settings.takeoffBuffer],
+    ['Minute-marker interval', settings.minuteInterval],
+    ['DOF025 target count', settings.orthophotoRandomCount],
+    ['DOF025 altitude', settings.orthophotoAltitude],
+    ['DOF025 focal length', settings.orthophotoFocalLength],
+    ['DOF025 depression angle', settings.orthophotoDepression],
+    ['Route width', settings.styleRouteWidth],
+    ['Waypoint font size', settings.styleWaypointFont],
+    ['Heading font size', settings.styleHeadingFont],
+    ['Minute label font size', settings.styleMinuteLabelFont],
+    ['Minute marker size', settings.styleMinuteMarkerSize],
+    ['Minute line width', settings.styleMinuteLineWidth],
+  ]) {
+    if (!Number.isFinite(Number(value)) || Number(value) <= 0) {
+      throw new Error(`${label} in the project must be a positive number.`);
+    }
+  }
+  if (!MAP_PRESETS[settings.mapKey]) throw new Error(`Unknown saved map preset: ${settings.mapKey}.`);
+}
+
+function applyProjectSettings(settings: SavedProjectSettings): void {
+  waypointTextarea.value = settings.waypoints;
+  speedInput.value = settings.speed;
+  takeoffBufferInput.value = settings.takeoffBuffer;
+  minuteIntervalInput.value = settings.minuteInterval;
+  orthophotoRandomCount.value = settings.orthophotoRandomCount;
+  orthophotoAltitude.value = settings.orthophotoAltitude;
+  orthophotoFocalLength.value = settings.orthophotoFocalLength;
+  orthophotoDepression.value = settings.orthophotoDepression;
+  styleRouteWidthInput.value = settings.styleRouteWidth;
+  styleWaypointFontInput.value = settings.styleWaypointFont;
+  styleHeadingFontInput.value = settings.styleHeadingFont;
+  styleMinuteLabelFontInput.value = settings.styleMinuteLabelFont;
+  styleMinuteMarkerSizeInput.value = settings.styleMinuteMarkerSize;
+  styleMinuteLineWidthInput.value = settings.styleMinuteLineWidth;
+  requiredElement<HTMLInputElement>('photoExactDots').checked = settings.photoExactDots;
+  requiredElement<HTMLInputElement>('photoProjectedMarkers').checked = settings.photoProjectedMarkers;
+  requiredElement<HTMLInputElement>('photoHeadingArrows').checked = settings.photoHeadingArrows;
+  requiredElement<HTMLInputElement>('photoConnectors').checked = settings.photoConnectors;
+  requiredElement<HTMLInputElement>('photoLegend').checked = settings.photoLegend;
+  requiredElement<HTMLInputElement>('photoCropBounds').checked = settings.photoCropBounds;
+  requiredElement<HTMLInputElement>('handoutSummary').checked = settings.handoutSummary;
+  handleMapPresetChange(settings.mapKey);
+  osmThirdPartyConsent.checked = false;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+async function saveRouteProject(): Promise<void> {
+  if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) {
+    setStatus('Wait for the active operation to finish before saving the project.', 'warning');
+    return;
+  }
+  saveProjectBtn.disabled = true;
+  loadProjectBtn.disabled = true;
+  photoWorkflow.setExternalBusy(true);
+  try {
+    const project: SavedRouteProject = {
+      schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      savedAt: new Date().toISOString(),
+      settings: currentProjectSettings(),
+      photos: await photoWorkflow.saveProjectPhotos(),
+    };
+    const date = project.savedAt.slice(0, 10);
+    downloadBlob(
+      new Blob([JSON.stringify(project)], { type: 'application/json' }),
+      `route_project_${date}.tvn-project`
+    );
+    setStatus(`Saved route project with ${project.photos.length} embedded photo(s).`, 'success');
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  } finally {
+    photoWorkflow.setExternalBusy(false);
+    saveProjectBtn.disabled = false;
+    loadProjectBtn.disabled = false;
+  }
+}
+
+async function loadRouteProject(file: File): Promise<void> {
+  if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) {
+    throw new Error('Wait for the active operation to finish before loading a project.');
+  }
+  const maximumProjectBytes = Math.ceil((PHOTO_IMPORT_LIMITS.maximumTotalBytes * 4) / 3) + 5 * 1024 * 1024;
+  if (file.size > maximumProjectBytes)
+    throw new Error('The selected project exceeds the safe file-size limit.');
+  saveProjectBtn.disabled = true;
+  loadProjectBtn.disabled = true;
+  photoWorkflow.setExternalBusy(true);
+  try {
+    const project = parseSavedRouteProject(await file.text());
+    validateProjectSettings(project.settings);
+    const points = parseWaypoints(project.settings.waypoints);
+    await photoWorkflow.restoreProjectPhotos(project.photos, points);
+    applyProjectSettings(project.settings);
+    photoWorkflow.analyze(points);
+    if (Array.from(handoutSplit.options).some((option) => option.value === project.settings.handoutSplit)) {
+      handoutSplit.value = project.settings.handoutSplit;
+      photoWorkflow.analyze(points);
+    }
+    invalidateGeneratedPackage();
+    clearOsmCandidateReview();
+    clearControlPhotoReview();
+    updateOrthophotoCoveragePreview();
+    updateWorkflowReadiness();
+    guidedWorkflow?.activate(1);
+    setStatus(
+      `Loaded project saved ${new Date(project.savedAt).toLocaleString()} with ${project.photos.length} photo(s). Review it, then generate again.`,
+      'success'
+    );
+  } finally {
+    photoWorkflow.setExternalBusy(false);
+    saveProjectBtn.disabled = false;
+    loadProjectBtn.disabled = false;
+  }
 }
 
 function effectiveTaskCoordinates(photo, points): [number, number] | null {
@@ -2325,28 +2551,31 @@ function adjustLabelPosition(
 
   return { x, y, box: rotatedBoundingBox(x, y, width, height, angleRad) };
 }
-async function generate() {
+async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair | null> {
+  const mapsOnly = options.mapsOnly === true;
   if (generationController) {
     setStatus('Generation is already running. Cancel it before starting another run.', 'warning');
-    return;
+    return null;
   }
   if (photoWorkflow.isBusy) {
     setStatus('Wait for the current photo import to finish before generating.', 'warning');
-    return;
+    return null;
   }
   const setupProblem = routeSetupProblem();
   if (setupProblem) {
     updateWorkflowReadiness();
     guidedWorkflow?.activate(1);
     setStatus(`Error: ${setupProblem}`, 'error');
-    return;
+    return null;
   }
+  if (!mapsOnly) clearSpeedSetDownload();
   guidedWorkflow?.markComplete(3);
   guidedWorkflow?.activate(4);
   const controller = new AbortController();
   generationController = controller;
   const runMapKey = selectedMapKey;
   const artifactFailures: string[] = [];
+  let generatedMaps: GeneratedMapPair | null = null;
   const originalButtonHtml = generateBtn.innerHTML;
   try {
     setGenerationBusy(true);
@@ -2355,45 +2584,38 @@ async function generate() {
     resetArtifactStates();
     setArtifactState('map', 'processing', 'preparing route map');
     setArtifactState('overlay', 'processing', 'preparing overlay');
-    resultsContent.hidden = true;
-    if (resultsPlaceholder && !hasGeneratedOnce) {
-      resultsPlaceholder.hidden = false;
+    if (!mapsOnly) {
+      resultsContent.hidden = true;
+      if (resultsPlaceholder && !hasGeneratedOnce) resultsPlaceholder.hidden = false;
+      clearDownloadUrl('pdf', downloadPdfLink);
+      clearDownloadUrl('overlay', downloadOverlayLink);
+      clearDownloadUrl('cropped', downloadCroppedLink);
+      clearDownloadUrl('summary', downloadSummaryLink);
+      clearDownloadUrl('photoAnalysis', downloadPhotoAnalysisLink);
+      clearDownloadUrl('photoKey', downloadPhotoKeyLink);
+      clearDownloadUrl('photoHandout', downloadPhotoHandoutLink);
+      clearDownloadUrl('competitorPhotoHandout', downloadCompetitorPhotoHandoutLink);
+      downloadOverlayLink.style.display = 'none';
+      downloadCroppedLink.style.display = 'none';
+      downloadSummaryLink.style.display = 'none';
+      downloadPhotoAnalysisLink.style.display = 'none';
+      downloadPhotoKeyLink.style.display = 'none';
+      downloadPhotoHandoutLink.style.display = 'none';
+      downloadCompetitorPhotoHandoutLink.style.display = 'none';
+      clearCroppedPreview();
+      if (outputsSection) outputsSection.hidden = true;
+      if (summarySection) summarySection.hidden = true;
+      routeComplianceSection.hidden = true;
+      if (osmMapContainer) osmMapContainer.hidden = true;
+      syncResultsVisibility();
     }
-
-    clearDownloadUrl('pdf', downloadPdfLink);
-    clearDownloadUrl('overlay', downloadOverlayLink);
-    clearDownloadUrl('cropped', downloadCroppedLink);
-    clearDownloadUrl('summary', downloadSummaryLink);
-    clearDownloadUrl('photoAnalysis', downloadPhotoAnalysisLink);
-    clearDownloadUrl('photoKey', downloadPhotoKeyLink);
-    clearDownloadUrl('photoHandout', downloadPhotoHandoutLink);
-    clearDownloadUrl('competitorPhotoHandout', downloadCompetitorPhotoHandoutLink);
-    downloadOverlayLink.style.display = 'none';
-    downloadCroppedLink.style.display = 'none';
-    downloadSummaryLink.style.display = 'none';
-    downloadPhotoAnalysisLink.style.display = 'none';
-    downloadPhotoKeyLink.style.display = 'none';
-    downloadPhotoHandoutLink.style.display = 'none';
-    downloadCompetitorPhotoHandoutLink.style.display = 'none';
-    clearCroppedPreview();
-    if (outputsSection) {
-      outputsSection.hidden = true;
-    }
-    if (summarySection) {
-      summarySection.hidden = true;
-    }
-    routeComplianceSection.hidden = true;
-    if (osmMapContainer) {
-      osmMapContainer.hidden = true;
-    }
-    syncResultsVisibility();
 
     const mapConfig = getPreset(runMapKey);
     if (!mapConfig) {
       throw new Error(`Unknown map preset: ${runMapKey}`);
     }
 
-    const speed = parseSpeed(speedInput.value);
+    const speed = parseSpeed(options.speedKnots === undefined ? speedInput.value : `${options.speedKnots}kt`);
     const minuteInterval = parseNumericInput(minuteIntervalInput, DEFAULT_MINUTE_INTERVAL);
     const takeoffToSp = parseNumericInput(takeoffBufferInput, DEFAULT_TAKEOFF_BUFFER);
     const points = parseWaypoints(waypointTextarea.value);
@@ -2431,10 +2653,8 @@ async function generate() {
     const mapFilename = mapConfig.type === 'pdf' ? mapConfig.fileName : null;
 
     if (mapConfig.type === 'pdf') {
-      const [{ degrees, PDFDocument, rgb }, { default: fontkit }] = await Promise.all([
-        import('pdf-lib'),
-        import('@pdf-lib/fontkit'),
-      ]);
+      const [{ degrees, PDFDocument, PrintScaling, rgb, StandardFonts }, { default: fontkit }] =
+        await Promise.all([import('pdf-lib'), import('@pdf-lib/fontkit')]);
       const mapBytes = await ensurePresetBuffer(runMapKey, { signal: controller.signal });
       if (!mapBytes) {
         throw new Error('Map PDF unavailable.');
@@ -3065,7 +3285,8 @@ async function generate() {
       let emptyCroppedBytes = null;
       let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
-        const m = 10 * MM_TO_PT;
+        const printScale = mapConfig.printScale ?? 1;
+        const m = (10 * MM_TO_PT) / printScale;
         const [minX, minY, maxX, maxY] = [
           Math.max(0, bounds.minX - m),
           Math.max(0, bounds.minY - m),
@@ -3073,20 +3294,72 @@ async function generate() {
           Math.min(pageHeight, bounds.maxY + m),
         ];
         if (maxX > minX + 1 && maxY > minY + 1) {
-          const contentWidth = maxX - minX;
-          const contentHeight = maxY - minY;
-          const targetPage = chooseTrueScaleCropPage(contentWidth, contentHeight, [
-            210 * MM_TO_PT,
-            297 * MM_TO_PT,
-          ]);
+          const sourceContentWidth = maxX - minX;
+          const sourceContentHeight = maxY - minY;
+          const contentWidth = sourceContentWidth * printScale;
+          const contentHeight = sourceContentHeight * printScale;
+          const targetPage = chooseTrueScaleCropPage(
+            contentWidth,
+            contentHeight,
+            [210 * MM_TO_PT, 297 * MM_TO_PT],
+            [297 * MM_TO_PT, 420 * MM_TO_PT]
+          );
+          if (!targetPage) {
+            const requiredWidthMm = contentWidth / MM_TO_PT;
+            const requiredHeightMm = contentHeight / MM_TO_PT;
+            throw new Error(
+              `The true-scale route requires ${requiredWidthMm.toFixed(0)} × ${requiredHeightMm.toFixed(0)} mm, which exceeds A3. Shorten or reshape the route; the map will not be shrunk or tiled.`
+            );
+          }
           const cropPdf = async (sourceBytes) => {
             const cropDoc = await PDFDocument.create();
             const [embedded] = await cropDoc.embedPdf(sourceBytes, [0]);
             const cropPage = cropDoc.addPage([targetPage.width, targetPage.height]);
             cropPage.drawPage(embedded, {
-              x: -minX + (targetPage.width - contentWidth) / 2,
-              y: -minY + (targetPage.height - contentHeight) / 2,
+              x: -minX * printScale + (targetPage.width - contentWidth) / 2,
+              y: -minY * printScale + (targetPage.height - contentHeight) / 2,
+              width: pageWidth * printScale,
+              height: pageHeight * printScale,
             });
+            const verificationFont = await cropDoc.embedFont(StandardFonts.Helvetica);
+            const checkStartX = 10 * MM_TO_PT;
+            const checkEndX = checkStartX + 100 * MM_TO_PT;
+            const checkY = 4 * MM_TO_PT;
+            cropPage.drawRectangle({
+              x: 8 * MM_TO_PT,
+              y: 2 * MM_TO_PT,
+              width: 106 * MM_TO_PT,
+              height: 8 * MM_TO_PT,
+              color: rgb(1, 1, 1),
+              opacity: 0.92,
+            });
+            cropPage.drawLine({
+              start: { x: checkStartX, y: checkY },
+              end: { x: checkEndX, y: checkY },
+              thickness: 0.8,
+              color: rgb(0, 0, 0),
+            });
+            for (const x of [checkStartX, checkEndX]) {
+              cropPage.drawLine({
+                start: { x, y: checkY - 1.5 * MM_TO_PT },
+                end: { x, y: checkY + 1.5 * MM_TO_PT },
+                thickness: 0.8,
+                color: rgb(0, 0, 0),
+              });
+            }
+            cropPage.drawText(
+              `100 mm print check - Actual size / 100% - 1:${mapConfig.scaleDenominator.toLocaleString('en-US')}`,
+              {
+                x: checkStartX,
+                y: 6.2 * MM_TO_PT,
+                size: 5.5,
+                font: verificationFont,
+                color: rgb(0, 0, 0),
+              }
+            );
+            const viewerPreferences = cropDoc.catalog.getOrCreateViewerPreferences();
+            viewerPreferences.setPrintScaling(PrintScaling.None);
+            viewerPreferences.setPickTrayByPDFSize(true);
             return cropDoc.save();
           };
           [judgeCroppedBytes, competitorCroppedBytes, emptyCroppedBytes] = await Promise.all([
@@ -3128,40 +3401,49 @@ async function generate() {
             heightMm: targetPage.height / MM_TO_PT,
             format: targetPage.format,
             scale: '100%',
+            scaleDenominator: mapConfig.scaleDenominator,
+            sourcePrintScalePercent: printScale * 100,
           };
         }
       }
       if (judgeCroppedBytes && competitorCroppedBytes && emptyCroppedBytes && previewOptions) {
-        downloadPdfLink.textContent = 'Judge Solutions (PDF)';
-        downloadPdfLink.onclick = null;
-        setDownloadUrl(
-          'pdf',
-          createPdfObjectUrl(judgeCroppedBytes),
-          'judge_solution_map.pdf',
-          downloadPdfLink
-        );
+        generatedMaps = { judge: judgeCroppedBytes, competitor: competitorCroppedBytes };
         setArtifactState(
           'map',
           'ok',
           `${judgePhotos.length} accepted photo(s); ${positionedJudgePhotos.length} positioned on map`
         );
-        setDownloadUrl(
-          'overlay',
-          createPdfObjectUrl(competitorCroppedBytes),
-          'competitor_route_map.pdf',
-          downloadOverlayLink
-        );
-        downloadOverlayLink.style.display = 'inline-flex';
         setArtifactState('overlay', 'ok', 'route-only PDF ready');
-        setDownloadUrl(
-          'cropped',
-          createPdfObjectUrl(emptyCroppedBytes),
-          'empty_map.pdf',
-          downloadCroppedLink
+        setArtifactState(
+          'crop',
+          'ok',
+          `${summaryCropped.format}; print at Actual size / 100%; verify the 100 mm line`
         );
-        downloadCroppedLink.style.display = 'inline-flex';
-        setArtifactState('crop', 'ok', 'clean base-map PDF ready');
-        void renderCroppedPreview(previewOptions);
+        if (!mapsOnly) {
+          downloadPdfLink.textContent = 'Judge Solutions (PDF)';
+          downloadPdfLink.onclick = null;
+          setDownloadUrl(
+            'pdf',
+            createPdfObjectUrl(judgeCroppedBytes),
+            'judge_solution_map.pdf',
+            downloadPdfLink
+          );
+          setDownloadUrl(
+            'overlay',
+            createPdfObjectUrl(competitorCroppedBytes),
+            'competitor_route_map.pdf',
+            downloadOverlayLink
+          );
+          downloadOverlayLink.style.display = 'inline-flex';
+          setDownloadUrl(
+            'cropped',
+            createPdfObjectUrl(emptyCroppedBytes),
+            'empty_map.pdf',
+            downloadCroppedLink
+          );
+          downloadCroppedLink.style.display = 'inline-flex';
+          void renderCroppedPreview(previewOptions);
+        }
       } else {
         setArtifactState('map', 'manual-review', 'no valid crop bounds');
         setArtifactState('overlay', 'manual-review', 'no valid crop bounds');
@@ -3358,6 +3640,11 @@ async function generate() {
       setArtifactState('preview', 'manual-review', 'interactive map is the preview');
     }
 
+    if (mapsOnly) {
+      if (!generatedMaps) throw new Error('This map preset did not produce downloadable PDF maps.');
+      return generatedMaps;
+    }
+
     if (outputsSection) outputsSection.hidden = false;
     resultsContent.hidden = false;
     syncResultsVisibility();
@@ -3527,7 +3814,7 @@ async function generate() {
       waypointTable,
       Array.from(waypointTimes.entries()).map(([name, minutes]) => [name, formatWaypointTimeLabel(minutes)])
     );
-    summaryText.textContent = `${summary.speedLabel} - ${summary.totalDistanceNm.toFixed(2)} NM (${summary.totalDistanceKm.toFixed(2)} km) course - ${mapConfig.label}`;
+    summaryText.textContent = `${summary.speedLabel} - ${summary.totalDistanceNm.toFixed(2)} NM (${summary.totalDistanceKm.toFixed(2)} km) course - ${mapConfig.label}${summaryCropped ? ` - ${summaryCropped.format}, print at Actual size / 100%` : ''}`;
 
     renderCompliance(compliance);
 
@@ -3571,6 +3858,7 @@ async function generate() {
         ? `Generated with ${artifactFailures.length} partial failure(s)`
         : 'Package ready'
     );
+    return generatedMaps;
   } catch (err) {
     console.error(err);
     const cancelled = controller.signal.aborted;
@@ -3585,6 +3873,7 @@ async function generate() {
       resultsPlaceholder.hidden = false;
     }
     syncResultsVisibility();
+    return null;
   } finally {
     if (generationController === controller) generationController = null;
     setGenerationBusy(false);
@@ -3593,7 +3882,116 @@ async function generate() {
   }
 }
 
-generateBtn.addEventListener('click', generate);
+function createSpeedEditionArchive(): {
+  add: (name: string, data: Uint8Array) => void;
+  finish: () => Promise<Blob>;
+} {
+  const chunks: ArrayBuffer[] = [];
+  let resolveArchive: ((blob: Blob) => void) | null = null;
+  let rejectArchive: ((error: Error) => void) | null = null;
+  const completed = new Promise<Blob>((resolve, reject) => {
+    resolveArchive = resolve;
+    rejectArchive = reject;
+  });
+  const archive = new Zip((error, data, final) => {
+    if (error) {
+      rejectArchive?.(error);
+      return;
+    }
+    chunks.push(Uint8Array.from(data).buffer);
+    if (final) resolveArchive?.(new Blob(chunks, { type: 'application/zip' }));
+  });
+  return {
+    add(name, data) {
+      const entry = new ZipPassThrough(name);
+      archive.add(entry);
+      entry.push(data, true);
+    },
+    finish() {
+      archive.end();
+      return completed;
+    },
+  };
+}
+
+async function generateSpeedEditionSet(): Promise<void> {
+  if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) return;
+  if (!isPdfPreset()) {
+    setStatus('Error: speed-edition PDFs require one of the calibrated PDF map presets.', 'error');
+    return;
+  }
+  speedSetGenerationActive = true;
+  generateSpeedSetBtn.disabled = true;
+  generateBtn.disabled = true;
+  saveProjectBtn.disabled = true;
+  loadProjectBtn.disabled = true;
+  speedSetProgress.hidden = false;
+  speedSetProgressBar.max = SPEED_EDITION_KNOTS.length;
+  speedSetProgressBar.value = 0;
+  speedSetProgress.dataset.state = 'working';
+  downloadSpeedSetLink.hidden = true;
+  if (speedSetObjectUrl) {
+    URL.revokeObjectURL(speedSetObjectUrl);
+    speedSetObjectUrl = null;
+  }
+  const archive = createSpeedEditionArchive();
+  archive.add(
+    'README.txt',
+    strToU8(
+      'Speed editions generated by Route Overlay Generator.\nEach folder contains a judge solution map and a competitor route map for the stated groundspeed.\nPhoto handouts are shared across speeds and remain available in the normal package downloads.\n'
+    )
+  );
+  try {
+    for (const [index, speedKnots] of SPEED_EDITION_KNOTS.entries()) {
+      speedSetProgressText.textContent = `Preparing ${speedKnots} kt judge and competitor maps…`;
+      speedSetProgressCount.textContent = `${index} of ${SPEED_EDITION_KNOTS.length}`;
+      setStatus(
+        `Speed editions: preparing ${speedKnots} kt (${index + 1} of ${SPEED_EDITION_KNOTS.length})…`
+      );
+      const maps = await generate({ speedKnots, mapsOnly: true });
+      if (!maps) throw new Error(`The ${speedKnots} kt edition could not be generated.`);
+      const folder = `${speedKnots}kt`;
+      archive.add(`${folder}/judge_solution_map_${speedKnots}kt.pdf`, maps.judge);
+      archive.add(`${folder}/competitor_route_map_${speedKnots}kt.pdf`, maps.competitor);
+      speedSetProgressBar.value = index + 1;
+      speedSetProgressCount.textContent = `${index + 1} of ${SPEED_EDITION_KNOTS.length}`;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    speedSetProgressText.textContent = 'Finalizing ZIP archive…';
+    const blob = await archive.finish();
+    speedSetObjectUrl = URL.createObjectURL(blob);
+    downloadSpeedSetLink.href = speedSetObjectUrl;
+    downloadSpeedSetLink.download = 'route_speed_editions_50-100kt.zip';
+    downloadSpeedSetLink.hidden = false;
+    speedSetProgress.dataset.state = 'complete';
+    speedSetProgressText.textContent = 'All speed editions are ready';
+    speedSetProgressCount.textContent = `${SPEED_EDITION_KNOTS.length} of ${SPEED_EDITION_KNOTS.length}`;
+    setStatus('Prepared judge and competitor route maps for 50–100 kt in 5 kt steps.', 'success');
+  } catch (error) {
+    speedSetProgress.dataset.state = 'error';
+    speedSetProgressText.textContent = 'Speed-edition generation stopped';
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  } finally {
+    speedSetGenerationActive = false;
+    generateSpeedSetBtn.disabled = false;
+    generateBtn.disabled = false;
+    saveProjectBtn.disabled = false;
+    loadProjectBtn.disabled = false;
+  }
+}
+
+generateBtn.addEventListener('click', () => void generate());
+generateSpeedSetBtn.addEventListener('click', () => void generateSpeedEditionSet());
+saveProjectBtn.addEventListener('click', () => void saveRouteProject());
+loadProjectBtn.addEventListener('click', () => projectFileInput.click());
+projectFileInput.addEventListener('change', () => {
+  const file = projectFileInput.files?.[0];
+  projectFileInput.value = '';
+  if (!file) return;
+  void loadRouteProject(file).catch((error) => {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  });
+});
 cancelGenerationBtn.addEventListener('click', () => {
   generationController?.abort('Cancelled by the user.');
   croppedPreviewController?.abort('Cancelled by the user.');
@@ -3635,6 +4033,7 @@ locationsList.addEventListener('click', (e) => {
 
 mapPresetButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
+    clearSpeedSetDownload();
     handleMapPresetChange(btn.dataset.mapKey);
     updateWorkflowReadiness();
   });
@@ -3653,6 +4052,7 @@ window.addEventListener('beforeunload', () => {
   if (previewObjectUrl) {
     URL.revokeObjectURL(previewObjectUrl);
   }
+  if (speedSetObjectUrl) URL.revokeObjectURL(speedSetObjectUrl);
 });
 
 // Initial UI state setup
@@ -3671,10 +4071,20 @@ guidedWorkflow = new GuidedWorkflow({
   },
 });
 for (const input of [speedInput, takeoffBufferInput, minuteIntervalInput]) {
-  input.addEventListener('input', updateWorkflowReadiness);
+  input.addEventListener('input', () => {
+    clearSpeedSetDownload();
+    updateWorkflowReadiness();
+  });
 }
-handoutSplit.addEventListener('change', updateWorkflowReadiness);
-document.addEventListener('photo-workflow-change', updateWorkflowReadiness);
+handoutSplit.addEventListener('change', () => {
+  clearSpeedSetDownload();
+  updateWorkflowReadiness();
+});
+workflowShell.addEventListener('change', clearSpeedSetDownload);
+document.addEventListener('photo-workflow-change', () => {
+  clearSpeedSetDownload();
+  updateWorkflowReadiness();
+});
 setStatus('');
 handleMapPresetChange(selectedMapKey);
 photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));

@@ -30,12 +30,20 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, an accepted-photo-only judge handout, and a minimal competitor photo handout
 - An opt-in 29-photo historical TVN 2025 example recovered from the original workflow
 - Four-stage guided workspace with compact completed-step summaries, control-photo-first preparation, consolidated readiness review, and audience-grouped downloads
+- One-click ZIP containing judge and competitor route-map editions for 50–100 kt at 5 kt intervals
+- Portable `.tvn-project` save files containing route settings, editable photo state, exceptions, and embedded source JPEGs
 
 ## Preparation workflow
 
 The page guides organizers through four non-destructive stages: **Route setup**, **Photo preparation**, **Review and validate**, and **Generate package**. Only one stage is expanded at a time, but the step bar can return to any earlier stage without clearing inputs, imported photos, OSM discoveries, or DOF025 choices.
 
 Route setup validates waypoint and timing inputs and shows live control, leg, distance, and duration totals. Photo preparation handles SP/TP/FP control photos before the separate competition-photo set; uploads, OSM discovery, and explicit `PHOTO_` coordinates are presented as alternative sources. Review consolidates route, coverage, split, rule, manual-review, and exception status while keeping detailed photo corrections collapsed. Generation groups completed files for judges and competitors and preserves successful artifacts when an optional output fails. A route with no photos can still be generated; photo handouts and photo-only CSV files are omitted from that package.
+
+Use **Save project** at any stage to download a `.tvn-project` file. It embeds the original JPEGs together with the route, map choice, timing, crop model, overlay options, manual photo edits, mixed letters, and accepted exceptions. **Load project** restores that state locally without repeating OSM discovery or DOF025 downloads; OSM tile consent is intentionally requested again. Project files can be large because their photos are embedded and should be handled as private event material.
+
+After generating the normal package, **Prepare all 11 speed editions** creates a ZIP with separate judge solution and competitor route maps for 50, 55, 60, …, 100 kt. Photo handouts are shared because they contain no speed-dependent timing, so they remain in the normal package rather than being duplicated eleven times.
+
+Printable route maps preserve the configured 1:200,000 or 1:250,000 scale. The generator selects A4 first and A3 only when A4 cannot contain the true-scale crop. A route that exceeds A3 is rejected instead of being shrunk or tiled. Print with **Actual size / 100%** and disable Fit/Shrink; every map includes a line that must measure exactly 100 mm on paper. The P250 source PDF is normalized internally from its image-sized PDF units to its intended 1:250,000 physical scale.
 
 ## Development
 
@@ -71,6 +79,7 @@ src/workflow.ts         Four-stage navigation and photo-source tabs
 src/photo-output.ts     CSV and JSON schemas
 src/photo-image.ts      EXIF orientation correction
 src/photo-handout.ts    Browser-generated A4 handout
+src/project-file.ts     Portable project schema and speed-edition definition
 tests/                  Calculation and configuration regression tests
 e2e/                    Chromium/WebKit end-to-end tests
 schemas/                Versioned JSON export schemas
@@ -108,6 +117,8 @@ The result is deliberately limited to checks supported by reliable inputs. Every
 
 Photo import is limited to 60 files, 25 MB per file, 250 MB total source data, and 50 megapixels per image. Browser thumbnails are capped at 480 px and handout images at 1,600 px. High-resolution map tiles are individually capped at 3 MB; a preview loads at most 128 tiles/40 MB and renders at up to 4,096 px or 12 megapixels with a 30-second deadline. Only intersecting tiles are decoded in four-tile batches, and only one full PDF chart buffer is retained.
 
+Speed editions are generated sequentially so all 11 uncompressed map pairs are not retained at once. Large source charts can still produce a large ZIP and require substantial browser memory and temporary storage while the archive is finalized.
+
 Map, overlay, crop, preview, CSV/JSON, and handout results have independent status indicators. Preview and handout failures preserve completed map downloads. Cancelling stops fetch/background stages at the next safe interruption point; long synchronous PDF operations may finish their current step before the browser can process cancellation.
 
 ### GURS DOF025 route photos
@@ -124,7 +135,7 @@ The default coverage model is 100 m AGL, 60 mm 35 mm-equivalent focal length, 45
 
 ## Browser support and privacy
 
-Use a current Chrome, Edge, Firefox, or Safari release with Web Crypto, File/Blob, and Canvas support. Chromium and WebKit are exercised in CI; `HTMLImageElement` and UUID fallbacks cover browsers without `createImageBitmap` or `crypto.randomUUID`. Photo hashes, previews, EXIF metadata, route analysis, and generated downloads live only in memory in the current tab. Reloading clears imported user photos. Bundled PDF maps are the local-only mode. Clicking an external-data action authorizes its request: feature discovery sends the route corridor to public Overpass servers, while importing DOF025 imagery sends only the selected coordinates to GURS. Neither service receives photo files or EXIF payloads.
+Use a current Chrome, Edge, Firefox, or Safari release with Web Crypto, File/Blob, and Canvas support. Chromium and WebKit are exercised in CI; `HTMLImageElement` and UUID fallbacks cover browsers without `createImageBitmap` or `crypto.randomUUID`. Photo hashes, previews, EXIF metadata, route analysis, and generated downloads live only in memory in the current tab unless the user explicitly downloads a `.tvn-project` backup. Reloading clears unsaved imported photos. Bundled PDF maps are the local-only mode. Clicking an external-data action authorizes its request: feature discovery sends the route corridor to public Overpass servers, while importing DOF025 imagery sends only the selected coordinates to GURS. Neither service receives photo files or EXIF payloads.
 
 Bundled aeronautical charts display a validity warning. Confirm that a chart is current and approved for the event before operational use. Updating a chart requires updating its file, metadata, calibration, tests, and generated bundle together.
 

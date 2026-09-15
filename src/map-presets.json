@@ -68,6 +68,7 @@
     "baseWidth": 11890,
     "baseHeight": 8410,
     "scaleDenominator": 250000,
+    "printScale": 0.28346456692913385,
     "styleScale": 4.2,
     "transform": "tfw",
     "tfw": {
