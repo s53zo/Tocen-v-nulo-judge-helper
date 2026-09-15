@@ -991,6 +991,7 @@ export class PhotoWorkflow {
       this.records = staged;
       this.analyze(manifest.route);
       this.mixEnrouteIdentifiers(false);
+      this.progressText.textContent = `${staged.length} of ${manifest.items.length} example photos imported.`;
       this.onMessage(`Loaded ${manifest.label}. Its 29 photos remain in this browser tab only.`, 'success');
     } catch (error) {
       staged.forEach((record) => {
@@ -1262,8 +1263,14 @@ export class PhotoWorkflow {
       body.className = 'photo-card-body';
       const heading = document.createElement('div');
       heading.className = 'photo-card-heading';
+      const titleGroup = document.createElement('span');
+      titleGroup.className = 'photo-card-title-group';
       const title = document.createElement('strong');
-      title.textContent = `${index + 1}. ${record.fileName}`;
+      title.textContent = `${record.identifier || `Photo ${index + 1}`} · ${CLASS_LABELS[record.classification]}`;
+      const fileName = document.createElement('span');
+      fileName.className = 'photo-card-file-name';
+      fileName.textContent = record.fileName;
+      titleGroup.append(title, fileName);
       const controls = document.createElement('div');
       controls.className = 'photo-order-controls';
       for (const [action, label] of [
@@ -1289,7 +1296,7 @@ export class PhotoWorkflow {
         );
         controls.appendChild(button);
       }
-      heading.append(title, controls);
+      heading.append(titleGroup, controls);
       const status = document.createElement('span');
       status.className = 'photo-status';
       const primaryFindings = record.findings.filter(
@@ -1338,11 +1345,11 @@ export class PhotoWorkflow {
         'Keeps all violations in the audit record and accepts this photo for judging output.';
       const grid = document.createElement('div');
       grid.className = 'photo-field-grid';
-      const metadataDetails = document.createElement('details');
-      metadataDetails.className = 'photo-metadata-details';
-      const metadataSummary = document.createElement('summary');
-      metadataSummary.className = 'photo-metadata-summary';
-      metadataSummary.textContent = 'Camera metadata & source';
+      const editorDetails = document.createElement('details');
+      editorDetails.className = 'photo-metadata-details photo-editor-details';
+      const editorSummary = document.createElement('summary');
+      editorSummary.className = 'photo-metadata-summary';
+      editorSummary.textContent = 'Photo details and corrections';
       const metadataGrid = document.createElement('div');
       metadataGrid.className = 'photo-field-grid';
       const numericInput = (label: string, field: string, value: number | null) =>
@@ -1404,7 +1411,7 @@ export class PhotoWorkflow {
         ? `; OSM target: ${record.generatedOrthophoto.targetSource.name ?? record.generatedOrthophoto.targetSource.featureType} (${record.generatedOrthophoto.targetSource.featureType}, score ${record.generatedOrthophoto.targetSource.score}${record.generatedOrthophoto.targetSource.selectionSalt ? `, selection mix ${record.generatedOrthophoto.targetSource.selectionSalt.slice(0, 8)}` : ''})`
         : '';
       provenance.textContent = `${record.width}×${record.height}px · Position: ${record.metadata.latitude.source}/${record.metadata.longitude.source}${originalPosition}; EXIF altitude: ${record.metadata.gpsAltitudeMslM.value ?? 'missing'} m MSL; camera: ${[record.metadata.cameraMake.value, record.metadata.cameraModel.value].filter(Boolean).join(' ') || 'missing'}; orientation: ${record.metadata.orientation.value ?? 'missing'}${orthophotoProvenance}${targetProvenance}.`;
-      metadataDetails.append(metadataSummary, metadataGrid, provenance);
+      editorDetails.append(editorSummary, grid, metadataGrid, provenance);
       const metrics = document.createElement('p');
       metrics.className = 'photo-metrics';
       metrics.textContent = record.analysis
@@ -1452,24 +1459,22 @@ export class PhotoWorkflow {
           status,
           exceptionButton,
           error,
-          grid,
           metrics,
           issueList,
           actionList,
           auditDetails,
-          metadataDetails
+          editorDetails
         );
       } else
         body.append(
           heading,
           status,
           exceptionButton,
-          grid,
           metrics,
           issueList,
           actionList,
           auditDetails,
-          metadataDetails
+          editorDetails
         );
       article.append(image, body);
       fragment.appendChild(article);
@@ -1522,5 +1527,6 @@ export class PhotoWorkflow {
     this.auditFindings.replaceChildren(auditFragment);
     this.auditSummary.textContent = `Technical & rulebook audit details (${auditFindings.length})`;
     this.auditDetails.hidden = auditFindings.length === 0;
+    document.dispatchEvent(new CustomEvent('photo-workflow-change'));
   }
 }

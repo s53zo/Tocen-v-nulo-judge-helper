@@ -35,10 +35,16 @@ import {
   selectOsmPhotoCandidates,
   targetSelectionIssue,
 } from './osm-photo-candidates';
-import { evaluatePhotoCompliance, isCountedRouteTask, isPhotoAcceptedForJudge } from './photo-compliance';
+import {
+  evaluatePhotoCompliance,
+  findingPresentation,
+  isCountedRouteTask,
+  isPhotoAcceptedForJudge,
+} from './photo-compliance';
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PHOTO_IMPORT_LIMITS, PhotoWorkflow } from './photo-workflow';
+import { GuidedWorkflow, type WorkflowStage } from './workflow';
 import './styles.css';
 
 const APP_BASE_URL = new URL('./', document.baseURI);
@@ -74,8 +80,7 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 const statusEl = requiredElement<HTMLElement>('status');
 const generateBtn = requiredElement<HTMLButtonElement>('generate');
 const cancelGenerationBtn = requiredElement<HTMLButtonElement>('cancelGeneration');
-const controlPanel = document.querySelector<HTMLElement>('.control-panel');
-if (!controlPanel) throw new Error('Required control panel is missing.');
+const workflowShell = requiredElement<HTMLElement>('workflowShell');
 const artifactStatuses = requiredElement<HTMLElement>('artifactStatuses');
 const mapPresetGrid = requiredElement<HTMLElement>('mapPresetGrid');
 const osmConsentRow = requiredElement<HTMLElement>('osmConsentRow');
@@ -138,6 +143,31 @@ const controlPhotoReview = requiredElement<HTMLElement>('controlPhotoReview');
 const controlPhotoStatus = requiredElement<HTMLElement>('controlPhotoStatus');
 const controlPhotoList = requiredElement<HTMLElement>('controlPhotoList');
 const importControlPhotos = requiredElement<HTMLButtonElement>('importControlPhotos');
+const generationProgress = requiredElement<HTMLProgressElement>('generationProgress');
+const routeSetupError = requiredElement<HTMLElement>('routeSetupError');
+const speedError = requiredElement<HTMLElement>('speedError');
+const takeoffBufferError = requiredElement<HTMLElement>('takeoffBufferError');
+const minuteIntervalError = requiredElement<HTMLElement>('minuteIntervalError');
+const routeControlSummary = requiredElement<HTMLElement>('routeControlSummary');
+const routeLegSummary = requiredElement<HTMLElement>('routeLegSummary');
+const routeDistanceSummary = requiredElement<HTMLElement>('routeDistanceSummary');
+const routeDurationSummary = requiredElement<HTMLElement>('routeDurationSummary');
+const controlPreparationBadge = requiredElement<HTMLElement>('controlPreparationBadge');
+const competitionPreparationBadge = requiredElement<HTMLElement>('competitionPreparationBadge');
+const selectedPhotoCount = requiredElement<HTMLElement>('selectedPhotoCount');
+const photoLegCoverage = requiredElement<HTMLElement>('photoLegCoverage');
+const photoSplitBalance = requiredElement<HTMLElement>('photoSplitBalance');
+const photoCoverageWarning = requiredElement<HTMLElement>('photoCoverageWarning');
+const readinessRoute = requiredElement<HTMLElement>('readinessRoute');
+const readinessCount = requiredElement<HTMLElement>('readinessCount');
+const readinessCoverage = requiredElement<HTMLElement>('readinessCoverage');
+const readinessSplit = requiredElement<HTMLElement>('readinessSplit');
+const readinessControls = requiredElement<HTMLElement>('readinessControls');
+const readinessRules = requiredElement<HTMLElement>('readinessRules');
+const readinessManual = requiredElement<HTMLElement>('readinessManual');
+const readinessExceptions = requiredElement<HTMLElement>('readinessExceptions');
+const routeOnlyNote = requiredElement<HTMLElement>('routeOnlyNote');
+const workflowFindingGroups = requiredElement<HTMLElement>('workflowFindingGroups');
 
 const downloadPdfLink = requiredElement<HTMLAnchorElement>('downloadPdf');
 const downloadOverlayLink = requiredElement<HTMLAnchorElement>('downloadOverlay');
@@ -185,18 +215,25 @@ function setArtifactState(artifact: string, state: ArtifactState, detail: string
   };
   const label = labels[artifact] ?? artifact;
   item.textContent = `${label}: ${detail}`;
+  generationProgress.value = artifactStatuses.querySelectorAll(
+    '[data-state="ok"], [data-state="manual-review"], [data-state="failed"], [data-state="cancelled"]'
+  ).length;
 }
 
 function resetArtifactStates(): void {
+  generationProgress.value = 0;
   for (const artifact of ['map', 'overlay', 'crop', 'preview', 'data', 'handout', 'competitorHandout']) {
     setArtifactState(artifact, 'not-started', 'not started');
   }
 }
 
 function setGenerationBusy(busy: boolean): void {
-  const controls = controlPanel.querySelectorAll<
-    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
-  >('input,textarea,select,button');
+  const controls = [
+    ...workflowShell.querySelectorAll<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
+    >('input,textarea,select,button'),
+    ...document.querySelectorAll<HTMLButtonElement>('.workflow-stepper button'),
+  ];
   if (busy) {
     disabledControlState.clear();
     controls.forEach((control) => {
@@ -212,7 +249,7 @@ function setGenerationBusy(busy: boolean): void {
   cancelGenerationBtn.hidden = !busy;
   cancelGenerationBtn.disabled = !busy;
   statusEl.setAttribute('aria-busy', String(busy));
-  controlPanel.setAttribute('aria-busy', String(busy));
+  workflowShell.setAttribute('aria-busy', String(busy));
   photoWorkflow.setExternalBusy(busy);
 }
 
@@ -425,6 +462,7 @@ function textNodeElement(text: string): HTMLElement {
 }
 
 const photoWorkflow = new PhotoWorkflow(setStatus);
+let guidedWorkflow: GuidedWorkflow | null = null;
 let discoveredOsmCandidates: OsmPhotoCandidate[] = [];
 let selectedOsmCandidateIds = new Set<string>();
 let osmCandidateRouteKey = '';
@@ -459,6 +497,7 @@ waypointTextarea.addEventListener('input', () => {
     } catch {
       setStatus('Route changed: photo analysis is waiting for a valid route.', 'warning');
     }
+    updateWorkflowReadiness();
   }, 300);
 });
 
@@ -664,8 +703,10 @@ function renderControlPhotoReview(): void {
     ];
     for (const [role, target] of options) {
       if (!target) continue;
+      const option = document.createElement('div');
+      option.className = 'control-photo-option';
       const label = document.createElement('label');
-      label.className = 'control-photo-option';
+      label.className = 'control-photo-choice';
       const choice = document.createElement('input');
       choice.type = 'radio';
       choice.name = `control-photo-${waypointName}`;
@@ -686,13 +727,22 @@ function renderControlPhotoReview(): void {
       preview.loading = 'lazy';
       preview.src = orthophotoRequestUrl(target.latitude, target.longitude, coverage, 800);
       label.append(choice, title, metrics, preview);
-      row.appendChild(label);
+      const technical = document.createElement('details');
+      technical.className = 'candidate-technical-details';
+      const technicalSummary = document.createElement('summary');
+      technicalSummary.textContent = 'OSM reference details';
+      const technicalCopy = document.createElement('p');
+      technicalCopy.textContent = `${target.source.provider} ${target.source.elementId} · ${target.source.category} / ${target.source.featureType} · score ${target.source.score} · ${target.source.attribution}`;
+      technical.append(technicalSummary, technicalCopy);
+      option.append(label, technical);
+      row.appendChild(option);
     }
     fragment.appendChild(row);
   }
   controlPhotoList.replaceChildren(fragment);
   controlPhotoReview.hidden = false;
   importControlPhotos.disabled = controlPhotoProposals.length === 0 || osmDiscoveryBusy;
+  updateWorkflowReadiness();
 }
 
 function finishOsmDiscoveryProgress(candidateCount: number, warnings: string[]): void {
@@ -783,8 +833,10 @@ function renderOsmCandidateReview(): void {
   importOsmCandidates.disabled = osmDiscoveryBusy || selected.length === 0 || exceedsImportCapacity;
   const fragment = document.createDocumentFragment();
   for (const candidate of discoveredOsmCandidates) {
-    const row = document.createElement('label');
+    const row = document.createElement('article');
     row.className = 'osm-candidate';
+    const choice = document.createElement('label');
+    choice.className = 'osm-candidate-choice';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = selectedOsmCandidateIds.has(candidate.id);
@@ -793,18 +845,27 @@ function renderOsmCandidateReview(): void {
     copy.className = 'osm-candidate-copy';
     const title = document.createElement('strong');
     title.textContent = candidate.name;
-    const metrics = document.createElement('span');
-    metrics.textContent = `${candidate.featureType} · ${candidate.routeLegName} · ${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint}`;
-    copy.append(title, metrics);
+    const context = document.createElement('span');
+    context.textContent = `${candidate.featureType} · ${candidate.routeLegName}`;
+    copy.append(title, context);
     const confidence = document.createElement('span');
     confidence.className = 'osm-confidence';
     confidence.dataset.confidence = candidate.confidence;
     confidence.textContent = `heuristic ${candidate.confidence} ${candidate.score}`;
-    row.append(checkbox, copy, confidence);
+    choice.append(checkbox, copy, confidence);
+    const technical = document.createElement('details');
+    technical.className = 'candidate-technical-details';
+    const technicalSummary = document.createElement('summary');
+    technicalSummary.textContent = 'Route and OSM details';
+    const technicalCopy = document.createElement('p');
+    technicalCopy.textContent = `${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint} · ${candidate.source.elementId} · ${candidate.source.attribution}`;
+    technical.append(technicalSummary, technicalCopy);
+    row.append(choice, technical);
     fragment.appendChild(row);
   }
   osmCandidateList.replaceChildren(fragment);
   osmCandidateReview.hidden = false;
+  updateWorkflowReadiness();
 }
 
 function chooseOsmCandidateProposal(): void {
@@ -1078,6 +1139,7 @@ controlPhotoList.addEventListener('change', (event) => {
   if (!waypoint || (choice.value !== 'true' && choice.value !== 'false')) return;
   selectedControlPhotoRoles.set(waypoint, choice.value);
   renderControlPhotoReview();
+  updateWorkflowReadiness();
   controlPhotoList
     .querySelector<HTMLInputElement>(
       `input[data-control-waypoint="${CSS.escape(waypoint)}"][value="${choice.value}"]`
@@ -1607,6 +1669,262 @@ function parseWaypoints(raw: string): Array<[string, number, number]> {
   return points;
 }
 
+function positiveInputValue(input: HTMLInputElement, label: string): number {
+  const value = Number(input.value);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${label} must be a positive number.`);
+  return value;
+}
+
+function routeSetupProblem(): string | null {
+  try {
+    parseWaypoints(waypointTextarea.value);
+    parseSpeed(speedInput.value);
+    positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
+    positiveInputValue(minuteIntervalInput, 'Minute-marker interval');
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function setFieldValidation(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  message: HTMLElement,
+  validate: () => void
+): string | null {
+  try {
+    validate();
+    message.textContent = '';
+    input.removeAttribute('aria-invalid');
+    return null;
+  } catch (error) {
+    const problem = error instanceof Error ? error.message : String(error);
+    message.textContent = problem;
+    input.setAttribute('aria-invalid', 'true');
+    return problem;
+  }
+}
+
+function readinessTone(target: HTMLElement, tone: 'ok' | 'warning' | 'fail'): void {
+  target.parentElement?.setAttribute('data-tone', tone);
+}
+
+function appendFindingGroup(
+  parent: DocumentFragment,
+  title: string,
+  tone: 'blocking' | 'violation' | 'warning' | 'manual' | 'info',
+  findings: string[]
+): void {
+  const section = document.createElement('details');
+  section.className = 'finding-group';
+  section.dataset.tone = tone;
+  section.open = tone === 'blocking' || tone === 'violation';
+  const summary = document.createElement('summary');
+  summary.textContent = `${title} (${findings.length})`;
+  const list = document.createElement('ul');
+  const entries = findings.length ? findings : ['None.'];
+  for (const finding of entries) {
+    const item = document.createElement('li');
+    item.textContent = finding;
+    list.appendChild(item);
+  }
+  section.append(summary, list);
+  parent.appendChild(section);
+}
+
+function updateWorkflowReadiness(): void {
+  const blocking: string[] = [];
+  const violations: string[] = [];
+  const warnings: string[] = [];
+  const manual: string[] = [];
+  const information: string[] = [];
+  let points: Array<[string, number, number]> = [];
+  let routeLegCount = 0;
+  let coveredLegCount = 0;
+  let beforeCount = 0;
+  let afterCount = 0;
+  let routeViolationCount = 0;
+  let routeManualCount = 0;
+  const fieldProblems = [
+    setFieldValidation(waypointTextarea, routeSetupError, () => {
+      parseWaypoints(waypointTextarea.value);
+    }),
+    setFieldValidation(speedInput, speedError, () => {
+      parseSpeed(speedInput.value);
+    }),
+    setFieldValidation(takeoffBufferInput, takeoffBufferError, () => {
+      positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
+    }),
+    setFieldValidation(minuteIntervalInput, minuteIntervalError, () => {
+      positiveInputValue(minuteIntervalInput, 'Minute-marker interval');
+    }),
+  ];
+  const setupProblem = fieldProblems.find((problem) => problem !== null) ?? null;
+
+  if (setupProblem) {
+    blocking.push(setupProblem);
+    routeControlSummary.textContent = 'Invalid route';
+    routeLegSummary.textContent = '—';
+    routeDistanceSummary.textContent = '—';
+    routeDurationSummary.textContent = '—';
+    readinessRoute.textContent = 'Needs correction';
+    readinessTone(readinessRoute, 'fail');
+  } else {
+    points = parseWaypoints(waypointTextarea.value);
+    const route = buildRoute(points);
+    const speed = parseSpeed(speedInput.value);
+    const takeoffMinutes = positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
+    const routeDuration = takeoffMinutes + route.totalDistance / (speed.metersPerSecond * 60);
+    const tpCount = points.filter(([name]) => /^TP\d+$/i.test(name.trim())).length;
+    routeLegCount = route.legs.length;
+    routeControlSummary.textContent = `SP · ${tpCount} TP · FP`;
+    routeLegSummary.textContent = String(routeLegCount);
+    routeDistanceSummary.textContent = `${metersToNauticalMiles(route.totalDistance).toFixed(1)} NM`;
+    routeDurationSummary.textContent = `${routeDuration.toFixed(1)} min`;
+    readinessRoute.textContent = `${points.length} controls · ${routeLegCount} legs`;
+    readinessTone(readinessRoute, 'ok');
+    const preset = getPreset();
+    const compliance = evaluateRouteCompliance(route, points, speed, preset?.scaleDenominator ?? null);
+    routeViolationCount = compliance.violations.length;
+    routeManualCount = compliance.manualChecks.length;
+    violations.push(
+      ...compliance.violations.map((finding) => `${finding.rule} · ${finding.title}: ${finding.message}`)
+    );
+    manual.push(...compliance.manualChecks.map((finding) => `${finding.rule}: ${finding.message}`));
+    information.push(
+      `${compliance.checks.length - compliance.violations.length} automated route checks passed.`
+    );
+  }
+
+  const enroutePhotos = photoWorkflow.records.filter((record) => record.classification === 'enroute');
+  const pendingOsmTargets = selectedOsmCandidates();
+  const plannedEnrouteCount = enroutePhotos.length + pendingOsmTargets.length;
+  const controlPhotos = photoWorkflow.records.filter(
+    (record) => record.classification === 'control-correct' || record.classification === 'control-false'
+  );
+  const coveredLegs = new Set(
+    enroutePhotos
+      .map((record) => record.analysis?.legIndex)
+      .filter((legIndex): legIndex is number => legIndex !== undefined)
+  );
+  coveredLegCount = coveredLegs.size;
+  const plannedCoveredLegs = new Set([
+    ...coveredLegs,
+    ...pendingOsmTargets.map((candidate) => candidate.routeLegIndex),
+  ]);
+  const splitAfterM = (() => {
+    try {
+      return photoWorkflow.handoutOptions.splitAfterM;
+    } catch {
+      return null;
+    }
+  })();
+  const positionedEnroute = enroutePhotos.filter((record) => record.analysis !== null);
+  beforeCount = positionedEnroute.filter(
+    (record) => splitAfterM !== null && (record.analysis?.alongRouteM ?? 0) <= splitAfterM
+  ).length;
+  afterCount = positionedEnroute.filter(
+    (record) => splitAfterM !== null && (record.analysis?.alongRouteM ?? 0) > splitAfterM
+  ).length;
+  const pendingBeforeCount = pendingOsmTargets.filter(
+    (candidate) => splitAfterM !== null && (candidate.alongRouteM ?? 0) <= splitAfterM
+  ).length;
+  const pendingAfterCount = pendingOsmTargets.filter(
+    (candidate) => splitAfterM !== null && (candidate.alongRouteM ?? 0) > splitAfterM
+  ).length;
+  const expectedControlNames = new Set(points.map(([name]) => name.toUpperCase()));
+  const importedControlNames = new Set(
+    controlPhotos.map((record) => record.linkedWaypoint?.toUpperCase()).filter(Boolean)
+  );
+  const importedControlCount = [...expectedControlNames].filter((name) =>
+    importedControlNames.has(name)
+  ).length;
+  const proposedControlCount = [...expectedControlNames].filter((name) =>
+    selectedControlPhotoRoles.has(name)
+  ).length;
+
+  selectedPhotoCount.textContent = String(plannedEnrouteCount);
+  photoLegCoverage.textContent = `${plannedCoveredLegs.size} / ${routeLegCount}`;
+  photoSplitBalance.textContent = `${beforeCount + pendingBeforeCount} / ${afterCount + pendingAfterCount}`;
+  competitionPreparationBadge.textContent = `${enroutePhotos.length} competition photo${enroutePhotos.length === 1 ? '' : 's'}`;
+  controlPreparationBadge.textContent =
+    importedControlCount === expectedControlNames.size && expectedControlNames.size > 0
+      ? `${importedControlCount} imported`
+      : proposedControlCount > 0
+        ? `${proposedControlCount} of ${expectedControlNames.size} choices ready`
+        : 'Not prepared';
+  const coverageMessages: string[] = [];
+  if (enroutePhotos.length > 12) coverageMessages.push(`${enroutePhotos.length} exceeds the 12-photo limit.`);
+  if (enroutePhotos.length > 0 && coveredLegCount < routeLegCount) {
+    coverageMessages.push(`${routeLegCount - coveredLegCount} route leg(s) have no competition photo.`);
+  }
+  if (enroutePhotos.length > 0 && (beforeCount === 0 || afterCount === 0)) {
+    coverageMessages.push('The selected split must leave photos in both route parts.');
+  }
+  photoCoverageWarning.textContent = coverageMessages.join(' ');
+
+  readinessCount.textContent = `${enroutePhotos.length} / 12`;
+  readinessTone(readinessCount, enroutePhotos.length > 12 ? 'fail' : 'ok');
+  readinessCoverage.textContent = `${coveredLegCount} / ${routeLegCount} legs`;
+  readinessTone(
+    readinessCoverage,
+    enroutePhotos.length > 0 && coveredLegCount < routeLegCount ? 'warning' : 'ok'
+  );
+  readinessSplit.textContent = `${beforeCount} before / ${afterCount} after`;
+  readinessTone(readinessSplit, enroutePhotos.length > 0 && (!beforeCount || !afterCount) ? 'warning' : 'ok');
+  readinessControls.textContent = `${importedControlCount} / ${expectedControlNames.size}`;
+  readinessTone(
+    readinessControls,
+    importedControlCount === expectedControlNames.size && expectedControlNames.size > 0 ? 'ok' : 'warning'
+  );
+
+  for (const record of photoWorkflow.records) {
+    if (record.importError) blocking.push(`${record.fileName}: ${record.importError}`);
+  }
+  for (const finding of photoWorkflow.compliance.findings) {
+    if (finding.severity === 'pass') continue;
+    const text = `${finding.rule} · ${finding.affected}: ${finding.measured}; permitted ${finding.permitted}.`;
+    if (finding.severity === 'violation') violations.push(text);
+    else if (findingPresentation(finding) === 'primary') warnings.push(text);
+    else manual.push(text);
+  }
+  const acceptedExceptions = photoWorkflow.records.filter((record) => record.exceptionAccepted).length;
+  const automatedViolationCount = routeViolationCount + photoWorkflow.compliance.violationCount;
+  const manualCount = routeManualCount + manual.length;
+  readinessRules.textContent = automatedViolationCount
+    ? `${automatedViolationCount} violation(s)`
+    : 'No violations';
+  readinessTone(readinessRules, automatedViolationCount ? 'fail' : 'ok');
+  readinessManual.textContent = `${manualCount} to review`;
+  readinessTone(readinessManual, manualCount ? 'warning' : 'ok');
+  readinessExceptions.textContent = String(acceptedExceptions);
+  readinessTone(readinessExceptions, acceptedExceptions ? 'warning' : 'ok');
+  routeOnlyNote.hidden = photoWorkflow.records.length > 0;
+
+  const fragment = document.createDocumentFragment();
+  appendFindingGroup(fragment, 'Blocking problems', 'blocking', blocking);
+  appendFindingGroup(fragment, 'Against-rules findings', 'violation', violations);
+  appendFindingGroup(fragment, 'Warnings', 'warning', warnings);
+  appendFindingGroup(fragment, 'Manual review', 'manual', manual);
+  appendFindingGroup(fragment, 'Information', 'info', information);
+  workflowFindingGroups.replaceChildren(fragment);
+
+  guidedWorkflow?.setStepSummary(
+    1,
+    setupProblem ? 'Route needs correction' : `${routeLegCount} legs · ${routeDistanceSummary.textContent}`
+  );
+  guidedWorkflow?.setStepSummary(
+    2,
+    `${importedControlCount}/${expectedControlNames.size} controls · ${enroutePhotos.length} competition photos`
+  );
+  guidedWorkflow?.setStepSummary(
+    3,
+    blocking.length || violations.length
+      ? `${blocking.length + violations.length} issue(s) need attention`
+      : `${manualCount} manual check(s) remain`
+  );
+}
+
 function parseOrthophotoTargets(raw: string): OrthophotoTarget[] {
   const targets = parseCoordinateRows(raw)
     .filter(([name]) => isPhotoCoordinateName(name))
@@ -1985,6 +2303,15 @@ async function generate() {
     setStatus('Wait for the current photo import to finish before generating.', 'warning');
     return;
   }
+  const setupProblem = routeSetupProblem();
+  if (setupProblem) {
+    updateWorkflowReadiness();
+    guidedWorkflow?.activate(1);
+    setStatus(`Error: ${setupProblem}`, 'error');
+    return;
+  }
+  guidedWorkflow?.markComplete(3);
+  guidedWorkflow?.activate(4);
   const controller = new AbortController();
   generationController = controller;
   const runMapKey = selectedMapKey;
@@ -3005,92 +3332,98 @@ async function generate() {
     syncResultsVisibility();
     controller.signal.throwIfAborted();
 
-    const analysisCsv = photoAnalysisCsv(generationPhotos);
-    const overlayKeyCsv = photoOverlayKeyCsv(generationPhotos);
-    setDownloadUrl(
-      'photoAnalysis',
-      URL.createObjectURL(new Blob([analysisCsv], { type: 'text/csv;charset=utf-8' })),
-      'photo_analysis.csv',
-      downloadPhotoAnalysisLink
-    );
-    setDownloadUrl(
-      'photoKey',
-      URL.createObjectURL(new Blob([overlayKeyCsv], { type: 'text/csv;charset=utf-8' })),
-      'photo_overlay_key.csv',
-      downloadPhotoKeyLink
-    );
-    downloadPhotoAnalysisLink.style.display = 'inline-flex';
-    downloadPhotoKeyLink.style.display = 'inline-flex';
-    setArtifactState('data', 'ok', 'CSV files ready; summary pending');
+    if (generationPhotos.length === 0) {
+      setArtifactState('data', 'processing', 'summary pending; photo CSV files omitted');
+      setArtifactState('handout', 'manual-review', 'omitted for route-only package');
+      setArtifactState('competitorHandout', 'manual-review', 'omitted for route-only package');
+    } else {
+      const analysisCsv = photoAnalysisCsv(generationPhotos);
+      const overlayKeyCsv = photoOverlayKeyCsv(generationPhotos);
+      setDownloadUrl(
+        'photoAnalysis',
+        URL.createObjectURL(new Blob([analysisCsv], { type: 'text/csv;charset=utf-8' })),
+        'photo_analysis.csv',
+        downloadPhotoAnalysisLink
+      );
+      setDownloadUrl(
+        'photoKey',
+        URL.createObjectURL(new Blob([overlayKeyCsv], { type: 'text/csv;charset=utf-8' })),
+        'photo_overlay_key.csv',
+        downloadPhotoKeyLink
+      );
+      downloadPhotoAnalysisLink.style.display = 'inline-flex';
+      downloadPhotoKeyLink.style.display = 'inline-flex';
+      setArtifactState('data', 'ok', 'CSV files ready; summary pending');
 
-    setArtifactState('handout', 'processing', 'preparing photos');
-    setArtifactState('competitorHandout', 'processing', 'preparing photos');
-    try {
-      setStatus(
-        `Preparing ${judgePhotos.length} accepted photo${judgePhotos.length === 1 ? '' : 's'} for the judge and competitor handouts...`
-      );
-      const handoutPhotos = [];
-      for (const record of judgePhotos) {
-        controller.signal.throwIfAborted();
-        handoutPhotos.push({
-          record,
-          jpeg: await preparePhotoJpeg(record.file, record.metadata.orientation.value ?? 1, 1600),
-        });
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      }
-      const handoutFontBytes = await loadAssetBytes(
-        notoSansBoldUrl,
-        'the photo handout font',
-        controller.signal
-      );
-      const { buildCompetitorPhotoHandout, buildPhotoHandout } = await import('./photo-handout');
+      setArtifactState('handout', 'processing', 'preparing photos');
+      setArtifactState('competitorHandout', 'processing', 'preparing photos');
       try {
-        const handoutBytes = await buildPhotoHandout(
-          handoutPhotos,
-          judgePhotoCompliance,
-          handoutFontBytes,
-          handoutOptions
+        setStatus(
+          `Preparing ${judgePhotos.length} accepted photo${judgePhotos.length === 1 ? '' : 's'} for the judge and competitor handouts...`
         );
-        setDownloadUrl(
-          'photoHandout',
-          createPdfObjectUrl(handoutBytes),
-          'judge_photo_handout.pdf',
-          downloadPhotoHandoutLink
+        const handoutPhotos = [];
+        for (const record of judgePhotos) {
+          controller.signal.throwIfAborted();
+          handoutPhotos.push({
+            record,
+            jpeg: await preparePhotoJpeg(record.file, record.metadata.orientation.value ?? 1, 1600),
+          });
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+        const handoutFontBytes = await loadAssetBytes(
+          notoSansBoldUrl,
+          'the photo handout font',
+          controller.signal
         );
-        downloadPhotoHandoutLink.style.display = 'inline-flex';
-        setArtifactState('handout', 'ok', 'PDF ready');
+        const { buildCompetitorPhotoHandout, buildPhotoHandout } = await import('./photo-handout');
+        try {
+          const handoutBytes = await buildPhotoHandout(
+            handoutPhotos,
+            judgePhotoCompliance,
+            handoutFontBytes,
+            handoutOptions
+          );
+          setDownloadUrl(
+            'photoHandout',
+            createPdfObjectUrl(handoutBytes),
+            'judge_photo_handout.pdf',
+            downloadPhotoHandoutLink
+          );
+          downloadPhotoHandoutLink.style.display = 'inline-flex';
+          setArtifactState('handout', 'ok', 'PDF ready');
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          artifactFailures.push(`judge photo handout: ${message}`);
+          setArtifactState('handout', 'failed', message);
+        }
+        try {
+          const competitorHandoutBytes = await buildCompetitorPhotoHandout(
+            handoutPhotos,
+            handoutFontBytes,
+            handoutOptions
+          );
+          setDownloadUrl(
+            'competitorPhotoHandout',
+            createPdfObjectUrl(competitorHandoutBytes),
+            'competitor_photo_handout.pdf',
+            downloadCompetitorPhotoHandoutLink
+          );
+          downloadCompetitorPhotoHandoutLink.style.display = 'inline-flex';
+          setArtifactState('competitorHandout', 'ok', 'PDF ready');
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          artifactFailures.push(`competitor photo handout: ${message}`);
+          setArtifactState('competitorHandout', 'failed', message);
+        }
       } catch (error) {
         if (controller.signal.aborted) throw error;
         const message = error instanceof Error ? error.message : String(error);
-        artifactFailures.push(`judge photo handout: ${message}`);
+        artifactFailures.push(`photo handouts: ${message}`);
         setArtifactState('handout', 'failed', message);
-      }
-      try {
-        const competitorHandoutBytes = await buildCompetitorPhotoHandout(
-          handoutPhotos,
-          handoutFontBytes,
-          handoutOptions
-        );
-        setDownloadUrl(
-          'competitorPhotoHandout',
-          createPdfObjectUrl(competitorHandoutBytes),
-          'competitor_photo_handout.pdf',
-          downloadCompetitorPhotoHandoutLink
-        );
-        downloadCompetitorPhotoHandoutLink.style.display = 'inline-flex';
-        setArtifactState('competitorHandout', 'ok', 'PDF ready');
-      } catch (error) {
-        if (controller.signal.aborted) throw error;
-        const message = error instanceof Error ? error.message : String(error);
-        artifactFailures.push(`competitor photo handout: ${message}`);
         setArtifactState('competitorHandout', 'failed', message);
       }
-    } catch (error) {
-      if (controller.signal.aborted) throw error;
-      const message = error instanceof Error ? error.message : String(error);
-      artifactFailures.push(`photo handouts: ${message}`);
-      setArtifactState('handout', 'failed', message);
-      setArtifactState('competitorHandout', 'failed', message);
     }
 
     const summary = {
@@ -3140,7 +3473,11 @@ async function generate() {
       downloadSummaryLink
     );
     downloadSummaryLink.style.display = 'inline-flex';
-    setArtifactState('data', 'ok', 'CSV and JSON ready');
+    setArtifactState(
+      'data',
+      'ok',
+      generationPhotos.length ? 'CSV and JSON ready' : 'summary JSON ready; photo CSV files omitted'
+    );
 
     if (outputsSection) {
       outputsSection.hidden = false;
@@ -3197,6 +3534,12 @@ async function generate() {
             : 'Generated: OK for automated checks. Complete the listed manual judge checks.',
       generatedStatus === 'ok' && artifactFailures.length === 0 ? 'success' : 'warning'
     );
+    guidedWorkflow?.setStepSummary(
+      4,
+      artifactFailures.length
+        ? `Generated with ${artifactFailures.length} partial failure(s)`
+        : 'Package ready'
+    );
   } catch (err) {
     console.error(err);
     const cancelled = controller.signal.aborted;
@@ -3205,6 +3548,7 @@ async function generate() {
         ? 'Generation cancelled. Any completed downloads remain available.'
         : `Error: ${err instanceof Error ? err.message : String(err)}`
     );
+    guidedWorkflow?.setStepSummary(4, cancelled ? 'Generation cancelled' : 'Generation failed');
     if (!outputsSection || outputsSection.hidden) resultsContent.hidden = true;
     if (resultsPlaceholder && !hasGeneratedOnce) {
       resultsPlaceholder.hidden = false;
@@ -3261,9 +3605,13 @@ locationsList.addEventListener('click', (e) => {
 mapPresetButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     handleMapPresetChange(btn.dataset.mapKey);
+    updateWorkflowReadiness();
   });
 });
-osmThirdPartyConsent.addEventListener('change', () => updateMapInputsVisibility());
+osmThirdPartyConsent.addEventListener('change', () => {
+  updateMapInputsVisibility();
+  updateWorkflowReadiness();
+});
 
 window.addEventListener('beforeunload', () => {
   Object.values(downloadUrls).forEach((url) => {
@@ -3277,6 +3625,26 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Initial UI state setup
+guidedWorkflow = new GuidedWorkflow({
+  canEnter: (stage: WorkflowStage) => (stage > 1 ? routeSetupProblem() : null),
+  onBlocked: (message) => {
+    updateWorkflowReadiness();
+    setStatus(`Error: ${message}`, 'error');
+    waypointTextarea.focus();
+  },
+  onStageChange: (stage) => {
+    if (stage === 3 && !routeSetupProblem()) {
+      photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));
+    }
+    updateWorkflowReadiness();
+  },
+});
+for (const input of [speedInput, takeoffBufferInput, minuteIntervalInput]) {
+  input.addEventListener('input', updateWorkflowReadiness);
+}
+handoutSplit.addEventListener('change', updateWorkflowReadiness);
+document.addEventListener('photo-workflow-change', updateWorkflowReadiness);
 setStatus('');
 handleMapPresetChange(selectedMapKey);
 photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));
+updateWorkflowReadiness();

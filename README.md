@@ -29,7 +29,13 @@ The production page is the single root [`index.html`](./index.html). GitHub Page
 - Per-artifact progress, cancellation, and partial-success handling so an optional handout/preview failure does not discard maps
 - `photo_analysis.csv`, `photo_overlay_key.csv`, photo-aware `route_summary.json`, an accepted-photo-only judge handout, and a minimal competitor photo handout
 - An opt-in 29-photo historical TVN 2025 example recovered from the original workflow
-- Wide review workspace with compact route controls, multi-column photo cards, a persistent generation bar, and responsive result panels
+- Four-stage guided workspace with compact completed-step summaries, control-photo-first preparation, consolidated readiness review, and audience-grouped downloads
+
+## Preparation workflow
+
+The page guides organizers through four non-destructive stages: **Route setup**, **Photo preparation**, **Review and validate**, and **Generate package**. Only one stage is expanded at a time, but the step bar can return to any earlier stage without clearing inputs, imported photos, OSM discoveries, or DOF025 choices.
+
+Route setup validates waypoint and timing inputs and shows live control, leg, distance, and duration totals. Photo preparation handles SP/TP/FP control photos before the separate competition-photo set; uploads, OSM discovery, and explicit `PHOTO_` coordinates are presented as alternative sources. Review consolidates route, coverage, split, rule, manual-review, and exception status while keeping detailed photo corrections collapsed. Generation groups completed files for judges and competitors and preserves successful artifacts when an optional output fails. A route with no photos can still be generated; photo handouts and photo-only CSV files are omitted from that package.
 
 ## Development
 
@@ -61,6 +67,7 @@ src/photo-metadata.ts   EXIF normalization and metadata provenance
 src/photo-analysis.ts   Pure route/photo geographic calculations
 src/photo-compliance.ts Photo-task judging-rule checks
 src/photo-workflow.ts   Import, editing, ordering, and UI state
+src/workflow.ts         Four-stage navigation and photo-source tabs
 src/photo-output.ts     CSV and JSON schemas
 src/photo-image.ts      EXIF orientation correction
 src/photo-handout.ts    Browser-generated A4 handout

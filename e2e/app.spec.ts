@@ -31,12 +31,19 @@ async function expectSummarySchemas(summary): Promise<void> {
   expect(validatePhotos(summary.photos), JSON.stringify(validatePhotos.errors)).toBe(true);
 }
 
-async function expectStructuredDownloads(page): Promise<void> {
+async function expectStructuredDownloads(page, expectPhotoCsv = true): Promise<void> {
   const summary = JSON.parse((await downloadBytes(page, '#downloadSummary')).toString());
   await expectSummarySchemas(summary);
-  const header = (await downloadBytes(page, '#downloadPhotoAnalysis')).toString().split(/\r?\n/, 1)[0];
-  expect(header).toContain('identifier,file_name,classification');
-  expect(header).toContain('task_latitude');
+  if (expectPhotoCsv) {
+    const header = (await downloadBytes(page, '#downloadPhotoAnalysis')).toString().split(/\r?\n/, 1)[0];
+    expect(header).toContain('identifier,file_name,classification');
+    expect(header).toContain('task_latitude');
+  }
+}
+
+async function goToStage(page, stage: 1 | 2 | 3 | 4): Promise<void> {
+  await page.locator(`[data-workflow-step="${stage}"]`).click();
+  await expect(page.locator(`[data-workflow-stage="${stage}"]`)).toBeVisible();
 }
 
 function stripApp1Segments(jpeg: Buffer): Buffer {
@@ -113,11 +120,15 @@ function withExifOrientation(jpeg: Buffer, orientation: number): Buffer {
 async function generateAndVerify(page, mapKey: 'vfr' | 'p250', browserName: string): Promise<void> {
   await page.goto('/');
   if (mapKey !== 'vfr') await page.locator(`[data-map-key="${mapKey}"]`).click();
+  await goToStage(page, 3);
   const started = Date.now();
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
   await expect(page.locator('#status')).toContainText('Generated');
   expect(Date.now() - started).toBeLessThan(60_000);
+  await expect(page.locator('#workflowStage4')).toBeVisible();
+  await expect(page.locator('#outputs').getByRole('heading', { name: 'Judge' })).toBeVisible();
+  await expect(page.locator('#outputs').getByRole('heading', { name: 'Competitor' })).toBeVisible();
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="overlay"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('[data-artifact="crop"]')).toHaveAttribute('data-state', 'ok');
@@ -131,7 +142,9 @@ async function generateAndVerify(page, mapKey: 'vfr' | 'p250', browserName: stri
   await expectPdfBlob(page, '#downloadPdf');
   await expectPdfBlob(page, '#downloadOverlay');
   await expectPdfBlob(page, '#downloadCropped');
-  await expectStructuredDownloads(page);
+  await expectStructuredDownloads(page, false);
+  await expect(page.locator('#downloadPhotoAnalysis')).toBeHidden();
+  await expect(page.locator('[data-artifact="handout"]')).toContainText('omitted');
   if (browserName === 'chromium') {
     const heapBytes = await page.evaluate(() =>
       'memory' in performance
@@ -151,14 +164,46 @@ test('P250 generation completes with bounded preview and valid PDFs', async ({ p
   await generateAndVerify(page, 'p250', browserName);
 });
 
+test('guided workflow shows one stage, keeps state, and puts control photos first', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.workflow-stage:visible')).toHaveCount(1);
+  await expect(page.locator('#workflowStage1')).toBeVisible();
+  await page.locator('#speed').fill('80kt');
+  await page.locator('#waypoints').fill('SP,46.6,16.0\nTP1,46.55,16.1\nFP,46.5,16.2');
+  await page.locator('#routeContinue').click();
+  await expect(page.locator('.workflow-stage:visible')).toHaveCount(1);
+  await expect(page.locator('#workflowStage2')).toBeVisible();
+  await expect(page.locator('[data-workflow-step="1"]')).toHaveAttribute('data-state', 'complete');
+  const controlComesFirst = await page.evaluate(() => {
+    const control = document.querySelector('#controlPreparationTitle');
+    const competition = document.querySelector('#competitionPreparationTitle');
+    return Boolean(control?.compareDocumentPosition(competition) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(controlComesFirst).toBe(true);
+  await goToStage(page, 1);
+  await expect(page.locator('#speed')).toHaveValue('80kt');
+  await expect(page.locator('#waypoints')).toHaveValue(/TP1,46\.55,16\.1/);
+});
+
+test('invalid route blocks forward progress and identifies the route field', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#waypoints').fill('SP,46.6,16.0');
+  await page.locator('#routeContinue').click();
+  await expect(page.locator('#workflowStage1')).toBeVisible();
+  await expect(page.locator('#waypoints')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#routeSetupError')).toContainText('At least two waypoints');
+});
+
 test('corrupt JPEG remains an actionable item instead of crashing generation', async ({ page }) => {
   await page.goto('/');
+  await goToStage(page, 2);
   await page.locator('#photoFiles').setInputFiles({
     name: 'broken.jpg',
     mimeType: 'image/jpeg',
     buffer: Buffer.from('not a jpeg'),
   });
   await expect(page.locator('#photoProgressText')).toContainText('1 of 1 photos imported');
+  await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toContainText('Metadata error');
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
@@ -174,6 +219,7 @@ test('OSM requires explicit third-party tile consent', async ({ page }) => {
   await page.locator('[data-map-key="osm"]').click();
   await expect(page.locator('[data-map-key="osm"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#osmThirdPartyConsent')).not.toBeChecked();
+  await goToStage(page, 3);
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toContainText('Consent to third-party OpenStreetMap');
 });
@@ -216,6 +262,8 @@ test('OSM-selected DOF025 route photo is reviewed, fetched, and retained as a PH
     await route.fulfill({ status: 200, contentType: 'image/jpeg', body });
   });
   await page.goto('/');
+  await goToStage(page, 2);
+  await page.locator('[data-photo-source-tab="osm"]').click();
   await page.locator('#orthophotoRandomCount').fill('1');
   await page.locator('#addRandomOrthophotos').click();
   await expect(page.locator('#osmDiscoveryProgress')).toBeVisible();
@@ -247,6 +295,7 @@ test('OSM-selected DOF025 route photo is reviewed, fetched, and retained as a PH
   await page.locator('#importOsmCandidates').click();
 
   await expect(page.locator('#photoProgressText')).toContainText('2 of 2 DOF025 crops imported');
+  await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(2);
   await expect(page.locator('.photo-card').first()).toContainText('GURS DOF025 crop');
   await expect(page.locator('.photo-card').filter({ hasText: 'OSM target: Test bridge' })).toHaveCount(1);
@@ -306,6 +355,7 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   });
   await page.goto('/');
   await page.locator('#waypoints').fill('SP,46.6,16.0\nTP1,46.6,16.1\nFP,46.6,16.2');
+  await goToStage(page, 2);
   await page.locator('#findControlPhotoOptions').click();
   await expect(page.locator('#controlPhotoReview')).toBeVisible();
   await expect(page.locator('.control-photo-row')).toHaveCount(3);
@@ -316,6 +366,7 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await page.locator('input[data-control-waypoint="TP1"][value="false"]').check();
   await page.locator('#importControlPhotos').click();
   await expect(page.locator('#photoProgressText')).toContainText('3 of 3 DOF025 crops imported');
+  await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(3);
   await expect(page.locator('.photo-card').nth(0)).toContainText('Correct control photo');
   await expect(page.locator('.photo-card').nth(0)).toContainText('46.600000_16.000000');
@@ -327,6 +378,7 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
 test('preview failure preserves successful map downloads', async ({ page }) => {
   await page.route('**/maps/previews/**/*.webp', (route) => route.abort());
   await page.goto('/');
+  await goToStage(page, 3);
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
@@ -340,7 +392,9 @@ test('generation is rejected while an import transaction is active', async ({ pa
     await route.continue();
   });
   await page.goto('/');
+  await goToStage(page, 2);
   await page.locator('#loadPhotoExample').click({ noWaitAfter: true });
+  await goToStage(page, 3);
   await expect(page.locator('#photoFiles')).toBeDisabled();
   await expect(page.locator('#loadPhotoExample')).toBeDisabled();
   await page.locator('#generate').click();
@@ -350,6 +404,7 @@ test('generation is rejected while an import transaction is active', async ({ pa
 test('a completed route can be generated repeatedly', async ({ page }) => {
   await page.goto('/');
   for (let run = 0; run < 2; run += 1) {
+    await goToStage(page, 3);
     await page.locator('#generate').click();
     await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
     await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');
@@ -360,6 +415,7 @@ test('a completed route can be generated repeatedly', async ({ page }) => {
 test('generation can be cancelled without starting a second operation', async ({ page }) => {
   await page.goto('/');
   await page.locator('[data-map-key="p250"]').click();
+  await goToStage(page, 3);
   await page.locator('#generate').click();
   await expect(page.locator('#cancelGeneration')).toBeVisible();
   await page.locator('#cancelGeneration').click();
@@ -384,13 +440,26 @@ test('tablet layout does not overflow horizontally', async ({ page }) => {
   await page.goto('/');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await expect(page.locator('#generate')).toBeVisible();
+  await expect(page.locator('#routeContinue')).toBeVisible();
+  await goToStage(page, 2);
   await expect(page.locator('#photoDropzone')).toBeVisible();
+});
+
+test('every workflow stage remains usable at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/');
+  for (const stage of [1, 2, 3, 4] as const) {
+    await goToStage(page, stage);
+    await expect(page.locator(`#workflowStage${stage}`)).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
 });
 
 test('oversized photo is rejected before decoding', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'The shared import-limit path only needs one large allocation.');
   await page.goto('/');
+  await goToStage(page, 2);
   await page.locator('#photoFiles').setInputFiles({
     name: 'oversized.jpg',
     mimeType: 'image/jpeg',
@@ -403,6 +472,7 @@ test('oversized photo is rejected before decoding', async ({ page, browserName }
 
 test('all eight EXIF orientations produce correctly shaped thumbnails', async ({ page }) => {
   await page.goto('/');
+  await goToStage(page, 2);
   const base64 = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 40;
@@ -423,6 +493,7 @@ test('all eight EXIF orientations produce correctly shaped thumbnails', async ({
       buffer: withExifOrientation(base, index + 1),
     }))
   );
+  await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(8);
   const dimensions = await page
     .locator('.photo-thumbnail')
@@ -439,23 +510,26 @@ test('full historical example generates all artifacts', async ({ page, browserNa
   test.skip(browserName !== 'chromium', 'The full 49 MB fixture runs once; map flows are cross-browser.');
   test.setTimeout(180_000);
   await page.goto('/');
+  await page.locator('[data-map-key="p250"]').click();
+  await goToStage(page, 2);
   await page.locator('#loadPhotoExample').click();
   await expect(page.locator('.photo-card')).toHaveCount(29, { timeout: 120_000 });
+  await goToStage(page, 3);
+  await expect(page.locator('.photo-card')).toHaveCount(29);
   const reviewLayout = await page.evaluate(() => ({
-    controlWidth: document.querySelector('.control-panel')?.getBoundingClientRect().width ?? 0,
-    photoWidth: document.querySelector('.photo-panel')?.getBoundingClientRect().width ?? 0,
+    stageWidth: document.querySelector('#workflowStage3')?.getBoundingClientRect().width ?? 0,
+    viewportWidth: window.innerWidth,
     photoColumns: getComputedStyle(document.querySelector('.photo-list') as HTMLElement)
       .gridTemplateColumns.split(' ')
       .filter(Boolean).length,
   }));
-  expect(reviewLayout.photoWidth).toBeGreaterThan(reviewLayout.controlWidth * 2);
+  expect(reviewLayout.stageWidth).toBeGreaterThan(reviewLayout.viewportWidth * 0.7);
   expect(reviewLayout.photoColumns).toBeGreaterThanOrEqual(2);
   await expect(page.locator('.photo-metadata-details').first()).not.toHaveAttribute('open', '');
   const exceptionButton = page.locator('.photo-exception-button:visible').first();
   await expect(exceptionButton).toBeVisible();
   await exceptionButton.click();
   await expect(page.locator('.photo-status[data-tone="accepted"]')).toHaveCount(1);
-  await page.locator('[data-map-key="p250"]').click();
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 120_000 });
   await expect(page.locator('[data-artifact="map"]')).toHaveAttribute('data-state', 'ok');

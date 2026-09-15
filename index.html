@@ -19,116 +19,34 @@
     </div>
   </header>
   <main>
-    <div class="desk-layout">
-      <section class="control-panel">
+    <nav class="workflow-stepper" aria-label="Competition preparation steps">
+      <button type="button" data-workflow-step="1" aria-controls="workflowStage1">
+        <span class="workflow-step-number">1</span><span><strong>Route setup</strong><small id="workflowStep1Summary">Configure the route</small></span>
+      </button>
+      <button type="button" data-workflow-step="2" aria-controls="workflowStage2">
+        <span class="workflow-step-number">2</span><span><strong>Photo preparation</strong><small id="workflowStep2Summary">Add control and competition photos</small></span>
+      </button>
+      <button type="button" data-workflow-step="3" aria-controls="workflowStage3">
+        <span class="workflow-step-number">3</span><span><strong>Review and validate</strong><small id="workflowStep3Summary">Check readiness and exceptions</small></span>
+      </button>
+      <button type="button" data-workflow-step="4" aria-controls="workflowStage4">
+        <span class="workflow-step-number">4</span><span><strong>Generate package</strong><small id="workflowStep4Summary">Create judge and competitor files</small></span>
+      </button>
+    </nav>
+
+    <div class="status workflow-global-status" id="status" role="status" aria-live="polite"></div>
+
+    <div class="workflow-shell" id="workflowShell">
+      <section class="workflow-stage control-panel is-active" id="workflowStage1" data-workflow-stage="1" aria-labelledby="workflowStage1Title">
         <div class="panel-content">
-          <div class="control-group">
-            <h2>1. Map &amp; Flight Parameters</h2>
-            <p class="note" id="mapStatus">Choose a calibrated map preset. All processing stays in your browser.</p>
-            <p class="chart-warning" id="chartWarning" role="status" hidden></p>
-            <div class="map-preset-grid" id="mapPresetGrid">
-              <button type="button" class="preset-card is-selected" data-map-key="vfr">
-                <span class="preset-title">VFR chart Slovenija</span>
-                <span class="preset-meta">Sloveniacontrol.si 2025 VFR Chart</span>
-              </button>
-              <!-- Legacy preset retained for quick reactivation
-              <button type="button" class="preset-card" data-map-key="legacy">
-                <span class="preset-title">1:200k legacy chart</span>
-                <span class="preset-meta">Often used at precision flying
-                competitions</span>
-              </button>
-              -->
-              <button type="button" class="preset-card" data-map-key="p250">
-                <span class="preset-title">1:250k P25004B</span>
-                <span class="preset-meta">S5 competition chart</span>
-              </button>
-              <button type="button" class="preset-card" data-map-key="osm">
-                <span class="preset-title">OpenStreetMap</span>
-                <span class="preset-meta">Interactive OSM map</span>
-              </button>
-            </div>
-            <label class="osm-consent" id="osmConsentRow" hidden>
-              <input id="osmThirdPartyConsent" type="checkbox">
-              Allow third-party OpenStreetMap tile requests. These requests reveal the approximate displayed route area. Leave this off and use a bundled PDF map for local-only map processing.
-            </label>
+          <div class="stage-heading">
+            <div><span class="stage-eyebrow">Step 1 of 4</span><h2 id="workflowStage1Title">Route setup</h2><p>Define the course first. Photos and documents will use this route.</p></div>
           </div>
 
-          <div class="control-group">
-            <h2>2. Timing &amp; Markers</h2>
-            <div class="input-row input-row-compact">
-              <div>
-                <label for="speed">Groundspeed (kt/mph/kmh)</label>
-                <input id="speed" type="text" value="75kt" autocomplete="off" placeholder="e.g. 75kt, 85mph, 140kmh">
-              </div>
-              <div>
-                <label for="minuteInterval">Minute Marker Interval</label>
-                <input id="minuteInterval" type="number" min="1" step="1" value="1" autocomplete="off">
-              </div>
-              <div>
-                <label for="takeoffBuffer">Takeoff to Start (minutes)</label>
-                <input id="takeoffBuffer" type="number" min="0.1" step="0.1" value="4" autocomplete="off">
-              </div>
-            </div>
-            <p class="note">Adjust markers without scrolling; units auto-convert for speed inputs (kt, mph, km/h).</p>
-          </div>
-
-          <details class="control-group collapsible" id="overlayStylingPanel">
-            <summary>3. Overlay Styling</summary>
-            <div class="collapsible-content">
-              <div class="input-row input-row-compact">
-                <div>
-                  <label for="styleRouteWidth">Route Line Width (pt)</label>
-                  <input id="styleRouteWidth" type="number" min="0.1" step="0.1" value="2.5" autocomplete="off">
-                </div>
-                <div>
-                  <label for="styleWaypointFont">Waypoint Label Font (pt)</label>
-                  <input id="styleWaypointFont" type="number" min="1" step="0.5" value="12" autocomplete="off">
-                </div>
-                <div>
-                  <label for="styleHeadingFont">Heading Font (pt)</label>
-                  <input id="styleHeadingFont" type="number" min="1" step="0.5" value="18" autocomplete="off">
-                </div>
-              </div>
-              <div class="input-row input-row-compact">
-                <div>
-                  <label for="styleMinuteLabelFont">Minute Label Font (pt)</label>
-                  <input id="styleMinuteLabelFont" type="number" min="1" step="0.5" value="10" autocomplete="off">
-                </div>
-                <div>
-                  <label for="styleMinuteMarkerSize">Minute Marker Half-Size (pt)</label>
-                  <input id="styleMinuteMarkerSize" type="number" min="0.1" step="0.1" value="7" autocomplete="off">
-                </div>
-                <div>
-                  <label for="styleMinuteLineWidth">Minute Marker Line Width (pt)</label>
-                  <input id="styleMinuteLineWidth" type="number" min="0.1" step="0.1" value="1.2" autocomplete="off">
-                </div>
-              </div>
-              <p class="note">Values are base sizes on the VFR chart; they auto-scale for other presets.</p>
-            </div>
-          </details>
-
-          <div class="control-group">
-            <h2>4. Waypoints</h2>
-            <label for="waypoints">Route (name,lat,lon) or <br>D96/TM (name,easting,northing) per line</label>
-            <div class="waypoint-actions">
-              <button type="button" id="toggleWaypointLibrary" class="btn
-              btn-secondary">Waypoint Database</button>
-              <span class="note" id="waypointLibraryStatus"></span>
-            </div>
-            <section class="waypoint-library" id="waypointLibrary" hidden>
-              <div class="library-controls" id="libraryControls">
-                <input id="locationSearch" type="search" placeholder="Search by name or identifier" />
-                <select id="locationTypeFilter">
-                  <option value="all">All types</option>
-                </select>
-                <select id="locationCountryFilter">
-                  <option value="all">All countries</option>
-                </select>
-                <button type="button" id="addAllFiltered" class="btn btn-secondary">Add All</button>
-              </div>
-              <div class="locations-list" id="locationsList"></div>
-            </section>
-            <textarea id="waypoints">SP,46.600850,16.180022
+          <div class="control-group route-input-group">
+            <h3>Waypoints</h3>
+            <label for="waypoints">One control per line: <code>name,latitude,longitude</code></label>
+            <textarea id="waypoints" aria-describedby="waypointHelp routeSetupError">SP,46.600850,16.180022
 TP1,46.500801,16.155215
 TP2,46.515128,16.008368
 TP3,46.800823,16.036800
@@ -136,55 +54,105 @@ TP4,46.836955,16.308447
 TP5,46.775187,16.202892
 TP6,46.552346,16.430293
 FP,46.608093,16.234769</textarea>
-            <p class="note"><code>PHOTO_name,latitude,longitude</code> rows define DOF025 photo targets and are excluded from route geometry.</p>
+            <p class="field-message" id="routeSetupError" role="alert"></p>
+            <p class="note" id="waypointHelp">Start with SP, list turnpoints in flying order, and finish with FP.</p>
           </div>
+
+          <section class="route-live-summary" aria-labelledby="routeLiveSummaryTitle">
+            <h3 id="routeLiveSummaryTitle">Route at a glance</h3>
+            <div class="readiness-grid route-summary-grid">
+              <div><span>Controls</span><strong id="routeControlSummary">—</strong></div>
+              <div><span>Legs</span><strong id="routeLegSummary">—</strong></div>
+              <div><span>Distance</span><strong id="routeDistanceSummary">—</strong></div>
+              <div><span>Estimated duration</span><strong id="routeDurationSummary">—</strong></div>
+            </div>
+          </section>
+
+          <div class="control-group">
+            <h3>Map</h3>
+            <p class="note" id="mapStatus">Choose a calibrated map preset. All processing stays in your browser.</p>
+            <p class="chart-warning" id="chartWarning" role="status" hidden></p>
+            <div class="map-preset-grid" id="mapPresetGrid">
+              <button type="button" class="preset-card is-selected" data-map-key="vfr"><span class="preset-title">VFR chart Slovenija</span><span class="preset-meta">Sloveniacontrol.si 2025 VFR Chart</span></button>
+              <button type="button" class="preset-card" data-map-key="p250"><span class="preset-title">1:250k P25004B</span><span class="preset-meta">S5 competition chart</span></button>
+              <button type="button" class="preset-card" data-map-key="osm"><span class="preset-title">OpenStreetMap</span><span class="preset-meta">Interactive OSM map</span></button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <h3>Flight timing</h3>
+            <div class="input-row input-row-compact">
+              <div><label for="speed">Groundspeed</label><input id="speed" type="text" value="75kt" autocomplete="off" placeholder="75kt, 85mph or 140kmh" aria-describedby="speedError"><p class="field-message" id="speedError" role="alert"></p></div>
+              <div><label for="takeoffBuffer">Takeoff to SP (minutes)</label><input id="takeoffBuffer" type="number" min="0.1" step="0.1" value="4" autocomplete="off" aria-describedby="takeoffBufferError"><p class="field-message" id="takeoffBufferError" role="alert"></p></div>
+              <div><label for="minuteInterval">Minute-marker interval</label><input id="minuteInterval" type="number" min="1" step="1" value="1" autocomplete="off" aria-describedby="minuteIntervalError"><p class="field-message" id="minuteIntervalError" role="alert"></p></div>
+            </div>
+          </div>
+
+          <details class="advanced-panel">
+            <summary>Advanced route options</summary>
+            <div class="advanced-panel-content">
+              <label class="osm-consent" id="osmConsentRow" hidden><input id="osmThirdPartyConsent" type="checkbox"> Allow third-party OpenStreetMap tile requests. These requests reveal the approximate displayed route area.</label>
+              <details class="nested-panel">
+                <summary>Waypoint database and coordinate formats</summary>
+                <div class="waypoint-actions"><button type="button" id="toggleWaypointLibrary" class="btn btn-secondary">Waypoint database</button><span class="note" id="waypointLibraryStatus"></span></div>
+                <section class="waypoint-library" id="waypointLibrary" hidden>
+                  <div class="library-controls" id="libraryControls">
+                    <input id="locationSearch" type="search" placeholder="Search by name or identifier">
+                    <select id="locationTypeFilter" aria-label="Location type"><option value="all">All types</option></select>
+                    <select id="locationCountryFilter" aria-label="Location country"><option value="all">All countries</option></select>
+                    <button type="button" id="addAllFiltered" class="btn btn-secondary">Add all</button>
+                  </div>
+                  <div class="locations-list" id="locationsList"></div>
+                </section>
+                <p class="note">D96/TM is also accepted as <code>name,easting,northing</code>. <code>PHOTO_name,latitude,longitude</code> rows define explicit photo targets and are excluded from route geometry.</p>
+              </details>
+              <details class="nested-panel" id="overlayStylingPanel">
+                <summary>Overlay styling and marker sizes</summary>
+                <div class="input-row input-row-compact">
+                  <div><label for="styleRouteWidth">Route line width (pt)</label><input id="styleRouteWidth" type="number" min="0.1" step="0.1" value="2.5" autocomplete="off"></div>
+                  <div><label for="styleWaypointFont">Waypoint label font (pt)</label><input id="styleWaypointFont" type="number" min="1" step="0.5" value="12" autocomplete="off"></div>
+                  <div><label for="styleHeadingFont">Heading font (pt)</label><input id="styleHeadingFont" type="number" min="1" step="0.5" value="18" autocomplete="off"></div>
+                  <div><label for="styleMinuteLabelFont">Minute label font (pt)</label><input id="styleMinuteLabelFont" type="number" min="1" step="0.5" value="10" autocomplete="off"></div>
+                  <div><label for="styleMinuteMarkerSize">Minute marker half-size (pt)</label><input id="styleMinuteMarkerSize" type="number" min="0.1" step="0.1" value="7" autocomplete="off"></div>
+                  <div><label for="styleMinuteLineWidth">Minute marker line width (pt)</label><input id="styleMinuteLineWidth" type="number" min="0.1" step="0.1" value="1.2" autocomplete="off"></div>
+                </div>
+              </details>
+            </div>
+          </details>
+          <div class="stage-actions"><button type="button" id="routeContinue" class="btn btn-primary" data-workflow-next="2">Continue to photos</button></div>
         </div>
       </section>
 
-      <section class="photo-panel">
+      <section class="workflow-stage photo-panel" id="workflowStage2" data-workflow-stage="2" aria-labelledby="workflowStage2Title" hidden>
         <div class="panel-content">
           <section class="photo-workflow" aria-labelledby="photoWorkflowTitle">
-            <h2 id="photoWorkflowTitle">5. Photos &amp; Tasks</h2>
-            <p class="note privacy-note"><strong>Private by design:</strong> photos, EXIF metadata, analysis, and generated files stay in this browser tab. Bundled-map mode makes no third-party map request. Choosing OSM tiles, finding OSM targets, or importing GURS imagery sends only the relevant displayed area, bounded route corridor, or selected coordinates. OSM discovery tries maps.mail.ru first and contacts overpass.private.coffee or overpass-api.de only if the preceding service fails.</p>
-            <label id="photoDropzone" class="photo-dropzone" for="photoFiles">
-              <span><strong>Drop JPEG photos here</strong> or choose multiple files</span>
-              <input id="photoFiles" type="file" accept="image/jpeg,.jpg,.jpeg" multiple>
-            </label>
-            <div class="photo-import-actions">
-              <button type="button" id="loadPhotoExample" class="btn btn-secondary">Load TVN 2025 example (29 photos)</button>
-              <span class="note">The historical example is about 49 MB and loads only when requested.</span>
-            </div>
-            <section class="orthophoto-generator" aria-labelledby="orthophotoTitle">
-              <div class="orthophoto-heading">
-                <div>
-                  <h3 id="orthophotoTitle">GURS DOF025 route photos</h3>
-                  <p class="note">Generate top-down orthophoto crops with the approximate ground coverage of an angled camera photo.</p>
-                </div>
-                <span id="orthophotoCoveragePreview" class="coverage-badge"></span>
+            <div class="stage-heading"><div><span class="stage-eyebrow">Step 2 of 4</span><h2 id="workflowStage2Title">Photo preparation</h2><p id="photoWorkflowTitle">Prepare control-point photos first, then build the separate competition-photo set.</p></div></div>
+
+            <section class="preparation-section control-preparation" aria-labelledby="controlPreparationTitle">
+              <div class="section-heading"><div><span class="section-order">A</span><h3 id="controlPreparationTitle">Control-point photos</h3><p>SP and FP are true. Choose a true or false photo for each TP.</p></div><span id="controlPreparationBadge" class="summary-badge">Not prepared</span></div>
+              <div class="photo-import-actions"><button type="button" id="findControlPhotoOptions" class="btn btn-secondary">Find SP/TP/FP photo options</button><span class="note">True crops use exact waypoint coordinates. False TP options use the matching object type 1–10 NM away.</span></div>
+              <section id="controlPhotoReview" class="osm-candidate-review" aria-labelledby="controlPhotoReviewTitle" hidden>
+                <div class="osm-review-heading"><div><h4 id="controlPhotoReviewTitle">Review control-point photos</h4><p id="controlPhotoStatus" class="note" role="status" aria-live="polite"></p></div></div>
+                <div id="controlPhotoList" class="control-photo-list"></div>
+                <div class="photo-import-actions"><button type="button" id="importControlPhotos" class="btn btn-primary">Import chosen control photos</button></div>
+              </section>
+            </section>
+
+            <section class="preparation-section" aria-labelledby="competitionPreparationTitle">
+              <div class="section-heading"><div><span class="section-order">B</span><h3 id="competitionPreparationTitle">Competition photos</h3><p>Choose one source at a time. All imported photos join the same route set.</p></div><span id="competitionPreparationBadge" class="summary-badge">0 photos</span></div>
+              <div class="photo-source-tabs" role="tablist" aria-label="Competition photo source">
+                <button type="button" role="tab" aria-selected="true" aria-controls="photoSourceUpload" data-photo-source-tab="upload">Upload JPEGs</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="photoSourceOsm" data-photo-source-tab="osm">Find OSM targets</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="photoSourceCoordinates" data-photo-source-tab="coordinates">PHOTO_ coordinates</button>
               </div>
-              <div class="orthophoto-controls">
-                <label>Initial selection
-                  <input id="orthophotoRandomCount" type="number" min="1" max="12" step="1" value="12">
-                </label>
-                <label>Height AGL (m)
-                  <input id="orthophotoAltitude" type="number" min="10" max="1000" step="10" value="100">
-                </label>
-                <label>35 mm equiv. focal (mm)
-                  <input id="orthophotoFocalLength" type="number" min="10" max="300" step="1" value="60">
-                </label>
-                <label>Depression angle (°)
-                  <input id="orthophotoDepression" type="number" min="10" max="90" step="1" value="45">
-                </label>
+              <div class="photo-source-panel" id="photoSourceUpload" data-photo-source-panel="upload" role="tabpanel">
+                <label id="photoDropzone" class="photo-dropzone" for="photoFiles"><span><strong>Drop JPEG photos here</strong> or choose multiple files</span><input id="photoFiles" type="file" accept="image/jpeg,.jpg,.jpeg" multiple></label>
+                <div class="photo-import-actions"><button type="button" id="loadPhotoExample" class="btn btn-secondary">Load TVN 2025 example (29 photos)</button><span class="note">Loads only when requested.</span></div>
               </div>
-              <div class="photo-import-actions">
-                <button type="button" id="addRandomOrthophotos" class="btn btn-secondary">Find identifiable OSM targets</button>
-                <button type="button" id="loadWaypointOrthophotos" class="btn btn-secondary">Load PHOTO_ coordinates</button>
-              </div>
+              <div class="photo-source-panel" id="photoSourceOsm" data-photo-source-panel="osm" role="tabpanel" hidden>
+                <div class="photo-import-actions"><label class="compact-field">Suggested count<input id="orthophotoRandomCount" type="number" min="1" max="12" step="1" value="12"></label><button type="button" id="addRandomOrthophotos" class="btn btn-secondary">Find identifiable OSM targets</button></div>
               <section id="osmDiscoveryProgress" class="osm-discovery-progress" aria-labelledby="osmDiscoveryProgressText" hidden>
-                <div class="osm-progress-heading">
-                  <strong id="osmDiscoveryProgressText">Preparing OpenStreetMap discovery…</strong>
-                  <span id="osmDiscoveryProgressPercent">0%</span>
-                </div>
+                <div class="osm-progress-heading"><strong id="osmDiscoveryProgressText">Preparing OpenStreetMap discovery…</strong><span id="osmDiscoveryProgressPercent">0%</span></div>
                 <progress id="osmDiscoveryProgressBar" value="0" max="1" aria-labelledby="osmDiscoveryProgressText"></progress>
                 <div id="osmDiscoveryLegs" class="osm-discovery-legs" aria-label="Route-leg discovery progress"></div>
                 <p id="osmDiscoveryWarning" class="note" role="status" aria-live="polite"></p>
@@ -208,73 +176,75 @@ FP,46.608093,16.234769</textarea>
                   <span id="osmCandidateSelectionStatus" class="note" role="status" aria-live="polite"></span>
                 </div>
               </section>
-              <div class="photo-import-actions">
-                <button type="button" id="findControlPhotoOptions" class="btn btn-secondary">Find SP/TP/FP photo options</button>
-                <span class="note">SP and FP use true objects. Each TP can use the true object or a similar false object 1-10 NM away.</span>
               </div>
-              <section id="controlPhotoReview" class="osm-candidate-review" aria-labelledby="controlPhotoReviewTitle" hidden>
-                <div class="osm-review-heading">
-                  <div>
-                    <h4 id="controlPhotoReviewTitle">Review control-point photos</h4>
-                    <p id="controlPhotoStatus" class="note" role="status" aria-live="polite"></p>
-                  </div>
+              <div class="photo-source-panel" id="photoSourceCoordinates" data-photo-source-panel="coordinates" role="tabpanel" hidden>
+                <p>Use explicit route entries such as <code>PHOTO_CHURCH,46.6301,16.1792</code>.</p>
+                <button type="button" id="loadWaypointOrthophotos" class="btn btn-secondary">Load PHOTO_ coordinates</button>
+              </div>
+
+              <details class="advanced-panel compact-advanced"><summary>DOF025 crop settings <span id="orthophotoCoveragePreview" class="coverage-badge"></span></summary>
+                <div class="orthophoto-controls">
+                  <label>Height AGL (m)<input id="orthophotoAltitude" type="number" min="10" max="1000" step="10" value="100"></label>
+                  <label>35 mm equivalent focal length (mm)<input id="orthophotoFocalLength" type="number" min="10" max="300" step="1" value="60"></label>
+                  <label>Depression angle (°)<input id="orthophotoDepression" type="number" min="10" max="90" step="1" value="45"></label>
                 </div>
-                <div id="controlPhotoList" class="control-photo-list"></div>
-                <div class="photo-import-actions">
-                  <button type="button" id="importControlPhotos" class="btn btn-primary">Import chosen control photos</button>
-                </div>
-              </section>
-              <p class="note">Target syntax: <code>PHOTO_CHURCH,46.6301,16.1792</code>. Accepted OSM targets are added to the WAYPOINTS field for reproducibility. Feature data © OpenStreetMap contributors. Imagery: Geodetska uprava Republike Slovenije, DOF025, current mosaic (2023–2025), CC BY 4.0.</p>
+              </details>
+
+              <div class="photo-coverage-summary" id="photoCoverageSummary" role="status" aria-live="polite">
+                <div><span>Selected</span><strong id="selectedPhotoCount">0</strong></div>
+                <div><span>Leg coverage</span><strong id="photoLegCoverage">0 / 0</strong></div>
+                <div><label for="handoutSplit">Handout split</label><select id="handoutSplit"><option selected>TP5</option></select></div>
+                <div><span>Split balance</span><strong id="photoSplitBalance">0 / 0</strong></div>
+              </div>
+              <p id="photoCoverageWarning" class="field-message" role="status"></p>
             </section>
             <progress id="photoProgress" value="0" max="1" hidden></progress>
             <p id="photoProgressText" class="note" role="status" aria-live="polite"></p>
             <button type="button" id="cancelPhotoImport" class="btn btn-secondary btn-small" hidden>Cancel photo import</button>
-
-            <details class="photo-options">
-              <summary>Map layers and handout options</summary>
-              <div class="check-grid">
-                <label><input id="photoExactDots" type="checkbox"> Exact GPS dots</label>
-                <label><input id="photoProjectedMarkers" type="checkbox" checked> Route-projected markers</label>
-                <label><input id="photoHeadingArrows" type="checkbox"> Heading arrows</label>
-                <label><input id="photoConnectors" type="checkbox"> GPS-to-route connectors</label>
-                <label><input id="photoLegend" type="checkbox"> Photo legend</label>
-                <label><input id="photoCropBounds" type="checkbox" checked> Include photos in crop bounds</label>
-                <label>Split handout at
-                  <select id="handoutSplit">
-                    <option selected>TP5</option>
-                  </select>
-                </label>
-                <button type="button" id="mixPhotoLetters" class="btn btn-secondary btn-small">
-                  Remix en-route letters
-                </button>
-                <label><input id="handoutSummary" type="checkbox" checked> Add compliance summary page</label>
-              </div>
-            </details>
-
-            <div id="photoComplianceStatus" class="photo-overall-status" role="status" aria-live="polite"></div>
-            <ul id="photoFindings" class="photo-findings"></ul>
-            <details id="photoAuditDetails" class="photo-overall-audit" hidden>
-              <summary id="photoAuditSummary" class="photo-audit-summary">
-                Technical &amp; rulebook audit details
-              </summary>
-              <ul id="photoAuditFindings" class="photo-audit-findings"></ul>
-            </details>
-            <p id="photoEmpty" class="empty-state">No photos selected. You can generate a route without photos.</p>
-            <div id="photoList" class="photo-list"></div>
+            <details class="info-panel"><summary>Privacy, sources and attribution</summary><p>Photos, EXIF analysis and generated files remain in this tab. External discovery sends only route corridors or selected coordinates. Feature data © OpenStreetMap contributors. Imagery © Geodetska uprava Republike Slovenije, DOF025, current mosaic (2023–2025), CC BY 4.0.</p></details>
+            <div class="stage-actions"><button type="button" id="photoReviewContinue" class="btn btn-primary" data-workflow-next="3">Review route package</button></div>
           </section>
-
-          <div class="generation-dock">
-            <div class="generation-actions">
-              <button id="generate" class="btn btn-primary">Generate Overlay</button>
-              <button id="cancelGeneration" class="btn btn-secondary" hidden>Cancel</button>
-            </div>
-            <div class="status" id="status" role="status" aria-live="polite"></div>
-          </div>
         </div>
       </section>
 
-      <section class="results-panel">
+      <section class="workflow-stage review-panel" id="workflowStage3" data-workflow-stage="3" aria-labelledby="workflowStage3Title" hidden>
         <div class="panel-content">
+          <div class="stage-heading"><div><span class="stage-eyebrow">Step 3 of 4</span><h2 id="workflowStage3Title">Review and validate</h2><p>Resolve blocking problems, review warnings, and accept documented exceptions where appropriate.</p></div></div>
+          <div class="readiness-grid" id="readinessGrid">
+            <div data-readiness="route"><span>Route configuration</span><strong id="readinessRoute">Checking…</strong></div>
+            <div data-readiness="count"><span>Competition photos</span><strong id="readinessCount">0</strong></div>
+            <div data-readiness="coverage"><span>Route-leg coverage</span><strong id="readinessCoverage">0 / 0</strong></div>
+            <div data-readiness="split"><span>Split balance</span><strong id="readinessSplit">0 / 0</strong></div>
+            <div data-readiness="controls"><span>Control photos</span><strong id="readinessControls">0 / 0</strong></div>
+            <div data-readiness="rules"><span>Automated rule checks</span><strong id="readinessRules">—</strong></div>
+            <div data-readiness="manual"><span>Manual checks</span><strong id="readinessManual">—</strong></div>
+            <div data-readiness="exceptions"><span>Accepted exceptions</span><strong id="readinessExceptions">0</strong></div>
+          </div>
+          <div class="route-only-note" id="routeOnlyNote">No photos are loaded. Route-only generation is available; photo handouts and photo CSV files will be omitted.</div>
+          <section class="finding-groups" aria-labelledby="findingGroupsTitle"><h3 id="findingGroupsTitle">Readiness findings</h3><div id="workflowFindingGroups"></div></section>
+          <div id="photoComplianceStatus" class="photo-overall-status" role="status" aria-live="polite"></div>
+          <ul id="photoFindings" class="photo-findings"></ul>
+          <details id="photoAuditDetails" class="photo-overall-audit" hidden><summary id="photoAuditSummary" class="photo-audit-summary">Technical &amp; rulebook audit details</summary><ul id="photoAuditFindings" class="photo-audit-findings"></ul></details>
+          <p id="photoEmpty" class="empty-state">No photos selected. You can generate a route without photos.</p>
+          <div id="photoList" class="photo-list"></div>
+          <details class="advanced-panel"><summary>Advanced output options</summary><div class="check-grid">
+            <label><input id="photoExactDots" type="checkbox"> Exact GPS dots</label>
+            <label><input id="photoProjectedMarkers" type="checkbox" checked> Route-projected markers</label>
+            <label><input id="photoHeadingArrows" type="checkbox"> Heading arrows</label>
+            <label><input id="photoConnectors" type="checkbox"> GPS-to-route connectors</label>
+            <label><input id="photoLegend" type="checkbox"> Photo legend</label>
+            <label><input id="photoCropBounds" type="checkbox" checked> Include photos in crop bounds</label>
+            <label><input id="handoutSummary" type="checkbox" checked> Add compliance summary page</label>
+            <button type="button" id="mixPhotoLetters" class="btn btn-secondary btn-small">Remix en-route letters</button>
+          </div></details>
+          <div class="stage-actions"><button id="generate" class="btn btn-primary">Generate competition package</button></div>
+        </div>
+      </section>
+
+      <section class="workflow-stage results-panel" id="workflowStage4" data-workflow-stage="4" aria-labelledby="workflowStage4Title" hidden>
+        <div class="panel-content">
+          <div class="results-progress-header"><div><span class="stage-eyebrow">Step 4 of 4</span><h2 id="workflowStage4Title">Generate package</h2></div><button id="cancelGeneration" class="btn btn-secondary" hidden>Cancel generation</button></div>
+          <progress id="generationProgress" value="0" max="7"></progress>
           <div id="resultsPlaceholder" class="results-placeholder">
             <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
               <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>
@@ -299,16 +269,20 @@ FP,46.608093,16.234769</textarea>
             </section>
 
             <div class="results-group">
-              <h2>Downloads</h2>
-              <div class="download-actions" id="outputs" hidden>
-                <a id="downloadPdf" href="#" class="btn btn-ghost">Judge Solutions (PDF)</a>
-                <a id="downloadOverlay" href="#" class="btn btn-ghost">Competitor Route (PDF)</a>
-                <a id="downloadCropped" href="#" class="btn btn-ghost">Empty Map (PDF)</a>
-                <a id="downloadSummary" href="#" class="btn btn-ghost">Summary (JSON)</a>
-                <a id="downloadPhotoAnalysis" href="#" class="btn btn-ghost">Photo Analysis (CSV)</a>
-                <a id="downloadPhotoKey" href="#" class="btn btn-ghost">Photo Overlay Key (CSV)</a>
-                <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Judge Photo Handout (PDF)</a>
-                <a id="downloadCompetitorPhotoHandout" href="#" class="btn btn-ghost">Competitor Photo Handout (PDF)</a>
+              <h2>Competition package</h2>
+              <div class="audience-downloads" id="outputs" hidden>
+                <section><h3>Judge</h3><div class="download-actions">
+                  <a id="downloadPdf" href="#" class="btn btn-ghost">Judge solution map (PDF)</a>
+                  <a id="downloadPhotoHandout" href="#" class="btn btn-ghost">Judge photo handout (PDF)</a>
+                  <a id="downloadPhotoAnalysis" href="#" class="btn btn-ghost">Photo analysis (CSV)</a>
+                  <a id="downloadPhotoKey" href="#" class="btn btn-ghost">Photo overlay key (CSV)</a>
+                  <a id="downloadSummary" href="#" class="btn btn-ghost">Summary (JSON)</a>
+                </div></section>
+                <section><h3>Competitor</h3><div class="download-actions">
+                  <a id="downloadOverlay" href="#" class="btn btn-ghost">Competitor route map (PDF)</a>
+                  <a id="downloadCompetitorPhotoHandout" href="#" class="btn btn-ghost">Competitor photo handout (PDF)</a>
+                  <a id="downloadCropped" href="#" class="btn btn-ghost">Empty map (PDF)</a>
+                </div></section>
               </div>
               <ul id="artifactStatuses" class="artifact-statuses" aria-live="polite">
                 <li data-artifact="map">Judge map: not started</li>
@@ -322,7 +296,7 @@ FP,46.608093,16.234769</textarea>
             </div>
 
             <div class="results-group" id="croppedPreviewContainer" hidden>
-              <h2>Judge Solution Preview</h2>(ctrl/cmd + click to open in new tab)
+              <h2>High-resolution judge solution preview</h2>
               <a id="croppedPreviewLink" class="preview-image-link" href="#" target="_blank" rel="noopener" aria-disabled="true" aria-label="Open cropped preview in a new tab" title="Open the cropped preview in a new tab">
                 <img id="croppedPreviewImage" class="preview-image" alt="Cropped map preview is being generated" />
               </a>
