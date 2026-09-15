@@ -263,19 +263,19 @@ describe('Overpass photo query', () => {
         {
           type: 'way',
           id: 100,
-          center: { lat: 46.6, lon: 16.0 },
+          center: { lat: 46.6002, lon: 16.001 },
           tags: { bridge: 'yes', name: 'SP bridge' },
         },
         {
           type: 'way',
           id: 101,
-          center: { lat: 46.6, lon: 16.1 },
+          center: { lat: 46.6002, lon: 16.101 },
           tags: { bridge: 'yes', name: 'TP bridge' },
         },
         {
           type: 'way',
           id: 102,
-          center: { lat: 46.6, lon: 16.2 },
+          center: { lat: 46.6002, lon: 16.199 },
           tags: { bridge: 'yes', name: 'FP bridge' },
         },
         {
@@ -294,12 +294,21 @@ describe('Overpass photo query', () => {
     expect(result.warnings).toEqual([]);
     expect(result.proposals).toHaveLength(3);
     expect(result.proposals[0].trueTarget.name).toBe('SP bridge');
+    expect(result.proposals[0].trueTarget.latitude).toBe(points[0][1]);
+    expect(result.proposals[0].trueTarget.longitude).toBe(points[0][2]);
+    expect(result.proposals[0].trueTarget.distanceFromWaypointM).toBeGreaterThan(0);
     expect(result.proposals[0].falseTarget).toBeNull();
     expect(result.proposals[1].trueTarget.name).toBe('TP bridge');
+    expect(result.proposals[1].trueTarget.latitude).toBe(points[1][1]);
+    expect(result.proposals[1].trueTarget.longitude).toBe(points[1][2]);
     expect(result.proposals[1].falseTarget?.name).toBe('False bridge');
+    expect(result.proposals[1].falseTarget?.source.correctObjectLatitude).toBe(points[1][1]);
+    expect(result.proposals[1].falseTarget?.source.correctObjectLongitude).toBe(points[1][2]);
     expect(result.proposals[1].falseTarget?.distanceFromCorrectM).toBeGreaterThanOrEqual(1852);
     expect(result.proposals[1].falseTarget?.distanceFromCorrectM).toBeLessThanOrEqual(10 * 1852);
     expect(result.proposals[2].trueTarget.name).toBe('FP bridge');
+    expect(result.proposals[2].trueTarget.latitude).toBe(points[2][1]);
+    expect(result.proposals[2].trueTarget.longitude).toBe(points[2][2]);
     expect(result.proposals[2].falseTarget).toBeNull();
   });
 });

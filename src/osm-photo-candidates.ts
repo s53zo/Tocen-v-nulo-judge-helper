@@ -1017,6 +1017,23 @@ function rankedControlCandidates(
     });
 }
 
+function centerTrueControlPhotoOnWaypoint(
+  candidate: RankedControlCandidate,
+  waypoint: Waypoint
+): RankedControlCandidate {
+  return {
+    ...candidate,
+    latitude: waypoint[1],
+    longitude: waypoint[2],
+    distanceFromCorrectM: 0,
+    source: {
+      ...candidate.source,
+      correctObjectLatitude: waypoint[1],
+      correctObjectLongitude: waypoint[2],
+    },
+  };
+}
+
 export async function fetchOsmControlPhotoProposals(
   points: Waypoint[],
   options: FetchControlPhotoOptions = {}
@@ -1064,7 +1081,7 @@ export async function fetchOsmControlPhotoProposals(
     if (typeof result === 'string') failedTrue.push({ index, query, detail: result });
     else {
       const candidate = rankedControlCandidates(result, point)[0];
-      if (candidate) trueTargets.set(index, candidate);
+      if (candidate) trueTargets.set(index, centerTrueControlPhotoOnWaypoint(candidate, point));
       else warnings.push(`${point[0]}: no identifiable OSM object was found within 3 km.`);
     }
   }
@@ -1077,8 +1094,9 @@ export async function fetchOsmControlPhotoProposals(
         warnings.push(`${points[failed.index][0]} true target: ${result}`);
       } else {
         const candidate = rankedControlCandidates(result, points[failed.index])[0];
-        if (candidate) trueTargets.set(failed.index, candidate);
-        else warnings.push(`${points[failed.index][0]}: no identifiable OSM object was found within 3 km.`);
+        if (candidate) {
+          trueTargets.set(failed.index, centerTrueControlPhotoOnWaypoint(candidate, points[failed.index]));
+        } else warnings.push(`${points[failed.index][0]}: no identifiable OSM object was found within 3 km.`);
       }
     }
   }

@@ -272,19 +272,19 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
       {
         type: 'way',
         id: 100,
-        center: { lat: 46.6, lon: 16.0 },
+        center: { lat: 46.6002, lon: 16.001 },
         tags: { bridge: 'yes', name: 'SP bridge' },
       },
       {
         type: 'way',
         id: 101,
-        center: { lat: 46.6, lon: 16.1 },
+        center: { lat: 46.6002, lon: 16.101 },
         tags: { bridge: 'yes', name: 'TP bridge' },
       },
       {
         type: 'way',
         id: 102,
-        center: { lat: 46.6, lon: 16.2 },
+        center: { lat: 46.6002, lon: 16.199 },
         tags: { bridge: 'yes', name: 'FP bridge' },
       },
       {
@@ -318,8 +318,10 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await expect(page.locator('#photoProgressText')).toContainText('3 of 3 DOF025 crops imported');
   await expect(page.locator('.photo-card')).toHaveCount(3);
   await expect(page.locator('.photo-card').nth(0)).toContainText('Correct control photo');
+  await expect(page.locator('.photo-card').nth(0)).toContainText('46.600000_16.000000');
   await expect(page.locator('.photo-card').nth(1)).toContainText('False control photo');
   await expect(page.locator('.photo-card').nth(2)).toContainText('Correct control photo');
+  await expect(page.locator('.photo-card').nth(2)).toContainText('46.600000_16.200000');
 });
 
 test('preview failure preserves successful map downloads', async ({ page }) => {

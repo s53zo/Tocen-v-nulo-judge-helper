@@ -673,12 +673,13 @@ function renderControlPhotoReview(): void {
       choice.dataset.controlWaypoint = waypointName;
       choice.checked = selectedControlPhotoRoles.get(waypointName) === role;
       const title = document.createElement('strong');
-      title.textContent = `${role === 'true' ? 'True' : 'False'} · ${target.name}`;
+      title.textContent =
+        role === 'true' ? `True · exact ${waypointName} position` : `False · ${target.name}`;
       const metrics = document.createElement('span');
       metrics.className = 'note';
       metrics.textContent =
         role === 'true'
-          ? `${target.featureType} · ${target.distanceFromWaypointM.toFixed(0)} m from ${waypointName}`
+          ? `OSM reference: ${target.name} (${target.featureType}), ${target.distanceFromWaypointM.toFixed(0)} m away`
           : `${target.featureType} · ${(target.distanceFromCorrectM / 1852).toFixed(2)} NM from the true object`;
       const preview = document.createElement('img');
       preview.alt = `${waypointName} ${role} orthophoto preview`;
