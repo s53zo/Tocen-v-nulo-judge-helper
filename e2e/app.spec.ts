@@ -193,9 +193,16 @@ test('P250 generation completes with bounded preview and valid PDFs', async ({ p
 
 test('guided workflow shows one stage, keeps state, and puts control photos first', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#saveProject')).toHaveText('Save');
+  await expect(page.locator('#loadProject')).toHaveText('Load');
+  const generateStepBox = await page.locator('[data-workflow-step="4"]').boundingBox();
+  const saveBox = await page.locator('#saveProject').boundingBox();
+  expect(generateStepBox).not.toBeNull();
+  expect(saveBox).not.toBeNull();
+  expect((saveBox?.x ?? 0) > (generateStepBox?.x ?? 0)).toBe(true);
   await expect(page.locator('.workflow-stage:visible')).toHaveCount(1);
   await expect(page.locator('#workflowStage1')).toBeVisible();
-  await page.locator('#speed').fill('80kt');
+  await page.locator('#speed').selectOption('80kt');
   await page.locator('#waypoints').fill('SP,46.6,16.0\nTP1,46.55,16.1\nFP,46.5,16.2');
   await page.locator('#routeContinue').click();
   await expect(page.locator('.workflow-stage:visible')).toHaveCount(1);
@@ -270,7 +277,10 @@ test('removing a competition photo closes identifier gaps', async ({ page }) => 
 test('a saved project restores route settings and embedded photos', async ({ page }) => {
   const jpeg = await readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url));
   await page.goto('/');
-  await page.locator('#speed').fill('83kt');
+  await page.locator('.custom-speed-panel summary').click();
+  await page.locator('[data-custom-speed-value="1"]').fill('154');
+  await page.locator('[data-custom-speed-unit="1"]').selectOption('kmh');
+  await page.locator('#speed').selectOption('custom-1');
   await page.locator('[data-map-key="p250"]').click();
   await goToStage(page, 2);
   await page.locator('#photoFiles').setInputFiles({
@@ -290,13 +300,20 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#saveProject').click()]);
   const projectPath = await download.path();
   expect(projectPath).not.toBeNull();
+  expect(download.suggestedFilename()).toMatch(/^route_project_v2_\d{4}-\d{2}-\d{2}\.tvn-project$/);
+  const savedProject = JSON.parse(await readFile(projectPath as string, 'utf8'));
+  expect(savedProject.format).toBe('tocen-v-nulo-route-project');
+  expect(savedProject.schemaVersion).toBe(2);
+  expect(savedProject.settings.customSpeeds[0]).toEqual({ value: '154', unit: 'kmh' });
 
   await page.locator('.photo-card [data-action="remove"]').click();
   await goToStage(page, 1);
-  await page.locator('#speed').fill('55kt');
+  await page.locator('#speed').selectOption('55kt');
   await page.locator('#projectFile').setInputFiles(projectPath as string);
   await expect(page.locator('#status')).toContainText('Loaded project');
-  await expect(page.locator('#speed')).toHaveValue('83kt');
+  await expect(page.locator('#speed')).toHaveValue('custom-1');
+  await expect(page.locator('[data-custom-speed-value="1"]')).toHaveValue('154');
+  await expect(page.locator('[data-custom-speed-unit="1"]')).toHaveValue('kmh');
   await expect(page.locator('[data-map-key="p250"]')).toHaveAttribute('aria-pressed', 'true');
   await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(1);
@@ -318,6 +335,9 @@ test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', a
     route.fulfill({ status: 200, contentType: 'application/pdf', body: blankMap })
   );
   await page.goto('/');
+  await page.locator('.custom-speed-panel summary').click();
+  await page.locator('[data-custom-speed-value="1"]').fill('140');
+  await page.locator('[data-custom-speed-unit="1"]').selectOption('kmh');
   await goToStage(page, 3);
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
@@ -326,16 +346,18 @@ test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', a
   await expect(page.locator('#speedSetProgress')).toHaveAttribute('data-state', 'complete', {
     timeout: 120_000,
   });
-  await expect(page.locator('#speedSetProgressCount')).toHaveText('11 of 11');
+  await expect(page.locator('#speedSetProgressCount')).toHaveText('12 of 12');
   const archive = unzipSync(await downloadBytes(page, '#downloadSpeedSet'));
   const pdfNames = Object.keys(archive).filter((name) => name.endsWith('.pdf'));
-  expect(pdfNames).toHaveLength(22);
+  expect(pdfNames).toHaveLength(24);
   for (const speed of [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]) {
     const judge = archive[`${speed}kt/judge_solution_map_${speed}kt.pdf`];
     const competitor = archive[`${speed}kt/competitor_route_map_${speed}kt.pdf`];
     expect(Buffer.from(judge.subarray(0, 5)).toString()).toBe('%PDF-');
     expect(Buffer.from(competitor.subarray(0, 5)).toString()).toBe('%PDF-');
   }
+  expect(archive['custom1_140kmh/judge_solution_map_custom1_140kmh.pdf']).toBeDefined();
+  expect(archive['custom1_140kmh/competitor_route_map_custom1_140kmh.pdf']).toBeDefined();
 });
 
 test('OSM requires explicit third-party tile consent', async ({ page }) => {

@@ -1515,12 +1515,20 @@ th:not(:first-child) {
 }
 
 /* Guided competition-preparation workflow */
-.workflow-stepper {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.workflow-toolbar {
+  display: flex;
+  align-items: stretch;
   gap: 0.65rem;
   max-width: 1280px;
   margin: 0 auto 0.8rem;
+}
+
+.workflow-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
 .workflow-stepper button {
@@ -1608,31 +1616,18 @@ th:not(:first-child) {
 .project-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  max-width: 1280px;
-  margin: 0 auto 0.8rem;
-  padding: 0.7rem 0.9rem;
+  align-self: stretch;
+  gap: 0.4rem;
+  padding: 0.45rem;
   border: 1px solid var(--color-border);
-  border-radius: 9px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.78);
 }
 
-.project-actions strong,
-.project-actions span {
-  display: block;
-}
-
-.project-actions span {
-  margin-top: 0.12rem;
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-}
-
-.project-action-buttons {
-  display: flex;
-  flex: none;
-  gap: 0.45rem;
+.project-actions .btn {
+  min-width: 0;
+  padding-inline: 0.7rem;
+  white-space: nowrap;
 }
 
 .workflow-shell {
@@ -1764,6 +1759,50 @@ th:not(:first-child) {
 
 .map-preset-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.custom-speed-panel {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.control-group .custom-speed-panel > summary {
+  padding: 0.65rem 0.8rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.custom-speed-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+.custom-speed-grid > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.custom-speed-grid > label > span {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.custom-speed-grid input,
+.custom-speed-grid select {
+  min-width: 0;
+}
+
+.custom-speed-grid select {
+  width: 4.6rem;
 }
 
 .preset-card .preset-meta {
@@ -2073,6 +2112,14 @@ th:not(:first-child) {
 }
 
 @media (max-width: 800px) {
+  .workflow-toolbar {
+    display: grid;
+  }
+
+  .project-actions {
+    justify-self: end;
+  }
+
   .workflow-stepper,
   .readiness-grid,
   .photo-coverage-summary,
@@ -2085,7 +2132,8 @@ th:not(:first-child) {
   }
 
   .map-preset-grid,
-  .orthophoto-controls {
+  .orthophoto-controls,
+  .custom-speed-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2128,14 +2176,8 @@ th:not(:first-child) {
 
   .section-heading,
   .results-progress-header,
-  .project-actions,
   .speed-edition-panel {
     display: grid;
-  }
-
-  .project-action-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -2143,6 +2185,8 @@ th:not(:first-child) {
   .control-panel,
   .photo-panel,
   header,
+  .workflow-toolbar,
+  .workflow-global-status,
   .results-placeholder,
   .download-actions,
   .compliance-notice {

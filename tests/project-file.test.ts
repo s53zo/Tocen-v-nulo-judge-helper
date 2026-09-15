@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { base64ToBytes, bytesToBase64 } from '../src/photo-workflow';
 import {
+  PROJECT_FILE_FORMAT,
   PROJECT_FILE_SCHEMA_VERSION,
   parseSavedRouteProject,
   SPEED_EDITION_KNOTS,
@@ -9,6 +10,13 @@ import {
 const settings = {
   waypoints: 'SP,46.6,16\nFP,46.7,16.1',
   speed: '75kt',
+  speedPreset: '75kt',
+  customSpeeds: [
+    { value: '', unit: 'kt' },
+    { value: '', unit: 'kt' },
+    { value: '', unit: 'kt' },
+    { value: '', unit: 'kt' },
+  ],
   takeoffBuffer: '4',
   minuteInterval: '1',
   mapKey: 'vfr',
@@ -44,6 +52,7 @@ describe('saved route projects', () => {
 
   it('accepts the current schema and rejects unknown versions', () => {
     const project = {
+      format: PROJECT_FILE_FORMAT,
       schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
       appVersion: 'test',
       savedAt: '2026-01-01T00:00:00.000Z',
@@ -57,5 +66,31 @@ describe('saved route projects', () => {
     expect(() => parseSavedRouteProject(JSON.stringify({ ...project, savedAt: 'not-a-date' }))).toThrow(
       /invalid save time/
     );
+  });
+
+  it('migrates version 1 projects and retains a legacy custom speed', () => {
+    const { speedPreset: _speedPreset, customSpeeds: _customSpeeds, ...legacySettings } = settings;
+    const legacyProject = {
+      schemaVersion: 1,
+      appVersion: '2.4.0',
+      savedAt: '2026-01-01T00:00:00.000Z',
+      settings: { ...legacySettings, speed: '140kmh' },
+      photos: [],
+    };
+    expect(parseSavedRouteProject(JSON.stringify(legacyProject))).toEqual({
+      ...legacyProject,
+      format: PROJECT_FILE_FORMAT,
+      schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
+      settings: {
+        ...legacyProject.settings,
+        speedPreset: 'custom-1',
+        customSpeeds: [
+          { value: '140', unit: 'kmh' },
+          { value: '', unit: 'kt' },
+          { value: '', unit: 'kt' },
+          { value: '', unit: 'kt' },
+        ],
+      },
+    });
   });
 });

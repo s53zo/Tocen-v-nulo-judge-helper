@@ -46,11 +46,15 @@ import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PHOTO_IMPORT_LIMITS, PhotoWorkflow } from './photo-workflow';
 import {
+  DEFAULT_CUSTOM_SPEEDS,
+  PROJECT_FILE_FORMAT,
   PROJECT_FILE_SCHEMA_VERSION,
   parseSavedRouteProject,
+  type SavedCustomSpeed,
   type SavedProjectSettings,
   type SavedRouteProject,
   SPEED_EDITION_KNOTS,
+  STANDARD_SPEED_PRESETS,
 } from './project-file';
 import { GuidedWorkflow, type WorkflowStage } from './workflow';
 import './styles.css';
@@ -108,7 +112,17 @@ const complianceTitle = requiredElement<HTMLElement>('complianceTitle');
 const complianceSummary = requiredElement<HTMLElement>('complianceSummary');
 const complianceChecks = requiredElement<HTMLUListElement>('complianceChecks');
 const manualComplianceChecks = requiredElement<HTMLUListElement>('manualComplianceChecks');
-const speedInput = requiredElement<HTMLInputElement>('speed');
+const speedInput = requiredElement<HTMLSelectElement>('speed');
+const customSpeedPanel = document.querySelector<HTMLDetailsElement>('.custom-speed-panel');
+const customSpeedValueInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>('[data-custom-speed-value]')
+);
+const customSpeedUnitInputs = Array.from(
+  document.querySelectorAll<HTMLSelectElement>('[data-custom-speed-unit]')
+);
+if (customSpeedValueInputs.length !== 4 || customSpeedUnitInputs.length !== 4) {
+  throw new Error('Exactly four custom speed controls are required.');
+}
 const minuteIntervalInput = requiredElement<HTMLInputElement>('minuteInterval');
 const takeoffBufferInput = requiredElement<HTMLInputElement>('takeoffBuffer');
 const styleRouteWidthInput = requiredElement<HTMLInputElement>('styleRouteWidth');
@@ -229,8 +243,14 @@ interface GeneratedMapPair {
 }
 
 interface GenerateOptions {
-  speedKnots?: number;
+  speedText?: string;
   mapsOnly?: boolean;
+}
+
+interface SpeedEdition {
+  speedText: string;
+  slug: string;
+  label: string;
 }
 
 function setArtifactState(artifact: string, state: ArtifactState, detail: string): void {
@@ -505,10 +525,57 @@ function setStatus(message, tone = message.startsWith('Error:') ? 'error' : 'neu
   statusEl.classList.toggle('is-warning', tone === 'warning');
 }
 
+function customSpeedIndex(preset = speedInput.value): number | null {
+  const match = preset.match(/^custom-([1-4])$/);
+  return match ? Number(match[1]) - 1 : null;
+}
+
+function customSpeedSettings(): SavedCustomSpeed[] {
+  return customSpeedValueInputs.map((input, index) => ({
+    value: input.value.trim(),
+    unit: customSpeedUnitInputs[index].value === 'kmh' ? 'kmh' : 'kt',
+  }));
+}
+
+function speedTextForPreset(preset: string, customSpeeds: SavedCustomSpeed[]): string {
+  if (STANDARD_SPEED_PRESETS.includes(preset)) return preset;
+  const index = customSpeedIndex(preset);
+  if (index === null) throw new Error('Choose a valid groundspeed preset.');
+  const custom = customSpeeds[index];
+  if (!custom?.value.trim()) throw new Error(`Custom speed ${index + 1} is not configured.`);
+  return `${custom.value}${custom.unit}`;
+}
+
+function selectedSpeedText(): string {
+  return speedTextForPreset(speedInput.value, customSpeedSettings());
+}
+
+function updateCustomSpeedOptionLabels(): void {
+  const customSpeeds = customSpeedSettings();
+  customSpeeds.forEach((custom, index) => {
+    const option = speedInput.querySelector<HTMLOptionElement>(`option[value="custom-${index + 1}"]`);
+    if (!option) return;
+    const unit = custom.unit === 'kmh' ? 'km/h' : 'kt';
+    option.textContent = custom.value
+      ? `Custom ${index + 1} — ${custom.value} ${unit}`
+      : `Custom ${index + 1} — not set`;
+  });
+}
+
+function applyCustomSpeedSettings(customSpeeds: SavedCustomSpeed[]): void {
+  customSpeeds.forEach((custom, index) => {
+    customSpeedValueInputs[index].value = custom.value;
+    customSpeedUnitInputs[index].value = custom.unit;
+  });
+  updateCustomSpeedOptionLabels();
+}
+
 function currentProjectSettings(): SavedProjectSettings {
   return {
     waypoints: waypointTextarea.value,
-    speed: speedInput.value,
+    speed: selectedSpeedText(),
+    speedPreset: speedInput.value,
+    customSpeeds: customSpeedSettings(),
     takeoffBuffer: takeoffBufferInput.value,
     minuteInterval: minuteIntervalInput.value,
     mapKey: selectedMapKey,
@@ -535,7 +602,7 @@ function currentProjectSettings(): SavedProjectSettings {
 
 function validateProjectSettings(settings: SavedProjectSettings): void {
   parseWaypoints(settings.waypoints);
-  parseSpeed(settings.speed);
+  parseSpeed(speedTextForPreset(settings.speedPreset, settings.customSpeeds));
   for (const [label, value] of [
     ['Takeoff-to-SP time', settings.takeoffBuffer],
     ['Minute-marker interval', settings.minuteInterval],
@@ -559,7 +626,9 @@ function validateProjectSettings(settings: SavedProjectSettings): void {
 
 function applyProjectSettings(settings: SavedProjectSettings): void {
   waypointTextarea.value = settings.waypoints;
-  speedInput.value = settings.speed;
+  applyCustomSpeedSettings(settings.customSpeeds);
+  speedInput.value = settings.speedPreset;
+  customSpeedPanel?.toggleAttribute('open', customSpeedIndex(settings.speedPreset) !== null);
   takeoffBufferInput.value = settings.takeoffBuffer;
   minuteIntervalInput.value = settings.minuteInterval;
   orthophotoRandomCount.value = settings.orthophotoRandomCount;
@@ -605,6 +674,7 @@ async function saveRouteProject(): Promise<void> {
   photoWorkflow.setExternalBusy(true);
   try {
     const project: SavedRouteProject = {
+      format: PROJECT_FILE_FORMAT,
       schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
       appVersion: APP_VERSION,
       savedAt: new Date().toISOString(),
@@ -614,7 +684,7 @@ async function saveRouteProject(): Promise<void> {
     const date = project.savedAt.slice(0, 10);
     downloadBlob(
       new Blob([JSON.stringify(project)], { type: 'application/json' }),
-      `route_project_${date}.tvn-project`
+      `route_project_v${PROJECT_FILE_SCHEMA_VERSION}_${date}.tvn-project`
     );
     setStatus(`Saved route project with ${project.photos.length} embedded photo(s).`, 'success');
   } catch (error) {
@@ -1935,7 +2005,7 @@ function positiveInputValue(input: HTMLInputElement, label: string): number {
 function routeSetupProblem(): string | null {
   try {
     parseWaypoints(waypointTextarea.value);
-    parseSpeed(speedInput.value);
+    parseSpeed(selectedSpeedText());
     positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
     positiveInputValue(minuteIntervalInput, 'Minute-marker interval');
     return null;
@@ -1945,7 +2015,7 @@ function routeSetupProblem(): string | null {
 }
 
 function setFieldValidation(
-  input: HTMLInputElement | HTMLTextAreaElement,
+  input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   message: HTMLElement,
   validate: () => void
 ): string | null {
@@ -2007,7 +2077,7 @@ function updateWorkflowReadiness(): void {
       parseWaypoints(waypointTextarea.value);
     }),
     setFieldValidation(speedInput, speedError, () => {
-      parseSpeed(speedInput.value);
+      parseSpeed(selectedSpeedText());
     }),
     setFieldValidation(takeoffBufferInput, takeoffBufferError, () => {
       positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
@@ -2029,7 +2099,7 @@ function updateWorkflowReadiness(): void {
   } else {
     points = parseWaypoints(waypointTextarea.value);
     const route = buildRoute(points);
-    const speed = parseSpeed(speedInput.value);
+    const speed = parseSpeed(selectedSpeedText());
     const takeoffMinutes = positiveInputValue(takeoffBufferInput, 'Takeoff-to-SP time');
     const routeDuration = takeoffMinutes + route.totalDistance / (speed.metersPerSecond * 60);
     const tpCount = points.filter(([name]) => /^TP\d+$/i.test(name.trim())).length;
@@ -2615,7 +2685,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       throw new Error(`Unknown map preset: ${runMapKey}`);
     }
 
-    const speed = parseSpeed(options.speedKnots === undefined ? speedInput.value : `${options.speedKnots}kt`);
+    const speed = parseSpeed(options.speedText ?? selectedSpeedText());
     const minuteInterval = parseNumericInput(minuteIntervalInput, DEFAULT_MINUTE_INTERVAL);
     const takeoffToSp = parseNumericInput(takeoffBufferInput, DEFAULT_TAKEOFF_BUFFER);
     const points = parseWaypoints(waypointTextarea.value);
@@ -3914,6 +3984,30 @@ function createSpeedEditionArchive(): {
   };
 }
 
+function requestedSpeedEditions(): SpeedEdition[] {
+  const editions: SpeedEdition[] = SPEED_EDITION_KNOTS.map((speed) => ({
+    speedText: `${speed}kt`,
+    slug: `${speed}kt`,
+    label: `${speed} kt`,
+  }));
+  const knownKnots = editions.map((edition) => parseSpeed(edition.speedText).knots);
+  customSpeedSettings().forEach((custom, index) => {
+    if (!custom.value) return;
+    const speedText = `${custom.value}${custom.unit}`;
+    const parsed = parseSpeed(speedText);
+    if (knownKnots.some((knots) => Math.abs(knots - parsed.knots) < 0.01)) return;
+    knownKnots.push(parsed.knots);
+    const safeValue = custom.value.replace(',', '.').replace('.', '_');
+    const unit = custom.unit === 'kmh' ? 'kmh' : 'kt';
+    editions.push({
+      speedText,
+      slug: `custom${index + 1}_${safeValue}${unit}`,
+      label: `Custom ${index + 1}: ${parsed.label}`,
+    });
+  });
+  return editions;
+}
+
 async function generateSpeedEditionSet(): Promise<void> {
   if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) return;
   if (!isPdfPreset()) {
@@ -3921,12 +4015,20 @@ async function generateSpeedEditionSet(): Promise<void> {
     return;
   }
   speedSetGenerationActive = true;
+  let editions: SpeedEdition[];
+  try {
+    editions = requestedSpeedEditions();
+  } catch (error) {
+    speedSetGenerationActive = false;
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return;
+  }
   generateSpeedSetBtn.disabled = true;
   generateBtn.disabled = true;
   saveProjectBtn.disabled = true;
   loadProjectBtn.disabled = true;
   speedSetProgress.hidden = false;
-  speedSetProgressBar.max = SPEED_EDITION_KNOTS.length;
+  speedSetProgressBar.max = editions.length;
   speedSetProgressBar.value = 0;
   speedSetProgress.dataset.state = 'working';
   downloadSpeedSetLink.hidden = true;
@@ -3938,35 +4040,38 @@ async function generateSpeedEditionSet(): Promise<void> {
   archive.add(
     'README.txt',
     strToU8(
-      'Speed editions generated by Route Overlay Generator.\nEach folder contains a judge solution map and a competitor route map for the stated groundspeed.\nPhoto handouts are shared across speeds and remain available in the normal package downloads.\n'
+      'Speed editions generated by Route Overlay Generator.\nEach folder contains a judge solution map and a competitor route map for the stated groundspeed.\nThe archive contains the default 50–100 kt set and configured non-duplicate custom speeds.\nPhoto handouts are shared across speeds and remain available in the normal package downloads.\n'
     )
   );
   try {
-    for (const [index, speedKnots] of SPEED_EDITION_KNOTS.entries()) {
-      speedSetProgressText.textContent = `Preparing ${speedKnots} kt judge and competitor maps…`;
-      speedSetProgressCount.textContent = `${index} of ${SPEED_EDITION_KNOTS.length}`;
-      setStatus(
-        `Speed editions: preparing ${speedKnots} kt (${index + 1} of ${SPEED_EDITION_KNOTS.length})…`
-      );
-      const maps = await generate({ speedKnots, mapsOnly: true });
-      if (!maps) throw new Error(`The ${speedKnots} kt edition could not be generated.`);
-      const folder = `${speedKnots}kt`;
-      archive.add(`${folder}/judge_solution_map_${speedKnots}kt.pdf`, maps.judge);
-      archive.add(`${folder}/competitor_route_map_${speedKnots}kt.pdf`, maps.competitor);
+    for (const [index, edition] of editions.entries()) {
+      speedSetProgressText.textContent = `Preparing ${edition.label} judge and competitor maps…`;
+      speedSetProgressCount.textContent = `${index} of ${editions.length}`;
+      setStatus(`Speed editions: preparing ${edition.label} (${index + 1} of ${editions.length})…`);
+      const maps = await generate({ speedText: edition.speedText, mapsOnly: true });
+      if (!maps) throw new Error(`The ${edition.label} edition could not be generated.`);
+      archive.add(`${edition.slug}/judge_solution_map_${edition.slug}.pdf`, maps.judge);
+      archive.add(`${edition.slug}/competitor_route_map_${edition.slug}.pdf`, maps.competitor);
       speedSetProgressBar.value = index + 1;
-      speedSetProgressCount.textContent = `${index + 1} of ${SPEED_EDITION_KNOTS.length}`;
+      speedSetProgressCount.textContent = `${index + 1} of ${editions.length}`;
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     speedSetProgressText.textContent = 'Finalizing ZIP archive…';
     const blob = await archive.finish();
     speedSetObjectUrl = URL.createObjectURL(blob);
     downloadSpeedSetLink.href = speedSetObjectUrl;
-    downloadSpeedSetLink.download = 'route_speed_editions_50-100kt.zip';
+    downloadSpeedSetLink.download =
+      editions.length > SPEED_EDITION_KNOTS.length
+        ? 'route_speed_editions_50-100kt_plus_custom.zip'
+        : 'route_speed_editions_50-100kt.zip';
     downloadSpeedSetLink.hidden = false;
     speedSetProgress.dataset.state = 'complete';
     speedSetProgressText.textContent = 'All speed editions are ready';
-    speedSetProgressCount.textContent = `${SPEED_EDITION_KNOTS.length} of ${SPEED_EDITION_KNOTS.length}`;
-    setStatus('Prepared judge and competitor route maps for 50–100 kt in 5 kt steps.', 'success');
+    speedSetProgressCount.textContent = `${editions.length} of ${editions.length}`;
+    setStatus(
+      `Prepared judge and competitor route maps for ${editions.length} speed edition${editions.length === 1 ? '' : 's'}.`,
+      'success'
+    );
   } catch (error) {
     speedSetProgress.dataset.state = 'error';
     speedSetProgressText.textContent = 'Speed-edition generation stopped';
@@ -4076,6 +4181,26 @@ for (const input of [speedInput, takeoffBufferInput, minuteIntervalInput]) {
     updateWorkflowReadiness();
   });
 }
+speedInput.addEventListener('change', () => {
+  const index = customSpeedIndex();
+  if (index === null) return;
+  if (customSpeedPanel) customSpeedPanel.open = true;
+  if (!customSpeedValueInputs[index].value) customSpeedValueInputs[index].focus();
+});
+customSpeedValueInputs.forEach((input) => {
+  input.addEventListener('input', () => {
+    updateCustomSpeedOptionLabels();
+    clearSpeedSetDownload();
+    updateWorkflowReadiness();
+  });
+});
+customSpeedUnitInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    updateCustomSpeedOptionLabels();
+    clearSpeedSetDownload();
+    updateWorkflowReadiness();
+  });
+});
 handoutSplit.addEventListener('change', () => {
   clearSpeedSetDownload();
   updateWorkflowReadiness();
@@ -4086,6 +4211,7 @@ document.addEventListener('photo-workflow-change', () => {
   updateWorkflowReadiness();
 });
 setStatus('');
+applyCustomSpeedSettings(DEFAULT_CUSTOM_SPEEDS);
 handleMapPresetChange(selectedMapKey);
 photoWorkflow.analyze(parseWaypoints(waypointTextarea.value));
 updateWorkflowReadiness();
