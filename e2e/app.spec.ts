@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import Ajv2020 from 'ajv/dist/2020.js';
-import { unzipSync } from 'fflate';
+import { strFromU8, unzipSync } from 'fflate';
 import { PDFDocument, PrintScaling } from 'pdf-lib';
 
 async function expectPdfBlob(page, selector: string): Promise<void> {
@@ -321,7 +321,7 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   await expect(page.locator('#photoCropBounds')).not.toBeChecked();
 });
 
-test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', async ({
+test('speed-edition ZIP contains default, custom, and shared competition files', async ({
   page,
   browserName,
 }) => {
@@ -338,18 +338,36 @@ test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', a
   await page.locator('.custom-speed-panel summary').click();
   await page.locator('[data-custom-speed-value="1"]').fill('140');
   await page.locator('[data-custom-speed-unit="1"]').selectOption('kmh');
+  const jpeg = await readFile(new URL('../examples/photos/IMG__164053_00_298.jpg', import.meta.url));
+  await goToStage(page, 2);
+  await page.locator('#photoFiles').setInputFiles({
+    name: 'IMG_speed_archive.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpeg,
+  });
+  await expect(page.locator('#photoProgressText')).toContainText('1 of 1 photos imported');
   await goToStage(page, 3);
   await page.locator('#generate').click();
   await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
   await expect(page.locator('#status')).toContainText('Generated');
   await page.locator('#generateSpeedSet').click();
-  await expect(page.locator('#speedSetProgress')).toHaveAttribute('data-state', 'complete', {
-    timeout: 120_000,
-  });
+  await expect
+    .poll(
+      async () => {
+        const state = await page.locator('#speedSetProgress').getAttribute('data-state');
+        if (state === 'error')
+          throw new Error((await page.locator('#status').textContent()) ?? 'Unknown error');
+        return state;
+      },
+      { timeout: 120_000 }
+    )
+    .toBe('complete');
   await expect(page.locator('#speedSetProgressCount')).toHaveText('12 of 12');
   const archive = unzipSync(await downloadBytes(page, '#downloadSpeedSet'));
-  const pdfNames = Object.keys(archive).filter((name) => name.endsWith('.pdf'));
-  expect(pdfNames).toHaveLength(24);
+  const speedPdfNames = Object.keys(archive).filter(
+    (name) => !name.startsWith('shared/') && name.endsWith('.pdf')
+  );
+  expect(speedPdfNames).toHaveLength(24);
   for (const speed of [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]) {
     const judge = archive[`${speed}kt/judge_solution_map_${speed}kt.pdf`];
     const competitor = archive[`${speed}kt/competitor_route_map_${speed}kt.pdf`];
@@ -358,6 +376,26 @@ test('speed-edition ZIP contains judge and competitor maps for all 11 speeds', a
   }
   expect(archive['custom1_140kmh/judge_solution_map_custom1_140kmh.pdf']).toBeDefined();
   expect(archive['custom1_140kmh/competitor_route_map_custom1_140kmh.pdf']).toBeDefined();
+
+  for (const name of [
+    'shared/empty_map.pdf',
+    'shared/judge_photo_handout.pdf',
+    'shared/competitor_photo_handout.pdf',
+  ]) {
+    expect(Buffer.from(archive[name].subarray(0, 5)).toString()).toBe('%PDF-');
+  }
+  expect(strFromU8(archive['shared/photo_analysis.csv'])).toContain('file_name');
+  expect(strFromU8(archive['shared/photo_overlay_key.csv'])).toContain('file_name');
+  expect(strFromU8(archive['README.txt'])).toContain('shared folder');
+
+  const projectName = Object.keys(archive).find((name) =>
+    /^shared\/route_project_v2_\d{4}-\d{2}-\d{2}\.tvn-project$/.test(name)
+  );
+  expect(projectName).toBeDefined();
+  const savedProject = JSON.parse(strFromU8(archive[projectName as string]));
+  expect(savedProject.schemaVersion).toBe(2);
+  expect(savedProject.photos).toHaveLength(1);
+  expect(savedProject.settings.customSpeeds[0]).toEqual({ value: '140', unit: 'kmh' });
 });
 
 test('OSM requires explicit third-party tile consent', async ({ page }) => {

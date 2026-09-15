@@ -225,6 +225,14 @@ const downloadUrls = {
   photoHandout: null,
   competitorPhotoHandout: null,
 };
+type SharedArtifactKey = 'cropped' | 'photoAnalysis' | 'photoKey' | 'photoHandout' | 'competitorPhotoHandout';
+const sharedArtifactBytes: Record<SharedArtifactKey, Uint8Array | null> = {
+  cropped: null,
+  photoAnalysis: null,
+  photoKey: null,
+  photoHandout: null,
+  competitorPhotoHandout: null,
+};
 let previewObjectUrl = null;
 let speedSetObjectUrl: string | null = null;
 let croppedPreviewController: AbortController | null = null;
@@ -495,8 +503,15 @@ function clearSpeedSetDownload(): void {
   speedSetProgress.removeAttribute('data-state');
 }
 
+function clearSharedArtifactBytes(): void {
+  for (const key of Object.keys(sharedArtifactBytes) as SharedArtifactKey[]) {
+    sharedArtifactBytes[key] = null;
+  }
+}
+
 function invalidateGeneratedPackage(): void {
   clearSpeedSetDownload();
+  clearSharedArtifactBytes();
   const downloads = [
     ['pdf', downloadPdfLink],
     ['overlay', downloadOverlayLink],
@@ -664,6 +679,26 @@ function downloadBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+async function createRouteProjectArtifact(): Promise<{
+  project: SavedRouteProject;
+  filename: string;
+  bytes: Uint8Array;
+}> {
+  const project: SavedRouteProject = {
+    format: PROJECT_FILE_FORMAT,
+    schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
+    appVersion: APP_VERSION,
+    savedAt: new Date().toISOString(),
+    settings: currentProjectSettings(),
+    photos: await photoWorkflow.saveProjectPhotos(),
+  };
+  return {
+    project,
+    filename: `route_project_v${PROJECT_FILE_SCHEMA_VERSION}_${project.savedAt.slice(0, 10)}.tvn-project`,
+    bytes: strToU8(JSON.stringify(project)),
+  };
+}
+
 async function saveRouteProject(): Promise<void> {
   if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) {
     setStatus('Wait for the active operation to finish before saving the project.', 'warning');
@@ -673,20 +708,12 @@ async function saveRouteProject(): Promise<void> {
   loadProjectBtn.disabled = true;
   photoWorkflow.setExternalBusy(true);
   try {
-    const project: SavedRouteProject = {
-      format: PROJECT_FILE_FORMAT,
-      schemaVersion: PROJECT_FILE_SCHEMA_VERSION,
-      appVersion: APP_VERSION,
-      savedAt: new Date().toISOString(),
-      settings: currentProjectSettings(),
-      photos: await photoWorkflow.saveProjectPhotos(),
-    };
-    const date = project.savedAt.slice(0, 10);
+    const artifact = await createRouteProjectArtifact();
     downloadBlob(
-      new Blob([JSON.stringify(project)], { type: 'application/json' }),
-      `route_project_v${PROJECT_FILE_SCHEMA_VERSION}_${date}.tvn-project`
+      new Blob([Uint8Array.from(artifact.bytes).buffer], { type: 'application/json' }),
+      artifact.filename
     );
-    setStatus(`Saved route project with ${project.photos.length} embedded photo(s).`, 'success');
+    setStatus(`Saved route project with ${artifact.project.photos.length} embedded photo(s).`, 'success');
   } catch (error) {
     setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
   } finally {
@@ -2655,6 +2682,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
     setArtifactState('map', 'processing', 'preparing route map');
     setArtifactState('overlay', 'processing', 'preparing overlay');
     if (!mapsOnly) {
+      clearSharedArtifactBytes();
       resultsContent.hidden = true;
       if (resultsPlaceholder && !hasGeneratedOnce) resultsPlaceholder.hidden = false;
       clearDownloadUrl('pdf', downloadPdfLink);
@@ -3511,6 +3539,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             'empty_map.pdf',
             downloadCroppedLink
           );
+          sharedArtifactBytes.cropped = Uint8Array.from(emptyCroppedBytes);
           downloadCroppedLink.style.display = 'inline-flex';
           void renderCroppedPreview(previewOptions);
         }
@@ -3727,6 +3756,8 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
     } else {
       const analysisCsv = photoAnalysisCsv(generationPhotos);
       const overlayKeyCsv = photoOverlayKeyCsv(generationPhotos);
+      sharedArtifactBytes.photoAnalysis = strToU8(analysisCsv);
+      sharedArtifactBytes.photoKey = strToU8(overlayKeyCsv);
       setDownloadUrl(
         'photoAnalysis',
         URL.createObjectURL(new Blob([analysisCsv], { type: 'text/csv;charset=utf-8' })),
@@ -3777,6 +3808,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             'judge_photo_handout.pdf',
             downloadPhotoHandoutLink
           );
+          sharedArtifactBytes.photoHandout = Uint8Array.from(handoutBytes);
           downloadPhotoHandoutLink.style.display = 'inline-flex';
           setArtifactState('handout', 'ok', 'PDF ready');
         } catch (error) {
@@ -3797,6 +3829,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             'competitor_photo_handout.pdf',
             downloadCompetitorPhotoHandoutLink
           );
+          sharedArtifactBytes.competitorPhotoHandout = Uint8Array.from(competitorHandoutBytes);
           downloadCompetitorPhotoHandoutLink.style.display = 'inline-flex';
           setArtifactState('competitorHandout', 'ok', 'PDF ready');
         } catch (error) {
@@ -4008,6 +4041,33 @@ function requestedSpeedEditions(): SpeedEdition[] {
   return editions;
 }
 
+function generatedArtifactBytes(key: SharedArtifactKey, label: string): Uint8Array {
+  const bytes = sharedArtifactBytes[key];
+  if (!bytes) throw new Error(`${label} was not generated, so the complete speed archive cannot be built.`);
+  return bytes;
+}
+
+async function addSharedCompetitionFiles(
+  archive: ReturnType<typeof createSpeedEditionArchive>
+): Promise<void> {
+  const entries: Array<[SharedArtifactKey, string, string]> = [
+    ['cropped', 'empty map', 'shared/empty_map.pdf'],
+  ];
+  if (photoWorkflow.records.length > 0) {
+    entries.push(
+      ['photoHandout', 'judge photo handout', 'shared/judge_photo_handout.pdf'],
+      ['competitorPhotoHandout', 'competitor photo handout', 'shared/competitor_photo_handout.pdf'],
+      ['photoAnalysis', 'photo analysis', 'shared/photo_analysis.csv'],
+      ['photoKey', 'photo overlay key', 'shared/photo_overlay_key.csv']
+    );
+  }
+  for (const [key, label, path] of entries) {
+    archive.add(path, generatedArtifactBytes(key, label));
+  }
+  const project = await createRouteProjectArtifact();
+  archive.add(`shared/${project.filename}`, project.bytes);
+}
+
 async function generateSpeedEditionSet(): Promise<void> {
   if (generationController || photoWorkflow.isBusy || speedSetGenerationActive) return;
   if (!isPdfPreset()) {
@@ -4040,10 +4100,15 @@ async function generateSpeedEditionSet(): Promise<void> {
   archive.add(
     'README.txt',
     strToU8(
-      'Speed editions generated by Route Overlay Generator.\nEach folder contains a judge solution map and a competitor route map for the stated groundspeed.\nThe archive contains the default 50–100 kt set and configured non-duplicate custom speeds.\nPhoto handouts are shared across speeds and remain available in the normal package downloads.\n'
+      'Speed editions generated by Route Overlay Generator.\nEach speed folder contains a judge solution map and a competitor route map for the stated groundspeed.\nThe archive contains the default 50–100 kt set and configured non-duplicate custom speeds.\nThe shared folder contains all speed-independent competition files and a versioned route project that can recreate the package.\n'
     )
   );
   try {
+    speedSetProgressText.textContent = 'Refreshing speed-independent competition files…';
+    speedSetProgressCount.textContent = `0 of ${editions.length}`;
+    setStatus('Speed editions: preparing shared competition files and route project…');
+    if (!(await generate())) throw new Error('The shared competition package could not be generated.');
+    await addSharedCompetitionFiles(archive);
     for (const [index, edition] of editions.entries()) {
       speedSetProgressText.textContent = `Preparing ${edition.label} judge and competitor maps…`;
       speedSetProgressCount.textContent = `${index} of ${editions.length}`;
