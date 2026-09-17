@@ -1155,6 +1155,28 @@ th:not(:first-child) {
   border-radius: 7px;
 }
 
+.control-photo-row[data-state="missing"] {
+  border-color: #d5a34a;
+  background: #fffaf0;
+}
+
+.control-photo-missing {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 5rem;
+  padding: 0.75rem;
+  border: 1px dashed #c58b28;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.control-photo-missing p {
+  margin: 0.25rem 0 0;
+}
+
 .control-photo-choice {
   display: grid;
   align-content: start;
@@ -1194,6 +1216,12 @@ th:not(:first-child) {
 @media (max-width: 780px) {
   .control-photo-row {
     grid-template-columns: 1fr;
+  }
+
+  .control-photo-missing {
+    grid-column: auto;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .control-photo-progress-heading {

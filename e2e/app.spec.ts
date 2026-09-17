@@ -528,7 +528,22 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
       },
     ],
   };
-  await page.route('https://maps.mail.ru/osm/tools/overpass/**', async (route) => {
+  const trueQueryCounts = new Map<string, number>();
+  await page.route('**/api/interpreter', async (route) => {
+    const query = new URLSearchParams(route.request().postData() ?? '').get('data') ?? '';
+    const missingWaypoint = query.includes('(around:3000,46.6000000,16.1000000)')
+      ? 'TP1'
+      : query.includes('(around:3000,46.6000000,16.2000000)')
+        ? 'FP'
+        : null;
+    if (missingWaypoint) {
+      const count = (trueQueryCounts.get(missingWaypoint) ?? 0) + 1;
+      trueQueryCounts.set(missingWaypoint, count);
+      if (count <= 4) {
+        await route.fulfill({ status: 504, contentType: 'text/plain', body: 'Transient timeout' });
+        return;
+      }
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(controlData) });
   });
   let importIndex = 0;
@@ -556,15 +571,28 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await page.locator('#findControlPhotoOptions').click();
   await expect(page.locator('#controlPhotoReview')).toBeVisible();
   await expect(page.locator('#controlPhotoProgress')).toBeVisible();
-  await expect(page.locator('#controlPhotoProgressCount')).toHaveText('3 of 3 controls processed');
-  await expect(page.locator('#controlPhotoProgressPhase')).toContainText('3 photo proposals ready');
+  await expect(page.locator('#controlPhotoProgressCount')).toHaveText('3 controls processed');
+  await expect(page.locator('#controlPhotoProgressPhase')).toContainText('1 new photo proposal ready');
   await expect(page.locator('#controlPhotoProgressBar')).toHaveJSProperty('value', 4);
   await expect(page.locator('#controlPhotoProgressBar')).toHaveJSProperty('max', 4);
   await expect(page.locator('.control-photo-row')).toHaveCount(3);
   await expect(page.locator('.control-photo-waypoint')).toHaveText(['SP', 'TP1', 'FP']);
   await expect(page.locator('.control-photo-row').nth(0).locator('.control-photo-option')).toHaveCount(1);
-  await expect(page.locator('.control-photo-row').nth(1).locator('.control-photo-option')).toHaveCount(2);
-  await expect(page.locator('.control-photo-row').nth(2).locator('.control-photo-option')).toHaveCount(1);
+  await expect(page.locator('[data-control-waypoint="TP1"][data-state="missing"]')).toContainText(
+    'Retry TP1'
+  );
+  await expect(page.locator('[data-control-waypoint="FP"][data-state="missing"]')).toContainText('Retry FP');
+
+  await page.locator('[data-retry-control-waypoint="TP1"]').click();
+  await expect(page.locator('[data-control-waypoint="TP1"] .control-photo-option')).toHaveCount(2);
+  await expect(page.locator('[data-control-waypoint="FP"][data-state="missing"]')).toBeVisible();
+  expect(trueQueryCounts.get('TP1')).toBe(5);
+  expect(trueQueryCounts.get('FP')).toBe(4);
+
+  await page.locator('#findControlPhotoOptions').click();
+  await expect(page.locator('[data-control-waypoint="FP"] .control-photo-option')).toHaveCount(1);
+  expect(trueQueryCounts.get('TP1')).toBe(5);
+  expect(trueQueryCounts.get('FP')).toBe(5);
   await page.locator('.control-photo-option img').evaluateAll((images) => {
     (window as typeof window & { controlPreviewNodes?: Element[] }).controlPreviewNodes = images;
   });

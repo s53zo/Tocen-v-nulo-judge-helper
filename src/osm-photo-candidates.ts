@@ -145,6 +145,7 @@ export interface FetchControlPhotoOptions {
   signal?: AbortSignal;
   fetcher?: typeof fetch;
   retryDelayMs?: number;
+  waypointIndices?: number[];
   onProgress?: (progress: ControlDiscoveryProgress) => void;
 }
 
@@ -1040,6 +1041,19 @@ export async function fetchOsmControlPhotoProposals(
 ): Promise<{ proposals: ControlPhotoProposal[]; warnings: string[] }> {
   const fetcher = options.fetcher ?? fetch;
   const warnings: string[] = [];
+  const waypointIndices = options.waypointIndices ?? points.map((_, index) => index);
+  if (
+    waypointIndices.length === 0 ||
+    waypointIndices.some(
+      (index, position) =>
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= points.length ||
+        waypointIndices.indexOf(index) !== position
+    )
+  ) {
+    throw new Error('Control-photo discovery requires unique, valid waypoint indices.');
+  }
   const trueTargets = new Map<number, RankedControlCandidate>();
   const failedTrue: Array<{ index: number; query: string; detail: string }> = [];
   const emit = (
@@ -1075,7 +1089,8 @@ export async function fetchOsmControlPhotoProposals(
       return detail;
     }
   };
-  for (const [index, point] of points.entries()) {
+  for (const index of waypointIndices) {
+    const point = points[index];
     const query = buildOverpassControlTrueQuery(point);
     const result = await request(index, 'true', query, PRIMARY_OVERPASS_ATTEMPTS);
     if (typeof result === 'string') failedTrue.push({ index, query, detail: result });

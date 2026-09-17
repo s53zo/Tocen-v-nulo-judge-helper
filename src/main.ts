@@ -14,6 +14,7 @@ import {
   parseSpeed,
   type RouteCompliance,
   roundedBearing,
+  type Waypoint,
 } from './domain';
 import rawMapPresets from './map-presets.json';
 import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
@@ -1057,16 +1058,51 @@ function updateControlPhotoImportAction(): void {
 
 function renderControlPhotoReview(): void {
   const coverage = orthophotoCoverage(readOrthophotoModel());
+  const points = parseWaypoints(waypointTextarea.value);
+  const proposalsByWaypoint = new Map(
+    controlPhotoProposals.map((proposal) => [proposal.waypoint[0], proposal])
+  );
   const fragment = document.createDocumentFragment();
-  for (const proposal of controlPhotoProposals) {
-    const [waypointName] = proposal.waypoint;
+  for (const [waypointName] of points) {
+    const proposal = proposalsByWaypoint.get(waypointName);
     const imported = importedControlPhoto(waypointName);
     const row = document.createElement('section');
     row.className = 'control-photo-row';
+    row.dataset.controlWaypoint = waypointName;
     const heading = document.createElement('h5');
     heading.className = 'control-photo-waypoint';
     heading.textContent = waypointName;
     row.appendChild(heading);
+    if (!proposal) {
+      if (imported) {
+        const importedStatus = document.createElement('p');
+        importedStatus.className = 'note';
+        importedStatus.textContent = `Already imported as ${imported.classification === 'control-false' ? 'false' : 'true'}.`;
+        row.appendChild(importedStatus);
+      } else {
+        row.dataset.state = 'missing';
+        const missing = document.createElement('div');
+        missing.className = 'control-photo-missing';
+        const missingCopy = document.createElement('div');
+        const missingTitle = document.createElement('strong');
+        missingTitle.textContent = `No ${waypointName} photo proposal`;
+        const missingDetail = document.createElement('p');
+        missingDetail.className = 'note';
+        missingDetail.textContent =
+          'The previous OpenStreetMap lookup did not complete or found no usable object.';
+        missingCopy.append(missingTitle, missingDetail);
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn btn-secondary btn-small';
+        retry.dataset.retryControlWaypoint = waypointName;
+        retry.textContent = `Retry ${waypointName}`;
+        retry.disabled = osmDiscoveryBusy;
+        missing.append(missingCopy, retry);
+        row.appendChild(missing);
+      }
+      fragment.appendChild(row);
+      continue;
+    }
     const options: Array<['true' | 'false', typeof proposal.trueTarget | null]> = [
       ['true', proposal.trueTarget],
       ...(waypointName === 'SP' || waypointName === 'FP'
@@ -1467,67 +1503,94 @@ importOsmCandidates.addEventListener('click', async () => {
   }
 });
 
-findControlPhotoOptions.addEventListener('click', async () => {
+async function discoverControlPhotoOptions(
+  points: Waypoint[],
+  requestedIndices: number[],
+  replaceExisting: boolean
+): Promise<void> {
   if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
   try {
-    const points = parseWaypoints(waypointTextarea.value);
     photoWorkflow.analyze(points);
-    clearControlPhotoReview();
+    const previousSelections = new Map(selectedControlPhotoRoles);
+    if (replaceExisting) clearControlPhotoReview();
     osmDiscoveryController = new AbortController();
     setOsmDiscoveryBusy(true);
     controlPhotoReview.hidden = false;
-    const controlLookupStepCount = Math.max(1, points.length * 2 - 2);
+    const controlLookupStepCount = Math.max(
+      1,
+      requestedIndices.reduce(
+        (total, index) => total + (index === 0 || index === points.length - 1 ? 1 : 2),
+        0
+      )
+    );
+    const requestedPosition = new Map(requestedIndices.map((index, position) => [index, position]));
+    const completedLookups = new Set<string>();
+    const requestedNames = requestedIndices.map((index) => points[index][0]);
     controlPhotoProgress.hidden = false;
     controlPhotoProgress.dataset.state = 'working';
     controlPhotoProgressBar.max = controlLookupStepCount;
     controlPhotoProgressBar.value = 0;
-    controlPhotoProgressCount.textContent = `Preparing control 1 of ${points.length}`;
+    controlPhotoProgressCount.textContent = `Preparing ${requestedNames.join(', ')}`;
     controlPhotoProgressPhase.textContent = `0 of ${controlLookupStepCount} lookup steps`;
-    controlPhotoStatus.textContent = 'Finding the nearest identifiable object for each control…';
-    setStatus('Searching OpenStreetMap for SP/TP/FP photo options…');
+    controlPhotoStatus.textContent = `Finding photo options for ${requestedNames.join(', ')}…`;
+    setStatus(`Searching OpenStreetMap for ${requestedNames.join(', ')} photo options…`);
     const result = await fetchOsmControlPhotoProposals(points, {
       signal: osmDiscoveryController.signal,
-      onProgress: ({ waypointIndex, waypointCount, waypointName, stage, state }) => {
-        const stepFinished = ['completed', 'recovered', 'warning'].includes(state) ? 1 : 0;
-        const lookupStep =
-          stage === 'true' ? waypointIndex + stepFinished : waypointCount + waypointIndex - 1 + stepFinished;
-        controlPhotoProgressBar.value = Math.max(
-          controlPhotoProgressBar.value,
-          Math.min(controlPhotoProgressBar.max, lookupStep)
-        );
+      waypointIndices: requestedIndices,
+      onProgress: ({ waypointIndex, waypointName, stage, state }) => {
+        if (['completed', 'recovered', 'warning'].includes(state)) {
+          completedLookups.add(`${waypointIndex}:${stage}`);
+        }
+        controlPhotoProgressBar.value = Math.min(controlPhotoProgressBar.max, completedLookups.size);
         const action =
           state === 'retrying'
             ? 'retrying after the first pass'
             : stage === 'true'
               ? 'finding the true object'
               : 'finding a similar false object 1-10 NM away';
-        controlPhotoProgressCount.textContent = `Preparing control ${waypointIndex + 1} of ${waypointCount} · ${waypointName}`;
+        controlPhotoProgressCount.textContent = `Preparing control ${(requestedPosition.get(waypointIndex) ?? 0) + 1} of ${requestedIndices.length} · ${waypointName}`;
         controlPhotoProgressPhase.textContent = `${action} · ${controlPhotoProgressBar.value} of ${controlPhotoProgressBar.max} lookup steps`;
-        controlPhotoStatus.textContent = `${waypointIndex + 1} of ${waypointCount} · ${waypointName} · ${action}`;
+        controlPhotoStatus.textContent = `${waypointName} · ${action}`;
       },
     });
-    controlPhotoProposals = result.proposals;
+    const merged = new Map(
+      (replaceExisting ? [] : controlPhotoProposals).map((proposal) => [proposal.waypoint[0], proposal])
+    );
+    for (const proposal of result.proposals) merged.set(proposal.waypoint[0], proposal);
+    controlPhotoProposals = points.flatMap(([waypointName]) => {
+      const proposal = merged.get(waypointName);
+      return proposal ? [proposal] : [];
+    });
     controlPhotoRouteKey = JSON.stringify(points);
-    const previousSelections = selectedControlPhotoRoles;
-    selectedControlPhotoRoles = new Map(
-      result.proposals.map(({ waypoint }) => {
+    selectedControlPhotoRoles = new Map([
+      ...(replaceExisting ? [] : previousSelections.entries()),
+      ...result.proposals.map(({ waypoint }) => {
         const waypointName = waypoint[0];
         const importedRole =
           importedControlPhoto(waypointName)?.generatedOrthophoto?.targetSource?.controlRole;
-        return [waypointName, importedRole ?? previousSelections.get(waypointName) ?? ('true' as const)];
-      })
-    );
+        return [
+          waypointName,
+          importedRole ?? previousSelections.get(waypointName) ?? ('true' as const),
+        ] as const;
+      }),
+    ]);
     controlPhotoImportHadFailures = false;
     renderControlPhotoReview();
     controlPhotoProgressBar.value = controlPhotoProgressBar.max;
     controlPhotoProgress.dataset.state = result.warnings.length ? 'warning' : 'complete';
-    controlPhotoProgressCount.textContent = `${points.length} of ${points.length} controls processed`;
-    controlPhotoProgressPhase.textContent = `${result.proposals.length} photo proposal${result.proposals.length === 1 ? '' : 's'} ready`;
-    controlPhotoStatus.textContent = `${result.proposals.length} of ${points.length} controls have a true-photo proposal.${result.warnings.length ? ` ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join(' | ')}` : ' Choose true or false for each TP.'}`;
+    controlPhotoProgressCount.textContent = `${requestedIndices.length} control${requestedIndices.length === 1 ? '' : 's'} processed`;
+    controlPhotoProgressPhase.textContent = `${result.proposals.length} new photo proposal${result.proposals.length === 1 ? '' : 's'} ready`;
+    const preparedCount = new Set([
+      ...controlPhotoProposals.map(({ waypoint }) => waypoint[0]),
+      ...photoWorkflow.records
+        .map((record) => record.generatedOrthophoto?.targetSource?.controlWaypoint)
+        .filter((waypoint): waypoint is string => Boolean(waypoint)),
+    ]).size;
+    controlPhotoStatus.textContent = `${preparedCount} of ${points.length} controls have a photo proposal or imported photo.${result.warnings.length ? ` ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join(' | ')}` : ' Choose true or false for each available TP.'}`;
     setStatus(
       result.warnings.length
-        ? `Control-photo discovery completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}. Review the available choices.`
-        : 'Control-photo options are ready. SP and FP are fixed to true; choose true or false for every TP.',
+        ? `Control-photo lookup completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}. Missing controls can be retried individually.`
+        : `${requestedNames.join(', ')} photo option${requestedNames.length === 1 ? ' is' : 's are'} ready.`,
       result.warnings.length ? 'warning' : 'success'
     );
   } catch (error) {
@@ -1539,6 +1602,50 @@ findControlPhotoOptions.addEventListener('click', async () => {
   } finally {
     osmDiscoveryController = null;
     if (osmDiscoveryBusy) setOsmDiscoveryBusy(false);
+    if (!controlPhotoReview.hidden) renderControlPhotoReview();
+  }
+}
+
+findControlPhotoOptions.addEventListener('click', async () => {
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    const routeKey = JSON.stringify(points);
+    const availableWaypoints = new Set([
+      ...controlPhotoProposals.map(({ waypoint }) => waypoint[0]),
+      ...photoWorkflow.records
+        .map((record) => record.generatedOrthophoto?.targetSource?.controlWaypoint)
+        .filter((waypoint): waypoint is string => Boolean(waypoint)),
+    ]);
+    const missingIndices = points.flatMap(([waypointName], index) =>
+      availableWaypoints.has(waypointName) ? [] : [index]
+    );
+    const retryMissingOnly = controlPhotoRouteKey === routeKey && missingIndices.length > 0;
+    await discoverControlPhotoOptions(
+      points,
+      retryMissingOnly ? missingIndices : points.map((_, index) => index),
+      !retryMissingOnly
+    );
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+});
+
+controlPhotoList.addEventListener('click', async (event) => {
+  const retry = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    'button[data-retry-control-waypoint]'
+  );
+  if (!retry || photoWorkflow.isBusy || osmDiscoveryBusy) return;
+  const waypoint = retry.dataset.retryControlWaypoint;
+  if (!waypoint) return;
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    const waypointIndex = points.findIndex(([name]) => name === waypoint);
+    if (waypointIndex < 0) throw new Error(`${waypoint} is no longer part of the route.`);
+    retry.disabled = true;
+    retry.textContent = `Retrying ${waypoint}…`;
+    await discoverControlPhotoOptions(points, [waypointIndex], false);
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 });
 
