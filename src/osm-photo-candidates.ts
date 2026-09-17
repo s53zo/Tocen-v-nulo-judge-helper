@@ -1152,11 +1152,13 @@ export async function fetchOsmControlPhotoProposals(
     }
   }
 
-  const proposals = [...trueTargets.entries()].map(([index, trueTarget]) => ({
-    waypoint: points[index],
-    trueTarget,
-    falseTarget: falseTargets.get(index) ?? null,
-  }));
+  const proposals = [...trueTargets.entries()]
+    .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
+    .map(([index, trueTarget]) => ({
+      waypoint: points[index],
+      trueTarget,
+      falseTarget: falseTargets.get(index) ?? null,
+    }));
   return { proposals, warnings };
 }
 

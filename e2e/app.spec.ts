@@ -532,8 +532,21 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(controlData) });
   });
   let importIndex = 0;
+  const importAttempts = new Map<string, number>();
+  const importUrlOrder: string[] = [];
   await page.route('https://ipi.eprostor.gov.si/**', async (route) => {
-    const width = new URL(route.request().url()).searchParams.get('WIDTH');
+    const url = route.request().url();
+    const width = new URL(url).searchParams.get('WIDTH');
+    if (width === '1600') {
+      if (!importUrlOrder.includes(url)) importUrlOrder.push(url);
+      const attempts = importAttempts.get(url) ?? 0;
+      importAttempts.set(url, attempts + 1);
+      const transientFailures = importUrlOrder.indexOf(url) === 1 ? 2 : 1;
+      if (attempts < transientFailures) {
+        await route.fulfill({ status: 404, contentType: 'text/plain', body: 'Transient failure' });
+        return;
+      }
+    }
     const body = width === '1600' ? importJpegs[importIndex++] : importJpegs[0];
     await route.fulfill({ status: 200, contentType: 'image/jpeg', body });
   });
@@ -552,9 +565,29 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await expect(page.locator('.control-photo-row').nth(0).locator('.control-photo-option')).toHaveCount(1);
   await expect(page.locator('.control-photo-row').nth(1).locator('.control-photo-option')).toHaveCount(2);
   await expect(page.locator('.control-photo-row').nth(2).locator('.control-photo-option')).toHaveCount(1);
+  await page.locator('.control-photo-option img').evaluateAll((images) => {
+    (window as typeof window & { controlPreviewNodes?: Element[] }).controlPreviewNodes = images;
+  });
   await page.locator('input[data-control-waypoint="TP1"][value="false"]').check();
+  const previewsWerePreserved = await page
+    .locator('.control-photo-option img')
+    .evaluateAll((images) =>
+      images.every(
+        (image, index) =>
+          image ===
+          (window as typeof window & { controlPreviewNodes?: Element[] }).controlPreviewNodes?.[index]
+      )
+    );
+  expect(previewsWerePreserved).toBe(true);
+  await expect(page.locator('#importControlPhotos')).toHaveText('Import chosen control photos');
   await page.locator('#importControlPhotos').click();
-  await expect(page.locator('#photoProgressText')).toContainText('3 of 3 DOF025 crops imported');
+  await expect(page.locator('#photoProgressText')).toContainText('2 of 3 DOF025 crops imported');
+  await expect(page.locator('#importControlPhotos')).toHaveText('Retry 1 failed control photo');
+  await expect(page.locator('.control-photo-row input:disabled')).toHaveCount(2);
+  await page.locator('#importControlPhotos').click();
+  await expect(page.locator('#photoProgressText')).toContainText('1 of 1 DOF025 crops imported');
+  await expect(page.locator('#controlPhotoReview')).toBeHidden();
+  expect([...importAttempts.values()]).toEqual([2, 3, 2]);
   await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(3);
   await expect(page.locator('.photo-card').nth(0)).toContainText('Correct control photo');

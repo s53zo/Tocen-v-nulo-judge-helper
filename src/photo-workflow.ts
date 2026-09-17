@@ -58,6 +58,7 @@ const CLASS_LABELS: Record<PhotoClassification, string> = {
   reference: 'Reference only',
 };
 const ORTHOPHOTO_BATCH_TIMEOUT_MS = 120_000;
+const RETRYABLE_ORTHOPHOTO_HTTP_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
 
 export const PHOTO_IMPORT_LIMITS = {
   maximumCount: 60,
@@ -939,12 +940,17 @@ export class PhotoWorkflow {
     let cancelled = false;
     let importedBytes = this.records.reduce((total, record) => total + record.fileSize, 0);
     try {
-      for (const [index, target] of targets.entries()) {
+      const requestQueue = targets.map((target) => ({ target, retry: false }));
+      let completedTargets = 0;
+      for (let queueIndex = 0; queueIndex < requestQueue.length; queueIndex += 1) {
+        const { target, retry } = requestQueue[queueIndex];
         if (batchController.signal.aborted) {
           cancelled = true;
           break;
         }
-        this.progressText.textContent = `Requesting DOF025 crop ${index + 1} of ${targets.length}: ${target.label}`;
+        this.progressText.textContent = retry
+          ? `Retrying DOF025 crop after the first pass: ${target.label}`
+          : `Requesting DOF025 crop ${queueIndex + 1} of ${targets.length}: ${target.label}`;
         const itemController = new AbortController();
         const abortItem = () => itemController.abort(batchController.signal.reason);
         batchController.signal.addEventListener('abort', abortItem, { once: true });
@@ -952,11 +958,16 @@ export class PhotoWorkflow {
           () => itemController.abort(new Error('DOF025 import timed out after 30 seconds.')),
           30_000
         );
+        let retryableFailure = false;
+        let terminalResult = true;
         try {
           const response = await fetch(orthophotoRequestUrl(target.latitude, target.longitude, coverage), {
             signal: itemController.signal,
           });
-          if (!response.ok) throw new Error(`GURS WMS returned HTTP ${response.status}`);
+          if (!response.ok) {
+            retryableFailure = RETRYABLE_ORTHOPHOTO_HTTP_STATUSES.has(response.status);
+            throw new Error(`GURS WMS returned HTTP ${response.status}`);
+          }
           const remainingBytes = PHOTO_IMPORT_LIMITS.maximumTotalBytes - importedBytes;
           if (remainingBytes <= 0) throw new Error('The total photo byte limit has been reached.');
           const blob = await boundedResponseBlob(
@@ -1001,12 +1012,22 @@ export class PhotoWorkflow {
             cancelled = true;
             break;
           }
-          failedTargets.push({ target, error: message });
+          retryableFailure ||=
+            error instanceof TypeError ||
+            itemController.signal.aborted ||
+            /(?:load failed|failed to fetch|network|timed out)/i.test(message);
+          if (!retry && retryableFailure) {
+            requestQueue.push({ target, retry: true });
+            terminalResult = false;
+          } else {
+            failedTargets.push({ target, error: message });
+          }
         } finally {
           window.clearTimeout(timeout);
           batchController.signal.removeEventListener('abort', abortItem);
         }
-        this.progress.value = index + 1;
+        if (terminalResult) completedTargets += 1;
+        this.progress.value = completedTargets;
       }
       if (cancelled) {
         const accounted = new Set([
@@ -1019,6 +1040,20 @@ export class PhotoWorkflow {
           }
         }
       }
+      const previousOrder = new Map(this.records.map((record, index) => [record.id, index]));
+      const controlOrder = new Map(this.route.map(([waypoint], index) => [waypoint.toUpperCase(), index]));
+      this.records.sort((left, right) => {
+        const leftWaypoint = left.generatedOrthophoto?.targetSource?.controlWaypoint?.toUpperCase();
+        const rightWaypoint = right.generatedOrthophoto?.targetSource?.controlWaypoint?.toUpperCase();
+        const leftControlOrder = leftWaypoint ? controlOrder.get(leftWaypoint) : undefined;
+        const rightControlOrder = rightWaypoint ? controlOrder.get(rightWaypoint) : undefined;
+        if (leftControlOrder !== undefined && rightControlOrder !== undefined) {
+          return leftControlOrder - rightControlOrder;
+        }
+        if (leftControlOrder !== undefined) return -1;
+        if (rightControlOrder !== undefined) return 1;
+        return (previousOrder.get(left.id) ?? 0) - (previousOrder.get(right.id) ?? 0);
+      });
       this.records.forEach((record, index) => {
         record.order = index;
       });

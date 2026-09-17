@@ -805,6 +805,7 @@ let osmDiscoveryController: AbortController | null = null;
 let controlPhotoProposals: ControlPhotoProposal[] = [];
 let selectedControlPhotoRoles = new Map<string, 'true' | 'false'>();
 let controlPhotoRouteKey = '';
+let controlPhotoImportHadFailures = false;
 let waypointAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
 waypointTextarea.addEventListener('input', () => {
   if (waypointAnalysisTimer !== null) clearTimeout(waypointAnalysisTimer);
@@ -1006,6 +1007,7 @@ function clearControlPhotoReview(): void {
   controlPhotoProposals = [];
   selectedControlPhotoRoles.clear();
   controlPhotoRouteKey = '';
+  controlPhotoImportHadFailures = false;
   controlPhotoList.replaceChildren();
   controlPhotoProgress.hidden = true;
   controlPhotoProgress.removeAttribute('data-state');
@@ -1014,11 +1016,51 @@ function clearControlPhotoReview(): void {
   controlPhotoReview.hidden = true;
 }
 
+function importedControlPhoto(waypoint: string) {
+  return photoWorkflow.records.find(
+    (record) => record.generatedOrthophoto?.targetSource?.controlWaypoint === waypoint
+  );
+}
+
+function updateControlPhotoImportAction(): void {
+  let routeControlCount = controlPhotoProposals.length;
+  try {
+    routeControlCount = parseWaypoints(waypointTextarea.value).length;
+  } catch {
+    // Route validation owns the detailed error; keep the review action usable.
+  }
+  const pendingCount = controlPhotoProposals.filter(
+    ({ waypoint }) => !importedControlPhoto(waypoint[0])
+  ).length;
+  const missingCount = Math.max(
+    0,
+    routeControlCount -
+      new Set([
+        ...controlPhotoProposals.map(({ waypoint }) => waypoint[0]),
+        ...photoWorkflow.records
+          .map((record) => record.generatedOrthophoto?.targetSource?.controlWaypoint)
+          .filter((waypoint): waypoint is string => Boolean(waypoint)),
+      ]).size
+  );
+  importControlPhotos.disabled = osmDiscoveryBusy || pendingCount === 0;
+  importControlPhotos.textContent =
+    pendingCount === 0
+      ? missingCount > 0
+        ? `${missingCount} control photo${missingCount === 1 ? '' : 's'} still missing`
+        : 'Control photos imported'
+      : controlPhotoImportHadFailures
+        ? `Retry ${pendingCount} failed control photo${pendingCount === 1 ? '' : 's'}`
+        : controlPhotoProposals.length < routeControlCount
+          ? `Import ${pendingCount} available control photo${pendingCount === 1 ? '' : 's'}`
+          : 'Import chosen control photos';
+}
+
 function renderControlPhotoReview(): void {
   const coverage = orthophotoCoverage(readOrthophotoModel());
   const fragment = document.createDocumentFragment();
   for (const proposal of controlPhotoProposals) {
     const [waypointName] = proposal.waypoint;
+    const imported = importedControlPhoto(waypointName);
     const row = document.createElement('section');
     row.className = 'control-photo-row';
     const heading = document.createElement('h5');
@@ -1045,6 +1087,7 @@ function renderControlPhotoReview(): void {
       choice.value = role;
       choice.dataset.controlWaypoint = waypointName;
       choice.checked = selectedControlPhotoRoles.get(waypointName) === role;
+      choice.disabled = Boolean(imported);
       const title = document.createElement('strong');
       title.textContent =
         role === 'true' ? `True · exact ${waypointName} position` : `False · ${target.name}`;
@@ -1069,11 +1112,17 @@ function renderControlPhotoReview(): void {
       option.append(label, technical);
       row.appendChild(option);
     }
+    if (imported) {
+      const importedStatus = document.createElement('p');
+      importedStatus.className = 'note';
+      importedStatus.textContent = `Already imported as ${imported.classification === 'control-false' ? 'false' : 'true'}.`;
+      row.appendChild(importedStatus);
+    }
     fragment.appendChild(row);
   }
   controlPhotoList.replaceChildren(fragment);
   controlPhotoReview.hidden = false;
-  importControlPhotos.disabled = controlPhotoProposals.length === 0 || osmDiscoveryBusy;
+  updateControlPhotoImportAction();
   updateWorkflowReadiness();
 }
 
@@ -1459,9 +1508,16 @@ findControlPhotoOptions.addEventListener('click', async () => {
     });
     controlPhotoProposals = result.proposals;
     controlPhotoRouteKey = JSON.stringify(points);
+    const previousSelections = selectedControlPhotoRoles;
     selectedControlPhotoRoles = new Map(
-      result.proposals.map(({ waypoint }) => [waypoint[0], 'true' as const])
+      result.proposals.map(({ waypoint }) => {
+        const waypointName = waypoint[0];
+        const importedRole =
+          importedControlPhoto(waypointName)?.generatedOrthophoto?.targetSource?.controlRole;
+        return [waypointName, importedRole ?? previousSelections.get(waypointName) ?? ('true' as const)];
+      })
     );
+    controlPhotoImportHadFailures = false;
     renderControlPhotoReview();
     controlPhotoProgressBar.value = controlPhotoProgressBar.max;
     controlPhotoProgress.dataset.state = result.warnings.length ? 'warning' : 'complete';
@@ -1492,19 +1548,17 @@ controlPhotoList.addEventListener('change', (event) => {
   const waypoint = choice.dataset.controlWaypoint;
   if (!waypoint || (choice.value !== 'true' && choice.value !== 'false')) return;
   selectedControlPhotoRoles.set(waypoint, choice.value);
-  renderControlPhotoReview();
+  updateControlPhotoImportAction();
   updateWorkflowReadiness();
-  controlPhotoList
-    .querySelector<HTMLInputElement>(
-      `input[data-control-waypoint="${CSS.escape(waypoint)}"][value="${choice.value}"]`
-    )
-    ?.focus();
 });
 
 importControlPhotos.addEventListener('click', async () => {
   if (photoWorkflow.isBusy || osmDiscoveryBusy) return;
   try {
-    const targets: OrthophotoTarget[] = controlPhotoProposals.flatMap((proposal) => {
+    const pendingProposals = controlPhotoProposals.filter(
+      ({ waypoint }) => !importedControlPhoto(waypoint[0])
+    );
+    const targets: OrthophotoTarget[] = pendingProposals.flatMap((proposal) => {
       const waypoint = proposal.waypoint[0];
       const role = waypoint === 'SP' || waypoint === 'FP' ? 'true' : selectedControlPhotoRoles.get(waypoint);
       const selected = role === 'false' ? proposal.falseTarget : proposal.trueTarget;
@@ -1532,11 +1586,24 @@ importControlPhotos.addEventListener('click', async () => {
         },
       ];
     });
-    if (targets.length !== controlPhotoProposals.length) {
+    if (targets.length !== pendingProposals.length) {
       throw new Error('Choose an available true or false photo for every proposed control.');
     }
+    if (targets.length === 0) {
+      updateControlPhotoImportAction();
+      return;
+    }
     const result = await photoWorkflow.importOrthophotoTargets(targets, readOrthophotoModel());
-    if (result.failedTargets.length === 0 && !result.cancelled) clearControlPhotoReview();
+    controlPhotoImportHadFailures = result.failedTargets.length > 0 || result.cancelled;
+    const points = parseWaypoints(waypointTextarea.value);
+    const allControlsImported = points.every(([waypoint]) => Boolean(importedControlPhoto(waypoint)));
+    if (allControlsImported && !result.cancelled) {
+      clearControlPhotoReview();
+    } else {
+      renderControlPhotoReview();
+      const preparedCount = points.filter(([waypoint]) => Boolean(importedControlPhoto(waypoint))).length;
+      controlPhotoStatus.textContent = `${preparedCount} of ${points.length} control photos imported. ${result.failedTargets.length ? `${result.failedTargets.length} failed crop${result.failedTargets.length === 1 ? '' : 's'} can be retried without reimporting successful photos.` : 'Run discovery again for the missing controls.'}`;
+    }
   } catch (error) {
     setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
