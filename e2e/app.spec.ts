@@ -492,6 +492,64 @@ test('OSM-selected DOF025 route photo is reviewed, fetched, and retained as a PH
   expect(requestedUrl).toContain('WIDTH=1600');
 });
 
+test('failed OSM requests have an explicit targeted retry and candidates are grouped by leg', async ({
+  page,
+}) => {
+  const overpassData = JSON.stringify({
+    elements: [
+      {
+        type: 'way',
+        id: 801,
+        center: { lat: 46.5508, lon: 16.1676 },
+        tags: { bridge: 'yes', highway: 'tertiary', name: 'Grouped bridge' },
+      },
+      {
+        type: 'way',
+        id: 802,
+        center: { lat: 46.5608, lon: 16.1701 },
+        tags: { amenity: 'place_of_worship', name: 'Grouped church' },
+      },
+    ],
+  });
+  let failedQuery = '';
+  let failedQueryAttempts = 0;
+  await page.route('**/api/interpreter', async (route) => {
+    const query = new URLSearchParams(route.request().postData() ?? '').get('data') ?? '';
+    if (!failedQuery) failedQuery = query;
+    if (query === failedQuery) {
+      failedQueryAttempts += 1;
+      if (failedQueryAttempts <= 4) {
+        await route.fulfill({ status: 504, contentType: 'text/plain', body: 'Transient timeout' });
+        return;
+      }
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: overpassData });
+  });
+
+  await page.goto('/');
+  await goToStage(page, 2);
+  await page.locator('[data-photo-source-tab="osm"]').click();
+  await page.locator('#orthophotoRandomCount').fill('1');
+  await page.locator('#addRandomOrthophotos').click();
+  await expect(page.locator('#retryFailedOsmRequests')).toBeVisible();
+  await expect(page.locator('#retryFailedOsmRequests')).toHaveText('Retry 1 failed OSM request');
+  await expect(page.locator('.osm-candidate-leg-group')).not.toHaveCount(0);
+  await expect(page.locator('.osm-candidate-leg-heading').first()).toContainText('candidate');
+  await expect(page.locator('.osm-candidate-leg-grid .osm-candidate')).toHaveCount(2);
+  const selectedBeforeRetry = await page
+    .locator('.osm-candidate input:checked')
+    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).dataset.osmCandidateId));
+
+  await page.locator('#retryFailedOsmRequests').click();
+  await expect(page.locator('#retryFailedOsmRequests')).toBeHidden();
+  await expect(page.locator('#status')).toContainText('Recovered all 1 failed OpenStreetMap request');
+  expect(failedQueryAttempts).toBe(5);
+  const selectedAfterRetry = await page
+    .locator('.osm-candidate input:checked')
+    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).dataset.osmCandidateId));
+  expect(selectedAfterRetry).toEqual(selectedBeforeRetry);
+});
+
 test('control-photo discovery fixes SP/FP to true and lets each TP choose a false object', async ({
   page,
 }) => {

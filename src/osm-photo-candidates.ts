@@ -65,9 +65,17 @@ export interface OverpassResponse {
   elements: OverpassElement[];
   remark?: string;
   warnings?: string[];
+  failedRequests?: OsmFailedRequest[];
 }
 
 export type OsmDiscoveryStage = 'features' | 'roads' | 'buildings';
+
+export interface OsmFailedRequest {
+  legIndex: number;
+  stage: OsmDiscoveryStage;
+  query: string;
+  detail: string;
+}
 export type OsmDiscoveryStageState =
   | 'started'
   | 'completed'
@@ -477,6 +485,7 @@ export async function fetchOverpassPhotoData(
   let totalSteps = legCount * 3;
   let completedSteps = 0;
   const warnings: string[] = [];
+  const failedRequests: OsmFailedRequest[] = [];
   const elements = new Map<string, OverpassElement>();
   const emit = (
     legIndex: number,
@@ -570,6 +579,7 @@ export async function fetchOverpassPhotoData(
         ({ legIndex, detail }) => `${points[legIndex][0]}–${points[legIndex + 1][0]} ${stage}: ${detail}`
       )
     );
+    failedRequests.push(...remaining.map((failure) => ({ ...failure, stage })));
   };
 
   const skipStage = (stage: OsmDiscoveryStage, detail: string) => {
@@ -613,9 +623,105 @@ export async function fetchOverpassPhotoData(
     if (deadlineReached) {
       warnings.push('The discovery time limit was reached; completed leg results were retained.');
     }
-    return { elements: [...elements.values()], ...(warnings.length ? { warnings } : {}) };
+    return {
+      elements: [...elements.values()],
+      ...(warnings.length ? { warnings } : {}),
+      ...(failedRequests.length ? { failedRequests } : {}),
+    };
   } finally {
     globalThis.clearTimeout(deadline);
+    options.signal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
+export async function retryOverpassPhotoRequests(
+  points: Waypoint[],
+  requests: OsmFailedRequest[],
+  options: FetchOverpassOptions = {}
+): Promise<OverpassResponse> {
+  if (points.length < 2) throw new Error('A route with at least two waypoints is required.');
+  if (requests.length === 0) return { elements: [] };
+  if (
+    requests.length > (points.length - 1) * 3 ||
+    requests.some(
+      ({ legIndex, stage, query }) =>
+        !Number.isInteger(legIndex) ||
+        legIndex < 0 ||
+        legIndex >= points.length - 1 ||
+        !['features', 'roads', 'buildings'].includes(stage) ||
+        !query ||
+        query.length > 100_000
+    )
+  ) {
+    throw new Error('The failed OpenStreetMap request list is invalid.');
+  }
+  const fetcher = options.fetcher ?? fetch;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = globalThis.setTimeout(
+    () => controller.abort(new Error('OpenStreetMap retry reached its time limit.')),
+    options.deadlineMs ?? 180_000
+  );
+  const elements = new Map<string, OverpassElement>();
+  const failedRequests: OsmFailedRequest[] = [];
+  let completedSteps = 0;
+  try {
+    for (const request of requests) {
+      options.onProgress?.({
+        legIndex: request.legIndex,
+        legCount: points.length - 1,
+        legName: `${points[request.legIndex][0]}–${points[request.legIndex + 1][0]}`,
+        stage: request.stage,
+        state: 'retrying',
+        completedSteps,
+        totalSteps: requests.length,
+      });
+      try {
+        const result = await requestOverpass(
+          request.query,
+          controller.signal,
+          fetcher,
+          RETRY_OVERPASS_ATTEMPTS
+        );
+        for (const element of result.elements) elements.set(`${element.type}/${element.id}`, element);
+        completedSteps += 1;
+        options.onProgress?.({
+          legIndex: request.legIndex,
+          legCount: points.length - 1,
+          legName: `${points[request.legIndex][0]}–${points[request.legIndex + 1][0]}`,
+          stage: request.stage,
+          state: 'recovered',
+          completedSteps,
+          totalSteps: requests.length,
+        });
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        const detail = error instanceof Error ? error.message : String(error);
+        failedRequests.push({ ...request, detail });
+        completedSteps += 1;
+        options.onProgress?.({
+          legIndex: request.legIndex,
+          legCount: points.length - 1,
+          legName: `${points[request.legIndex][0]}–${points[request.legIndex + 1][0]}`,
+          stage: request.stage,
+          state: 'warning',
+          completedSteps,
+          totalSteps: requests.length,
+          detail,
+        });
+      }
+    }
+    const warnings = failedRequests.map(
+      ({ legIndex, stage, detail }) => `${points[legIndex][0]}–${points[legIndex + 1][0]} ${stage}: ${detail}`
+    );
+    return {
+      elements: [...elements.values()],
+      ...(warnings.length ? { warnings } : {}),
+      ...(failedRequests.length ? { failedRequests } : {}),
+    };
+  } finally {
+    globalThis.clearTimeout(timeout);
     options.signal?.removeEventListener('abort', abortFromCaller);
   }
 }

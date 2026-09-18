@@ -32,8 +32,10 @@ import {
   fetchOsmControlPhotoProposals,
   fetchOverpassPhotoData,
   type OsmDiscoveryProgress,
+  type OsmFailedRequest,
   type OsmPhotoCandidate,
   type OverpassResponse,
+  retryOverpassPhotoRequests,
   selectOsmPhotoCandidates,
   targetSelectionIssue,
 } from './osm-photo-candidates';
@@ -163,6 +165,7 @@ const osmDiscoveryProgressPercent = requiredElement<HTMLElement>('osmDiscoveryPr
 const osmDiscoveryProgressBar = requiredElement<HTMLProgressElement>('osmDiscoveryProgressBar');
 const osmDiscoveryLegs = requiredElement<HTMLElement>('osmDiscoveryLegs');
 const osmDiscoveryWarning = requiredElement<HTMLElement>('osmDiscoveryWarning');
+const retryFailedOsmRequests = requiredElement<HTMLButtonElement>('retryFailedOsmRequests');
 const cancelOsmDiscovery = requiredElement<HTMLButtonElement>('cancelOsmDiscovery');
 const findControlPhotoOptions = requiredElement<HTMLButtonElement>('findControlPhotoOptions');
 const controlPhotoReview = requiredElement<HTMLElement>('controlPhotoReview');
@@ -803,6 +806,7 @@ const OSM_CACHE_TTL_MS = 10 * 60_000;
 let osmDiscoveryStartedAt = 0;
 let osmDiscoveryElapsedTimer: ReturnType<typeof setInterval> | null = null;
 let osmDiscoveryController: AbortController | null = null;
+let failedOsmRequests: OsmFailedRequest[] = [];
 let controlPhotoProposals: ControlPhotoProposal[] = [];
 let selectedControlPhotoRoles = new Map<string, 'true' | 'false'>();
 let controlPhotoRouteKey = '';
@@ -908,6 +912,7 @@ function setOsmDiscoveryBusy(busy: boolean): void {
   selectAllOsmCandidates.disabled = busy;
   clearOsmCandidateSelection.disabled = busy;
   importOsmCandidates.disabled = busy;
+  retryFailedOsmRequests.disabled = busy || failedOsmRequests.length === 0;
   loadWaypointOrthophotos.disabled = busy;
   findControlPhotoOptions.disabled = busy;
   importControlPhotos.disabled = busy;
@@ -1174,6 +1179,9 @@ function finishOsmDiscoveryProgress(candidateCount: number, warnings: string[]):
   osmDiscoveryWarning.textContent = warnings.length
     ? `${warnings.length} OpenStreetMap request${warnings.length === 1 ? '' : 's'} could not be loaded. Candidates from completed stages were retained. ${warnings.slice(0, 3).join(' | ')}${warnings.length > 3 ? ` | ${warnings.length - 3} more` : ''}`
     : 'Every required leg stage completed. Unnecessary building searches were skipped.';
+  retryFailedOsmRequests.hidden = failedOsmRequests.length === 0;
+  retryFailedOsmRequests.disabled = false;
+  retryFailedOsmRequests.textContent = `Retry ${failedOsmRequests.length} failed OSM request${failedOsmRequests.length === 1 ? '' : 's'}`;
 }
 
 function failOsmDiscoveryProgress(message: string): void {
@@ -1190,6 +1198,8 @@ function clearOsmCandidateReview(): void {
   selectedOsmCandidateIds.clear();
   osmCandidateRouteKey = '';
   osmSelectionSalt = '';
+  failedOsmRequests = [];
+  retryFailedOsmRequests.hidden = true;
   osmCandidateList.replaceChildren();
   osmCandidateReview.hidden = true;
   osmDiscoveryProgress.hidden = true;
@@ -1249,7 +1259,26 @@ function renderOsmCandidateReview(): void {
     selected.length === 0 || exceedsImportCapacity || warnings.length ? 'warning' : 'ok';
   importOsmCandidates.disabled = osmDiscoveryBusy || selected.length === 0 || exceedsImportCapacity;
   const fragment = document.createDocumentFragment();
+  const legCounts = new Map<number, number>();
   for (const candidate of discoveredOsmCandidates) {
+    legCounts.set(candidate.routeLegIndex, (legCounts.get(candidate.routeLegIndex) ?? 0) + 1);
+  }
+  let currentLegIndex = -1;
+  let currentLegGrid: HTMLElement | null = null;
+  for (const candidate of discoveredOsmCandidates) {
+    if (candidate.routeLegIndex !== currentLegIndex) {
+      currentLegIndex = candidate.routeLegIndex;
+      const group = document.createElement('section');
+      group.className = 'osm-candidate-leg-group';
+      group.dataset.legIndex = String(currentLegIndex);
+      const heading = document.createElement('h5');
+      heading.className = 'osm-candidate-leg-heading';
+      heading.textContent = `${candidate.routeLegName} · ${legCounts.get(currentLegIndex) ?? 0} candidate${legCounts.get(currentLegIndex) === 1 ? '' : 's'}`;
+      currentLegGrid = document.createElement('div');
+      currentLegGrid.className = 'osm-candidate-leg-grid';
+      group.append(heading, currentLegGrid);
+      fragment.appendChild(group);
+    }
     const row = document.createElement('article');
     row.className = 'osm-candidate';
     const choice = document.createElement('label');
@@ -1278,7 +1307,7 @@ function renderOsmCandidateReview(): void {
     technicalCopy.textContent = `${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint} · ${candidate.source.elementId} · ${candidate.source.attribution}`;
     technical.append(technicalSummary, technicalCopy);
     row.append(choice, technical);
-    fragment.appendChild(row);
+    currentLegGrid?.appendChild(row);
   }
   osmCandidateList.replaceChildren(fragment);
   osmCandidateReview.hidden = false;
@@ -1378,6 +1407,7 @@ addRandomOrthophotos.addEventListener('click', async () => {
       throw new Error('No identifiable OSM targets met the route, clearance, and distance requirements.');
     }
     if (!cachedData) cacheOsmData(cacheKey, data);
+    failedOsmRequests = data.failedRequests ?? [];
     finishOsmDiscoveryProgress(discoveredOsmCandidates.length, data.warnings ?? []);
     chooseOsmCandidateProposal();
     const selectedCount = selectedOsmCandidateIds.size;
@@ -1390,6 +1420,49 @@ addRandomOrthophotos.addEventListener('click', async () => {
     setStatus(
       `${`Found ${discoveredOsmCandidates.length} eligible OSM features and displayed all of them. ${selectedCount} are initially selected; choose any number before importing.`}${partialWarning}${accumulatedNotice}`,
       data.warnings?.length ? 'warning' : 'success'
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failOsmDiscoveryProgress(message);
+    setStatus(`Error: ${message}`, 'error');
+  } finally {
+    osmDiscoveryController = null;
+    if (osmDiscoveryBusy) setOsmDiscoveryBusy(false);
+  }
+});
+
+retryFailedOsmRequests.addEventListener('click', async () => {
+  if (photoWorkflow.isBusy || osmDiscoveryBusy || failedOsmRequests.length === 0) return;
+  try {
+    const points = parseWaypoints(waypointTextarea.value);
+    const route = buildRoute(points);
+    const retryCount = failedOsmRequests.length;
+    osmDiscoveryController = new AbortController();
+    beginOsmDiscoveryProgress(points);
+    osmDiscoveryProgressText.textContent = `Retrying ${retryCount} failed OpenStreetMap request${retryCount === 1 ? '' : 's'}…`;
+    retryFailedOsmRequests.textContent = 'Retrying failed OSM requests…';
+    setOsmDiscoveryBusy(true);
+    setStatus(`Retrying only the ${retryCount} failed OpenStreetMap request${retryCount === 1 ? '' : 's'}…`);
+    const data = await retryOverpassPhotoRequests(points, failedOsmRequests, {
+      route,
+      signal: osmDiscoveryController.signal,
+      onProgress: updateOsmDiscoveryProgress,
+    });
+    const recoveredCandidates = discoverOsmPhotoCandidates(data, route, points);
+    discoveredOsmCandidates = [
+      ...new Map(
+        [...discoveredOsmCandidates, ...recoveredCandidates].map((candidate) => [candidate.id, candidate])
+      ).values(),
+    ].sort((left, right) => (left.alongRouteM ?? 0) - (right.alongRouteM ?? 0) || right.score - left.score);
+    failedOsmRequests = data.failedRequests ?? [];
+    finishOsmDiscoveryProgress(discoveredOsmCandidates.length, data.warnings ?? []);
+    renderOsmCandidateReview();
+    const recoveredCount = retryCount - failedOsmRequests.length;
+    setStatus(
+      failedOsmRequests.length
+        ? `Recovered ${recoveredCount} of ${retryCount} failed OpenStreetMap requests; ${failedOsmRequests.length} can be retried again.`
+        : `Recovered all ${retryCount} failed OpenStreetMap request${retryCount === 1 ? '' : 's'} and merged the new candidates.`,
+      failedOsmRequests.length ? 'warning' : 'success'
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
