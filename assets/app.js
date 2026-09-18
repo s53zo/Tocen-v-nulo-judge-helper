@@ -3169,7 +3169,7 @@ async function ho(e, t, n) {
 	return new Uint8Array(await r.arrayBuffer());
 }
 function go(e, t, n, r) {
-	ja[e] && URL.revokeObjectURL(ja[e]), ja[e] = t, r.onclick = null, r.href = t, r.download = n, e === "pdf" && (r.textContent = "Marked Map (PDF)"), vo();
+	ja[e] && URL.revokeObjectURL(ja[e]), ja[e] = t, r.onclick = null, r.href = t, r.download = n, r.style.display = "inline-flex", vo();
 }
 function _o(e, t) {
 	ja[e] && (URL.revokeObjectURL(ja[e]), ja[e] = null), t.removeAttribute("href"), t.removeAttribute("download"), t.onclick = null, vo();
@@ -4830,7 +4830,7 @@ async function Sc(e = {}) {
 			xe && Se && Ce && we ? (g = {
 				judge: xe,
 				competitor: Se
-			}, W("map", "ok", `${O.length} accepted photo(s); ${ee.length} positioned on map`), W("overlay", "ok", "route-only PDF ready"), W("crop", "ok", `${M.format}; print at Actual size / 100%; verify the 100 mm line`), i || (Ca.textContent = "Judge Solutions (PDF)", Ca.onclick = null, go("pdf", mo(xe), "judge_solution_map.pdf", Ca), go("overlay", mo(Se), "competitor_route_map.pdf", wa), wa.style.display = "inline-flex", go("cropped", mo(Ce), "empty_map.pdf", Ta), Ma.cropped = Uint8Array.from(Ce), Ta.style.display = "inline-flex", zs(we))) : (W("map", "manual-review", "no valid crop bounds"), W("overlay", "manual-review", "no valid crop bounds"), W("crop", "manual-review", "no valid crop bounds"), W("preview", "manual-review", "not available without crop bounds"));
+			}, W("map", "ok", `${O.length} accepted photo(s); ${ee.length} positioned on map`), W("overlay", "ok", "route-only PDF ready"), W("crop", "ok", `${M.format}; print at Actual size / 100%; verify the 100 mm line`), i || (Ca.textContent = "Judge solution map (PDF)", Ca.onclick = null, go("pdf", mo(xe), "judge_solution_map.pdf", Ca), go("overlay", mo(Se), "competitor_route_map.pdf", wa), wa.style.display = "inline-flex", go("cropped", mo(Ce), "empty_map.pdf", Ta), Ma.cropped = Uint8Array.from(Ce), Ta.style.display = "inline-flex", zs(we))) : (W("map", "manual-review", "no valid crop bounds"), W("overlay", "manual-review", "no valid crop bounds"), W("crop", "manual-review", "no valid crop bounds"), W("preview", "manual-review", "not available without crop bounds"));
 		} else {
 			if (!Pr.checked) throw Error("Consent to third-party OpenStreetMap tile requests or choose a bundled PDF map.");
 			if (eo && (eo.hidden = !1), await Ps(), !G) throw Error("Interactive map unavailable.");

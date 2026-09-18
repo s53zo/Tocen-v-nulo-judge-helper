@@ -321,6 +321,37 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   await expect(page.locator('#photoCropBounds')).not.toBeChecked();
 });
 
+test('generating after loading a project exposes every package download', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'The restored-project download state only needs one browser engine.');
+  const document = await PDFDocument.create();
+  const pageTemplate = document.addPage([2862, 1985]);
+  pageTemplate.drawLine({ start: { x: 0, y: 0 }, end: { x: 1, y: 1 } });
+  const blankMap = Buffer.from(await document.save());
+  await page.route('**/maps/00_VFRspredaj_25_SC_WEB_flat.pdf', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/pdf', body: blankMap })
+  );
+  await page.goto('/');
+  await page.locator('[data-map-key="p250"]').click();
+
+  const [projectDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#saveProject').click(),
+  ]);
+  const projectPath = await projectDownload.path();
+  expect(projectPath).not.toBeNull();
+  await page.locator('#projectFile').setInputFiles(projectPath as string);
+  await expect(page.locator('#status')).toContainText('Loaded project');
+
+  await goToStage(page, 3);
+  await page.locator('#generate').click();
+  await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
+  await expect(page.locator('#status')).toContainText('Generated');
+  for (const selector of ['#downloadPdf', '#downloadOverlay', '#downloadCropped', '#downloadSummary']) {
+    await expect(page.locator(selector)).toBeVisible();
+  }
+  await expectTrueScaleMapPdf(page, '#downloadPdf');
+});
+
 test('speed-edition ZIP contains default, custom, and shared competition files', async ({
   page,
   browserName,

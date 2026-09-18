@@ -462,9 +462,7 @@ function setDownloadUrl(key, url, filename, linkEl) {
   linkEl.onclick = null;
   linkEl.href = url;
   linkEl.download = filename;
-  if (key === 'pdf') {
-    linkEl.textContent = 'Marked Map (PDF)';
-  }
+  linkEl.style.display = 'inline-flex';
   syncResultsVisibility();
 }
 
@@ -3765,7 +3763,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
           `${summaryCropped.format}; print at Actual size / 100%; verify the 100 mm line`
         );
         if (!mapsOnly) {
-          downloadPdfLink.textContent = 'Judge Solutions (PDF)';
+          downloadPdfLink.textContent = 'Judge solution map (PDF)';
           downloadPdfLink.onclick = null;
           setDownloadUrl(
             'pdf',
