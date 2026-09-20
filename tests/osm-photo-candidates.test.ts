@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildRoute, type Waypoint } from '../src/domain';
 import {
+  buildOverpassControlFalseQuery,
   buildOverpassCoreQuery,
   buildOverpassLegQueries,
   buildOverpassPhotoQueries,
@@ -87,6 +88,35 @@ const data: OverpassResponse = {
 };
 
 describe('Overpass photo query', () => {
+  it('uses one bounded 10 NM false-object query', () => {
+    const correct = {
+      id: 'way/1',
+      label: '',
+      latitude: 46.6,
+      longitude: 16.1,
+      name: 'Correct bridge',
+      category: 'bridge',
+      featureType: 'Bridge',
+      score: 95,
+      distanceFromWaypointM: 0,
+      distanceFromCorrectM: 0,
+      source: {
+        provider: 'OpenStreetMap' as const,
+        elementId: 'way/1',
+        category: 'bridge',
+        featureType: 'Bridge',
+        name: 'Correct bridge',
+        score: 95,
+        attribution: '© OpenStreetMap contributors',
+        controlRole: 'true' as const,
+        controlWaypoint: 'TP1',
+      },
+    };
+    const query = buildOverpassControlFalseQuery(correct, { bridge: 'yes' });
+    expect(query).toContain('(around:18520,46.6000000,16.1000000)');
+    expect(query.match(/\(around:/g)).toHaveLength(1);
+  });
+
   it('creates repeatable but salt-specific selection randomness', () => {
     const first = createSeededRandom('route-mix-a');
     const repeated = createSeededRandom('route-mix-a');
@@ -286,7 +316,11 @@ describe('Overpass photo query', () => {
         },
       ],
     };
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(controlData), { status: 200 }));
+    const requestInits: RequestInit[] = [];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init) requestInits.push(init);
+      return new Response(JSON.stringify(controlData), { status: 200 });
+    });
     const result = await fetchOsmControlPhotoProposals(points, {
       fetcher: fetcher as typeof fetch,
       retryDelayMs: 0,
@@ -310,6 +344,27 @@ describe('Overpass photo query', () => {
     expect(result.proposals[2].trueTarget.latitude).toBe(points[2][1]);
     expect(result.proposals[2].trueTarget.longitude).toBe(points[2][2]);
     expect(result.proposals[2].falseTarget).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const requestQueries = requestInits.map(
+      (init) => new URLSearchParams(String(init.body)).get('data') ?? ''
+    );
+    expect(requestQueries.filter((query) => query.includes('around:18520'))).toHaveLength(1);
+  });
+
+  it('returns completed control proposals when the discovery deadline is reached', async () => {
+    const fetcher = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        })
+    );
+    const result = await fetchOsmControlPhotoProposals(points, {
+      fetcher: fetcher as typeof fetch,
+      deadlineMs: 5,
+      retryDelayMs: 0,
+    });
+    expect(result.proposals).toEqual([]);
+    expect(result.warnings.join(' ')).toMatch(/time limit/i);
   });
 });
 

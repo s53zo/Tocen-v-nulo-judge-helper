@@ -16,6 +16,7 @@ import {
   roundedBearing,
   type Waypoint,
 } from './domain';
+import { fetchGeoapifyControlPhotoProposals, fetchGeoapifyPhotoData } from './geoapify-control-photos';
 import rawMapPresets from './map-presets.json';
 import { renderBoundedMapPreview, waitForAbortSignal } from './map-preview';
 import { loadMapPresets } from './maps';
@@ -26,6 +27,7 @@ import {
   orthophotoRequestUrl,
 } from './orthophoto';
 import {
+  type ControlDiscoveryProgress,
   type ControlPhotoProposal,
   createSeededRandom,
   discoverOsmPhotoCandidates,
@@ -175,6 +177,7 @@ const controlPhotoProgressCount = requiredElement<HTMLElement>('controlPhotoProg
 const controlPhotoProgressPhase = requiredElement<HTMLElement>('controlPhotoProgressPhase');
 const controlPhotoProgressBar = requiredElement<HTMLProgressElement>('controlPhotoProgressBar');
 const controlPhotoList = requiredElement<HTMLElement>('controlPhotoList');
+const geoapifyApiKeyInput = requiredElement<HTMLInputElement>('geoapifyApiKey');
 const importControlPhotos = requiredElement<HTMLButtonElement>('importControlPhotos');
 const generationProgress = requiredElement<HTMLProgressElement>('generationProgress');
 const generateSpeedSetBtn = requiredElement<HTMLButtonElement>('generateSpeedSet');
@@ -1371,7 +1374,9 @@ addRandomOrthophotos.addEventListener('click', async () => {
     const routeKey = JSON.stringify(points);
     const retainedCandidates = osmCandidateRouteKey === routeKey ? [...discoveredOsmCandidates] : [];
     const splitAfterM = photoWorkflow.handoutOptions.splitAfterM;
-    const cacheKey = osmCacheKey(points, count, splitAfterM);
+    const geoapifyApiKey = geoapifyApiKeyInput.value.trim();
+    const providerKey = geoapifyApiKey ? 'geoapify' : 'overpass';
+    const cacheKey = `${providerKey}:${osmCacheKey(points, count, splitAfterM)}`;
     const cachedData = readCachedOsmData(cacheKey);
     clearOsmCandidateReview();
     osmSelectionSalt = newOsmSelectionSalt();
@@ -1383,17 +1388,24 @@ addRandomOrthophotos.addEventListener('click', async () => {
     setStatus(
       cachedData
         ? 'Reusing the complete cached OpenStreetMap discovery with a new selection mix…'
-        : `Searching OpenStreetMap leg by leg (1 of ${points.length - 1})…`
+        : `Searching ${geoapifyApiKey ? 'Geoapify' : 'OpenStreetMap'} leg by leg (1 of ${points.length - 1})…`
     );
     const data =
       cachedData ??
-      (await fetchOverpassPhotoData(points, {
-        route,
-        requestedCount: count,
-        splitAfterM,
-        signal: osmDiscoveryController?.signal,
-        onProgress: updateOsmDiscoveryProgress,
-      }));
+      (geoapifyApiKey
+        ? await fetchGeoapifyPhotoData(points, {
+            apiKey: geoapifyApiKey,
+            route,
+            signal: osmDiscoveryController?.signal,
+            onProgress: updateOsmDiscoveryProgress,
+          })
+        : await fetchOverpassPhotoData(points, {
+            route,
+            requestedCount: count,
+            splitAfterM,
+            signal: osmDiscoveryController?.signal,
+            onProgress: updateOsmDiscoveryProgress,
+          }));
     const newlyDiscoveredCandidates = discoverOsmPhotoCandidates(data, route, points);
     discoveredOsmCandidates = [
       ...new Map(
@@ -1604,26 +1616,37 @@ async function discoverControlPhotoOptions(
     controlPhotoProgressCount.textContent = `Preparing ${requestedNames.join(', ')}`;
     controlPhotoProgressPhase.textContent = `0 of ${controlLookupStepCount} lookup steps`;
     controlPhotoStatus.textContent = `Finding photo options for ${requestedNames.join(', ')}…`;
-    setStatus(`Searching OpenStreetMap for ${requestedNames.join(', ')} photo options…`);
-    const result = await fetchOsmControlPhotoProposals(points, {
-      signal: osmDiscoveryController.signal,
-      waypointIndices: requestedIndices,
-      onProgress: ({ waypointIndex, waypointName, stage, state }) => {
-        if (['completed', 'recovered', 'warning'].includes(state)) {
-          completedLookups.add(`${waypointIndex}:${stage}`);
-        }
-        controlPhotoProgressBar.value = Math.min(controlPhotoProgressBar.max, completedLookups.size);
-        const action =
-          state === 'retrying'
-            ? 'retrying after the first pass'
-            : stage === 'true'
-              ? 'finding the true object'
-              : 'finding a similar false object 1-10 NM away';
-        controlPhotoProgressCount.textContent = `Preparing control ${(requestedPosition.get(waypointIndex) ?? 0) + 1} of ${requestedIndices.length} · ${waypointName}`;
-        controlPhotoProgressPhase.textContent = `${action} · ${controlPhotoProgressBar.value} of ${controlPhotoProgressBar.max} lookup steps`;
-        controlPhotoStatus.textContent = `${waypointName} · ${action}`;
-      },
-    });
+    const geoapifyApiKey = geoapifyApiKeyInput.value.trim();
+    setStatus(
+      `${geoapifyApiKey ? 'Searching Geoapify' : 'Searching OpenStreetMap'} for ${requestedNames.join(', ')} photo options…`
+    );
+    const onProgress = ({ waypointIndex, waypointName, stage, state }: ControlDiscoveryProgress) => {
+      if (['completed', 'recovered', 'warning'].includes(state)) {
+        completedLookups.add(`${waypointIndex}:${stage}`);
+      }
+      controlPhotoProgressBar.value = Math.min(controlPhotoProgressBar.max, completedLookups.size);
+      const action =
+        state === 'retrying'
+          ? 'retrying after the first pass'
+          : stage === 'true'
+            ? 'finding the true object'
+            : 'finding a similar false object 1-10 NM away';
+      controlPhotoProgressCount.textContent = `Preparing control ${(requestedPosition.get(waypointIndex) ?? 0) + 1} of ${requestedIndices.length} · ${waypointName}`;
+      controlPhotoProgressPhase.textContent = `${action} · ${controlPhotoProgressBar.value} of ${controlPhotoProgressBar.max} lookup steps`;
+      controlPhotoStatus.textContent = `${waypointName} · ${action}`;
+    };
+    const result = geoapifyApiKey
+      ? await fetchGeoapifyControlPhotoProposals(points, {
+          apiKey: geoapifyApiKey,
+          signal: osmDiscoveryController.signal,
+          waypointIndices: requestedIndices,
+          onProgress,
+        })
+      : await fetchOsmControlPhotoProposals(points, {
+          signal: osmDiscoveryController.signal,
+          waypointIndices: requestedIndices,
+          onProgress,
+        });
     const merged = new Map(
       (replaceExisting ? [] : controlPhotoProposals).map((proposal) => [proposal.waypoint[0], proposal])
     );
@@ -1739,7 +1762,19 @@ importControlPhotos.addEventListener('click', async () => {
     const targets: OrthophotoTarget[] = pendingProposals.flatMap((proposal) => {
       const waypoint = proposal.waypoint[0];
       const role = waypoint === 'SP' || waypoint === 'FP' ? 'true' : selectedControlPhotoRoles.get(waypoint);
-      const selected = role === 'false' ? proposal.falseTarget : proposal.trueTarget;
+      const selected =
+        role === 'false'
+          ? proposal.falseTarget
+          : {
+              ...proposal.trueTarget,
+              latitude: proposal.waypoint[1],
+              longitude: proposal.waypoint[2],
+              source: {
+                ...proposal.trueTarget.source,
+                correctObjectLatitude: proposal.waypoint[1],
+                correctObjectLongitude: proposal.waypoint[2],
+              },
+            };
       if (!role || !selected) return [];
       return [
         {
@@ -1751,8 +1786,8 @@ importControlPhotos.addEventListener('click', async () => {
             controlWaypoint: waypoint,
             ...(role === 'false'
               ? {
-                  correctObjectLatitude: proposal.trueTarget.latitude,
-                  correctObjectLongitude: proposal.trueTarget.longitude,
+                  correctObjectLatitude: proposal.waypoint[1],
+                  correctObjectLongitude: proposal.waypoint[2],
                 }
               : {}),
           },

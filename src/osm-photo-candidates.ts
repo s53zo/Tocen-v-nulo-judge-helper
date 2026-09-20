@@ -22,7 +22,7 @@ const MAXIMUM_OSM_TEXT_LENGTH = 500;
 const CONTROL_TRUE_SEARCH_RADIUS_M = 3000;
 const CONTROL_FALSE_MINIMUM_M = 1852;
 const CONTROL_FALSE_MAXIMUM_M = 10 * 1852;
-const CONTROL_FALSE_PROBE_RADII_NM = [1.4, 3, 5.5, 8, 9.5] as const;
+const CONTROL_DISCOVERY_DEADLINE_MS = 45_000;
 const PRIMARY_OVERPASS_ATTEMPTS = [[OVERPASS_SECOND_FALLBACK_URL, 18_000]] as const;
 const RETRY_OVERPASS_ATTEMPTS = [
   [OVERPASS_FALLBACK_URL, 22_000],
@@ -154,6 +154,7 @@ export interface FetchControlPhotoOptions {
   fetcher?: typeof fetch;
   retryDelayMs?: number;
   waypointIndices?: number[];
+  deadlineMs?: number;
   onProgress?: (progress: ControlDiscoveryProgress) => void;
 }
 
@@ -769,6 +770,34 @@ function candidateDefinition(tags: Record<string, string>): CandidateDefinition 
   if (tags.power === 'substation') {
     return { category: 'infrastructure', featureType: 'Power substation', score: 90 };
   }
+  if (tags.power === 'plant') {
+    return { category: 'infrastructure', featureType: 'Power plant', score: 88 };
+  }
+  if (tags.power === 'generator') {
+    return { category: 'infrastructure', featureType: 'Power generator', score: 86 };
+  }
+  if (tags.man_made === 'tower') {
+    return { category: 'landmark', featureType: 'Tower', score: 90, name: tags.name };
+  }
+  if (tags.man_made === 'watermill') {
+    return { category: 'landmark', featureType: 'Watermill', score: 88, name: tags.name };
+  }
+  if (tags.man_made === 'windmill') {
+    return { category: 'landmark', featureType: 'Windmill', score: 88, name: tags.name };
+  }
+  if (tags.man_made === 'lighthouse') {
+    return { category: 'landmark', featureType: 'Lighthouse', score: 90, name: tags.name };
+  }
+  if (['breakwater', 'pier'].includes(tags.man_made)) {
+    return {
+      category: 'infrastructure',
+      featureType: tags.man_made === 'pier' ? 'Pier' : 'Breakwater',
+      score: 82,
+    };
+  }
+  if (tags.man_made === 'mine') {
+    return { category: 'landmark', featureType: 'Mine', score: 84, name: tags.name };
+  }
   if (tags.man_made === 'silo' || tags.man_made === 'storage_tank') {
     return {
       category: 'infrastructure',
@@ -779,6 +808,13 @@ function candidateDefinition(tags: Record<string, string>): CandidateDefinition 
   if (tags.amenity === 'school' || tags.building === 'school') {
     return { category: 'public-building', featureType: 'School', score: 88 };
   }
+  if (['community_centre', 'hospital'].includes(tags.amenity)) {
+    return {
+      category: 'public-building',
+      featureType: tags.amenity === 'hospital' ? 'Hospital' : 'Community centre',
+      score: tags.amenity === 'hospital' ? 84 : 78,
+    };
+  }
   if (tags.amenity === 'fire_station') {
     return { category: 'public-building', featureType: 'Fire station', score: 87 };
   }
@@ -788,11 +824,25 @@ function candidateDefinition(tags: Record<string, string>): CandidateDefinition 
   if (tags.leisure === 'sports_centre') {
     return { category: 'sports', featureType: 'Sports centre', score: 85 };
   }
+  if (tags.tourism === 'museum') {
+    return { category: 'landmark', featureType: 'Museum', score: 84, name: tags.name };
+  }
+  if (tags.aeroway === 'aerodrome') {
+    return { category: 'aviation', featureType: 'Airfield', score: 94, name: tags.name };
+  }
   if (tags.waterway === 'river') {
     return { category: 'water', featureType: 'River', score: tags.name ? 82 : 76 };
   }
   if (tags.historic === 'monument') {
     return { category: 'landmark', featureType: 'Monument', score: 80 };
+  }
+  if (['monastery', 'fort', 'manor', 'ruins'].includes(tags.historic)) {
+    return {
+      category: 'landmark',
+      featureType: tags.historic[0].toUpperCase() + tags.historic.slice(1),
+      score: tags.historic === 'monastery' || tags.historic === 'fort' ? 94 : 84,
+      name: tags.name,
+    };
   }
   if (tags.amenity === 'townhall') {
     return { category: 'public-building', featureType: 'Town hall', score: 80 };
@@ -803,11 +853,16 @@ function candidateDefinition(tags: Record<string, string>): CandidateDefinition 
   if (tags.waterway === 'canal') {
     return { category: 'water', featureType: 'Canal', score: 74 };
   }
-  if (tags.place === 'village' || tags.place === 'hamlet') {
+  if (['village', 'hamlet', 'town', 'city'].includes(tags.place)) {
     return {
       category: 'settlement',
-      featureType: tags.place === 'village' ? 'Village centre' : 'Hamlet centre',
-      score: tags.place === 'village' ? 72 : 68,
+      featureType:
+        tags.place === 'village'
+          ? 'Village centre'
+          : tags.place === 'hamlet'
+            ? 'Hamlet centre'
+            : `${tags.place[0].toUpperCase()}${tags.place.slice(1)} centre`,
+      score: tags.place === 'village' ? 72 : tags.place === 'hamlet' ? 68 : 70,
     };
   }
   if (tags.place === 'isolated_dwelling' || tags.place === 'neighbourhood') {
@@ -816,6 +871,9 @@ function candidateDefinition(tags: Record<string, string>): CandidateDefinition 
       featureType: tags.place === 'isolated_dwelling' ? 'Isolated dwelling' : 'Neighbourhood centre',
       score: tags.place === 'isolated_dwelling' ? 66 : 62,
     };
+  }
+  if (tags.natural === 'forest') {
+    return { category: 'terrain', featureType: 'Forest', score: 70, name: tags.name };
   }
   if (['public', 'retail', 'commercial'].includes(tags.building)) {
     return { category: 'building', featureType: 'Distinctive building', score: tags.name ? 72 : 66 };
@@ -1007,6 +1065,15 @@ export function buildOverpassControlTrueQuery([, latitude, longitude]: Waypoint)
     .join('')});out body center;`;
 }
 
+function buildOverpassControlTrueBatchQuery(points: Waypoint[], indices: number[]): string {
+  const statements = indices.flatMap((index) => {
+    const [, latitude, longitude] = points[index];
+    const around = `(around:${CONTROL_TRUE_SEARCH_RADIUS_M},${latitude.toFixed(7)},${longitude.toFixed(7)})`;
+    return controlFeatureFilters().map((filter) => `${filter}${around};`);
+  });
+  return `[out:json][timeout:30];(${statements.join('')});out body center;`;
+}
+
 function specificControlFilter(tags: Record<string, string>): string | null {
   const choices: Array<[string, string | undefined]> = [
     ['railway', tags.railway === 'level_crossing' ? tags.railway : undefined],
@@ -1029,29 +1096,28 @@ function specificControlFilter(tags: Record<string, string>): string | null {
   return `nwr["${key}"="${value}"]`;
 }
 
-function offsetCoordinate(latitude: number, longitude: number, distanceM: number, bearingDeg: number) {
-  const bearing = (bearingDeg * Math.PI) / 180;
-  const latitudeOffset = (Math.cos(bearing) * distanceM) / 111_320;
-  const longitudeOffset =
-    (Math.sin(bearing) * distanceM) / Math.max(111_320 * Math.cos((latitude * Math.PI) / 180), 111_320 * 0.2);
-  return { latitude: latitude + latitudeOffset, longitude: longitude + longitudeOffset };
-}
-
 export function buildOverpassControlFalseQuery(
   correct: ControlPhotoCandidate,
-  tags: Record<string, string>,
-  radiusNm: number = CONTROL_FALSE_PROBE_RADII_NM[0]
+  tags: Record<string, string>
 ): string {
   const filter = specificControlFilter(tags);
   if (!filter) throw new Error(`No bounded similarity query is available for ${correct.featureType}.`);
-  if (!Number.isFinite(radiusNm) || radiusNm < 1 || radiusNm > 10) {
-    throw new Error('False-object probe radius must be between 1 and 10 NM.');
-  }
-  const probes = Array.from({ length: 8 }, (_, index) => {
-    const coordinate = offsetCoordinate(correct.latitude, correct.longitude, radiusNm * 1852, index * 45);
-    return `${filter}(around:450,${coordinate.latitude.toFixed(7)},${coordinate.longitude.toFixed(7)});`;
+  // Fetch the complete 10 NM candidate area once. The 1 NM minimum and exact
+  // 10 NM maximum remain enforced by rankedControlCandidates below. Repeated
+  // 8-direction probes at five radii made a single false lookup issue up to
+  // 40 expensive Overpass subqueries.
+  return `[out:json][timeout:30];${filter}(around:${CONTROL_FALSE_MAXIMUM_M},${correct.latitude.toFixed(7)},${correct.longitude.toFixed(7)});out body center;`;
+}
+
+function buildOverpassControlFalseBatchQuery(
+  correctTargets: Array<[number, RankedControlCandidate]>
+): string {
+  const statements = correctTargets.flatMap(([, correct]) => {
+    const filter = specificControlFilter(correct.tags);
+    if (!filter) return [];
+    return `${filter}(around:${CONTROL_FALSE_MAXIMUM_M},${correct.latitude.toFixed(7)},${correct.longitude.toFixed(7)});`;
   });
-  return `[out:json][timeout:30];(${probes.join('')});out body center;`;
+  return `[out:json][timeout:30];(${statements.join('')});out body center;`;
 }
 
 function rankedControlCandidates(
@@ -1146,7 +1212,6 @@ export async function fetchOsmControlPhotoProposals(
   options: FetchControlPhotoOptions = {}
 ): Promise<{ proposals: ControlPhotoProposal[]; warnings: string[] }> {
   const fetcher = options.fetcher ?? fetch;
-  const warnings: string[] = [];
   const waypointIndices = options.waypointIndices ?? points.map((_, index) => index);
   if (
     waypointIndices.length === 0 ||
@@ -1160,8 +1225,17 @@ export async function fetchOsmControlPhotoProposals(
   ) {
     throw new Error('Control-photo discovery requires unique, valid waypoint indices.');
   }
+  const warnings: string[] = [];
+  const discoveryController = new AbortController();
+  let deadlineReached = false;
+  const abortFromCaller = () => discoveryController.abort(options.signal?.reason);
+  options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const deadline = globalThis.setTimeout(() => {
+    deadlineReached = true;
+    discoveryController.abort(new Error('OpenStreetMap control-photo discovery reached its time limit.'));
+  }, options.deadlineMs ?? CONTROL_DISCOVERY_DEADLINE_MS);
+  const discoverySignal = discoveryController.signal;
   const trueTargets = new Map<number, RankedControlCandidate>();
-  const failedTrue: Array<{ index: number; query: string; detail: string }> = [];
   const emit = (
     waypointIndex: number,
     stage: 'true' | 'false',
@@ -1176,111 +1250,92 @@ export async function fetchOsmControlPhotoProposals(
       state,
       ...(detail ? { detail } : {}),
     });
-  const request = async (
-    index: number,
+  const requestBatch = async (
+    indices: number[],
     stage: 'true' | 'false',
     query: string,
     attempts: ReadonlyArray<readonly [string, number]>,
     retry = false
   ): Promise<OverpassResponse | string> => {
-    emit(index, stage, retry ? 'retrying' : 'started');
+    for (const index of indices) emit(index, stage, retry ? 'retrying' : 'started');
     try {
-      const result = await requestOverpass(query, options.signal, fetcher, attempts);
-      emit(index, stage, retry ? 'recovered' : 'completed');
+      const result = await requestOverpass(query, discoverySignal, fetcher, attempts);
+      for (const index of indices) emit(index, stage, retry ? 'recovered' : 'completed');
       return result;
     } catch (error) {
       if (options.signal?.aborted) throw error;
       const detail = error instanceof Error ? error.message : String(error);
-      emit(index, stage, 'warning', detail);
+      for (const index of indices) emit(index, stage, 'warning', detail);
       return detail;
     }
   };
-  for (const index of waypointIndices) {
-    const point = points[index];
-    const query = buildOverpassControlTrueQuery(point);
-    const result = await request(index, 'true', query, PRIMARY_OVERPASS_ATTEMPTS);
-    if (typeof result === 'string') failedTrue.push({ index, query, detail: result });
-    else {
-      const candidate = rankedControlCandidates(result, point)[0];
-      if (candidate) trueTargets.set(index, centerTrueControlPhotoOnWaypoint(candidate, point));
-      else warnings.push(`${point[0]}: no identifiable OSM object was found within 3 km.`);
+  try {
+    const trueQuery = buildOverpassControlTrueBatchQuery(points, waypointIndices);
+    let trueResult = await requestBatch(waypointIndices, 'true', trueQuery, PRIMARY_OVERPASS_ATTEMPTS);
+    if (typeof trueResult === 'string' && !discoverySignal.aborted) {
+      const delay = options.retryDelayMs ?? 900;
+      if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+      trueResult = await requestBatch(waypointIndices, 'true', trueQuery, RETRY_OVERPASS_ATTEMPTS, true);
     }
-  }
-  if (failedTrue.length) {
-    const delay = options.retryDelayMs ?? 900;
-    if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
-    for (const failed of failedTrue) {
-      const result = await request(failed.index, 'true', failed.query, RETRY_OVERPASS_ATTEMPTS, true);
-      if (typeof result === 'string') {
-        warnings.push(`${points[failed.index][0]} true target: ${result}`);
-      } else {
-        const candidate = rankedControlCandidates(result, points[failed.index])[0];
-        if (candidate) {
-          trueTargets.set(failed.index, centerTrueControlPhotoOnWaypoint(candidate, points[failed.index]));
-        } else warnings.push(`${points[failed.index][0]}: no identifiable OSM object was found within 3 km.`);
+    if (typeof trueResult === 'string') {
+      for (const index of waypointIndices) warnings.push(`${points[index][0]} true target: ${trueResult}`);
+    } else {
+      for (const index of waypointIndices) {
+        const candidate = rankedControlCandidates(trueResult, points[index])[0];
+        if (candidate) trueTargets.set(index, centerTrueControlPhotoOnWaypoint(candidate, points[index]));
+        else warnings.push(`${points[index][0]}: no identifiable OSM object was found within 3 km.`);
       }
     }
-  }
 
-  const falseTargets = new Map<number, RankedControlCandidate>();
-  const failedFalse = new Set<number>();
-  for (const [index, correct] of trueTargets) {
-    if (index === 0 || index === points.length - 1) continue;
-    let hadRequestFailure = false;
-    for (const radiusNm of CONTROL_FALSE_PROBE_RADII_NM) {
-      const query = buildOverpassControlFalseQuery(correct, correct.tags, radiusNm);
-      const result = await request(index, 'false', query, PRIMARY_OVERPASS_ATTEMPTS);
-      if (typeof result === 'string') {
-        hadRequestFailure = true;
-        continue;
-      }
-      const candidate = rankedControlCandidates(result, points[index], correct)[0];
-      if (!candidate) continue;
-      falseTargets.set(index, candidate);
-      break;
-    }
-    if (!falseTargets.has(index)) {
-      if (hadRequestFailure) failedFalse.add(index);
-      else warnings.push(`${points[index][0]}: no similar false object was found from 1 to 10 NM away.`);
-    }
-  }
-  if (failedFalse.size) {
-    const delay = options.retryDelayMs ?? 900;
-    if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
-    for (const index of failedFalse) {
-      const correct = trueTargets.get(index);
-      if (!correct) continue;
-      let lastFailure = '';
-      for (const radiusNm of CONTROL_FALSE_PROBE_RADII_NM) {
-        const query = buildOverpassControlFalseQuery(correct, correct.tags, radiusNm);
-        const result = await request(index, 'false', query, RETRY_OVERPASS_ATTEMPTS, true);
-        if (typeof result === 'string') {
-          lastFailure = result;
-          continue;
-        }
-        const candidate = rankedControlCandidates(result, points[index], correct)[0];
-        if (!candidate) continue;
-        falseTargets.set(index, candidate);
-        break;
-      }
-      if (!falseTargets.has(index)) {
-        warnings.push(
-          lastFailure
-            ? `${points[index][0]} false target: ${lastFailure}`
-            : `${points[index][0]}: no similar false object was found from 1 to 10 NM away.`
+    const falseTargets = new Map<number, RankedControlCandidate>();
+    const falseTargetsToFind = [...trueTargets.entries()].filter(
+      ([index]) => index !== 0 && index !== points.length - 1
+    );
+    if (falseTargetsToFind.length > 0 && !discoverySignal.aborted) {
+      const falseQuery = buildOverpassControlFalseBatchQuery(falseTargetsToFind);
+      let falseResult = await requestBatch(
+        falseTargetsToFind.map(([index]) => index),
+        'false',
+        falseQuery,
+        PRIMARY_OVERPASS_ATTEMPTS
+      );
+      if (typeof falseResult === 'string' && !discoverySignal.aborted) {
+        const delay = options.retryDelayMs ?? 900;
+        if (delay > 0) await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+        falseResult = await requestBatch(
+          falseTargetsToFind.map(([index]) => index),
+          'false',
+          falseQuery,
+          RETRY_OVERPASS_ATTEMPTS,
+          true
         );
       }
+      for (const [index, correct] of falseTargetsToFind) {
+        if (typeof falseResult === 'string') {
+          warnings.push(`${points[index][0]} false target: ${falseResult}`);
+          continue;
+        }
+        const candidate = rankedControlCandidates(falseResult, points[index], correct)[0];
+        if (candidate) falseTargets.set(index, candidate);
+        else warnings.push(`${points[index][0]}: no similar false object was found from 1 to 10 NM away.`);
+      }
     }
-  }
 
-  const proposals = [...trueTargets.entries()]
-    .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
-    .map(([index, trueTarget]) => ({
-      waypoint: points[index],
-      trueTarget,
-      falseTarget: falseTargets.get(index) ?? null,
-    }));
-  return { proposals, warnings };
+    if (deadlineReached) {
+      warnings.push('The control-photo discovery time limit was reached; completed results were retained.');
+    }
+    const proposals = [...trueTargets.entries()]
+      .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
+      .map(([index, trueTarget]) => ({
+        waypoint: points[index],
+        trueTarget,
+        falseTarget: falseTargets.get(index) ?? null,
+      }));
+    return { proposals, warnings };
+  } finally {
+    globalThis.clearTimeout(deadline);
+    options.signal?.removeEventListener('abort', abortFromCaller);
+  }
 }
 
 const CATEGORY_LIMIT = 2;

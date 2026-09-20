@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Create calibrated precision-flying route overlays, timing schedules, and print-ready maps in your browser.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ipi.eprostor.gov.si; font-src 'self' data:; connect-src 'self' https://*.tile.openstreetmap.org https://ipi.eprostor.gov.si https://overpass-api.de https://overpass.private.coffee https://maps.mail.ru; worker-src 'self' blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ipi.eprostor.gov.si; font-src 'self' data:; connect-src 'self' https://api.geoapify.com https://*.tile.openstreetmap.org https://ipi.eprostor.gov.si https://overpass-api.de https://overpass.private.coffee https://maps.mail.ru; worker-src 'self' blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
   <link rel="stylesheet" href="./assets/style.css">
   <script type="module" src="./assets/app.js"></script>
 </head>
@@ -154,6 +154,10 @@ FP,46.608093,16.234769</textarea>
             <section class="preparation-section control-preparation" aria-labelledby="controlPreparationTitle">
               <div class="section-heading"><div><span class="section-order">A</span><h3 id="controlPreparationTitle">Control-point photos</h3><p>SP and FP are true. Choose a true or false photo for each TP.</p></div><span id="controlPreparationBadge" class="summary-badge">Not prepared</span></div>
               <div class="photo-import-actions"><button type="button" id="findControlPhotoOptions" class="btn btn-secondary">Find SP/TP/FP photo options</button><span class="note">True crops use exact waypoint coordinates. False TP options use the matching object type 1–10 NM away.</span></div>
+              <label class="compact-field geoapify-key-field" for="geoapifyApiKey">Geoapify API key (optional)
+                <input id="geoapifyApiKey" type="password" autocomplete="off" placeholder="Use Geoapify instead of Overpass">
+              </label>
+              <p class="note">The key stays in this browser and is never saved to the project.</p>
               <section id="controlPhotoReview" class="osm-candidate-review" aria-labelledby="controlPhotoReviewTitle" hidden>
                 <div class="osm-review-heading"><div><h4 id="controlPhotoReviewTitle">Review control-point photos</h4><p id="controlPhotoStatus" class="note" role="status" aria-live="polite"></p></div></div>
                 <div id="controlPhotoProgress" class="control-photo-progress" role="status" aria-live="polite" hidden>
