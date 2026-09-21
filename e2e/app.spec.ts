@@ -666,6 +666,9 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await expect(page.locator('.control-photo-row').nth(0).locator('.control-photo-option')).toHaveCount(1);
   await expect(page.locator('[data-control-waypoint="TP1"] .control-photo-option')).toHaveCount(2);
   await expect(page.locator('[data-control-waypoint="FP"] .control-photo-option')).toHaveCount(1);
+  await expect(page.locator('select[data-control-height-waypoint]')).toHaveCount(3);
+  await page.locator('select[data-control-height-waypoint="SP"]').selectOption('150');
+  await page.locator('select[data-control-height-waypoint="TP1"]').selectOption('300');
   await page.locator('.control-photo-option img').evaluateAll((images) => {
     (window as typeof window & { controlPreviewNodes?: Element[] }).controlPreviewNodes = images;
   });
@@ -693,7 +696,9 @@ test('control-photo discovery fixes SP/FP to true and lets each TP choose a fals
   await expect(page.locator('.photo-card')).toHaveCount(3);
   await expect(page.locator('.photo-card').nth(0)).toContainText('Correct control photo');
   await expect(page.locator('.photo-card').nth(0)).toContainText('46.600000_16.000000');
+  await expect(page.locator('.photo-card').nth(0)).toContainText('modeled at 150 m AGL');
   await expect(page.locator('.photo-card').nth(1)).toContainText('False control photo');
+  await expect(page.locator('.photo-card').nth(1)).toContainText('modeled at 300 m AGL');
   await expect(page.locator('.photo-card').nth(2)).toContainText('Correct control photo');
   await expect(page.locator('.photo-card').nth(2)).toContainText('46.600000_16.200000');
 });

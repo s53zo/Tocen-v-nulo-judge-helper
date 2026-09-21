@@ -1227,6 +1227,25 @@ th:not(:first-child) {
   color: #153f33;
 }
 
+.control-photo-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.control-photo-heading label {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.control-photo-heading select {
+  min-width: 6.5rem;
+}
+
 .control-photo-option {
   padding: 0.5rem;
   border: 1px solid #d8e2de;

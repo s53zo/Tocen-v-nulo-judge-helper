@@ -924,7 +924,7 @@ export class PhotoWorkflow {
       this.onMessage(`Error: a maximum of ${PHOTO_IMPORT_LIMITS.maximumCount} photos is allowed.`, 'error');
       return emptyResult();
     }
-    const coverage = orthophotoCoverage(model);
+    orthophotoCoverage(model);
     const batchController = new AbortController();
     const batchTimeout = window.setTimeout(
       () => batchController.abort(new Error('DOF025 batch exceeded two minutes.')),
@@ -944,6 +944,8 @@ export class PhotoWorkflow {
       let completedTargets = 0;
       for (let queueIndex = 0; queueIndex < requestQueue.length; queueIndex += 1) {
         const { target, retry } = requestQueue[queueIndex];
+        const targetModel = target.captureModel ?? model;
+        const coverage = orthophotoCoverage(targetModel);
         if (batchController.signal.aborted) {
           cancelled = true;
           break;
@@ -994,7 +996,7 @@ export class PhotoWorkflow {
           );
           const record = await this.importOne(
             file,
-            { orthophoto: { target, model } },
+            { orthophoto: { target, model: targetModel } },
             this.records,
             itemController.signal
           );
@@ -1066,7 +1068,14 @@ export class PhotoWorkflow {
           ? `DOF025 import cancelled after ${importedTargets.length} successful crop(s).`
           : errors.length
             ? `Imported ${importedTargets.length} DOF025 crop(s); ${errors.length} failed. Coordinates were sent to GURS.`
-            : `Imported ${importedTargets.length} DOF025 crop${importedTargets.length === 1 ? '' : 's'} at approximately ${coverage.widthM.toFixed(0)} × ${coverage.heightM.toFixed(0)} m coverage.`,
+            : importedTargets.some(
+                  (target) => (target.captureModel?.altitudeM ?? model.altitudeM) !== model.altitudeM
+                )
+              ? `Imported ${importedTargets.length} DOF025 crop${importedTargets.length === 1 ? '' : 's'} using the selected per-photo heights.`
+              : (() => {
+                  const coverage = orthophotoCoverage(model);
+                  return `Imported ${importedTargets.length} DOF025 crop${importedTargets.length === 1 ? '' : 's'} at approximately ${coverage.widthM.toFixed(0)} × ${coverage.heightM.toFixed(0)} m coverage.`;
+                })(),
         cancelled || errors.length ? 'warning' : 'success'
       );
       return { importedTargets, failedTargets, cancelled };

@@ -22,6 +22,7 @@ export interface OrthophotoTarget {
   label: string;
   latitude: number;
   longitude: number;
+  captureModel?: OrthophotoCaptureModel;
   alongRouteM?: number;
   source?: OrthophotoTargetSource;
   control?: {

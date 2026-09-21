@@ -813,6 +813,7 @@ let osmDiscoveryController: AbortController | null = null;
 let failedOsmRequests: OsmFailedRequest[] = [];
 let controlPhotoProposals: ControlPhotoProposal[] = [];
 let selectedControlPhotoRoles = new Map<string, 'true' | 'false'>();
+let selectedControlPhotoHeights = new Map<string, number>();
 let controlPhotoRouteKey = '';
 let controlPhotoImportHadFailures = false;
 let waypointAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1020,6 +1021,7 @@ function updateOsmDiscoveryProgress(progress: OsmDiscoveryProgress): void {
 function clearControlPhotoReview(): void {
   controlPhotoProposals = [];
   selectedControlPhotoRoles.clear();
+  selectedControlPhotoHeights.clear();
   controlPhotoRouteKey = '';
   controlPhotoImportHadFailures = false;
   controlPhotoList.replaceChildren();
@@ -1070,7 +1072,7 @@ function updateControlPhotoImportAction(): void {
 }
 
 function renderControlPhotoReview(): void {
-  const coverage = orthophotoCoverage(readOrthophotoModel());
+  const defaultModel = readOrthophotoModel();
   const points = parseWaypoints(waypointTextarea.value);
   const proposalsByWaypoint = new Map(
     controlPhotoProposals.map((proposal) => [proposal.waypoint[0], proposal])
@@ -1082,10 +1084,36 @@ function renderControlPhotoReview(): void {
     const row = document.createElement('section');
     row.className = 'control-photo-row';
     row.dataset.controlWaypoint = waypointName;
+    const headingGroup = document.createElement('div');
+    headingGroup.className = 'control-photo-heading';
     const heading = document.createElement('h5');
     heading.className = 'control-photo-waypoint';
     heading.textContent = waypointName;
-    row.appendChild(heading);
+    headingGroup.appendChild(heading);
+    if (proposal && !imported) {
+      const heightLabel = document.createElement('label');
+      heightLabel.textContent = 'Relative height AGL';
+      const heightSelect = document.createElement('select');
+      heightSelect.dataset.controlHeightWaypoint = waypointName;
+      heightSelect.setAttribute('aria-label', `${waypointName} orthophoto relative height AGL`);
+      const selectedHeight = selectedControlPhotoHeights.get(waypointName) ?? defaultModel.altitudeM;
+      const heights = new Set([100, 150, 300, selectedHeight]);
+      for (const height of [...heights].sort((left, right) => left - right)) {
+        const option = document.createElement('option');
+        option.value = String(height);
+        option.textContent = `${height} m`;
+        heightSelect.appendChild(option);
+      }
+      heightSelect.value = String(selectedHeight);
+      heightLabel.appendChild(heightSelect);
+      headingGroup.appendChild(heightLabel);
+    } else if (imported?.generatedOrthophoto) {
+      const importedHeight = document.createElement('span');
+      importedHeight.className = 'note';
+      importedHeight.textContent = `${imported.generatedOrthophoto.modeledAltitudeM} m AGL`;
+      headingGroup.appendChild(importedHeight);
+    }
+    row.appendChild(headingGroup);
     if (!proposal) {
       if (imported) {
         const importedStatus = document.createElement('p');
@@ -1124,6 +1152,11 @@ function renderControlPhotoReview(): void {
             ['true' | 'false', typeof proposal.trueTarget | null]
           >)),
     ];
+    const controlModel = {
+      ...defaultModel,
+      altitudeM: selectedControlPhotoHeights.get(waypointName) ?? defaultModel.altitudeM,
+    };
+    const coverage = orthophotoCoverage(controlModel);
     for (const [role, target] of options) {
       if (!target) continue;
       const option = document.createElement('div');
@@ -1618,6 +1651,7 @@ async function discoverControlPhotoOptions(
   try {
     photoWorkflow.analyze(points);
     const previousSelections = new Map(selectedControlPhotoRoles);
+    const previousHeights = new Map(selectedControlPhotoHeights);
     if (replaceExisting) clearControlPhotoReview();
     osmDiscoveryController = new AbortController();
     setOsmDiscoveryBusy(true);
@@ -1688,6 +1722,17 @@ async function discoverControlPhotoOptions(
         return [
           waypointName,
           importedRole ?? previousSelections.get(waypointName) ?? ('true' as const),
+        ] as const;
+      }),
+    ]);
+    selectedControlPhotoHeights = new Map([
+      ...(replaceExisting ? [] : previousHeights.entries()),
+      ...result.proposals.map(({ waypoint }) => {
+        const waypointName = waypoint[0];
+        const importedHeight = importedControlPhoto(waypointName)?.generatedOrthophoto?.modeledAltitudeM;
+        return [
+          waypointName,
+          importedHeight ?? previousHeights.get(waypointName) ?? readOrthophotoModel().altitudeM,
         ] as const;
       }),
     ]);
@@ -1767,6 +1812,18 @@ controlPhotoList.addEventListener('click', async (event) => {
 });
 
 controlPhotoList.addEventListener('change', (event) => {
+  const heightSelect = (event.target as HTMLElement).closest<HTMLSelectElement>(
+    'select[data-control-height-waypoint]'
+  );
+  if (heightSelect) {
+    const waypoint = heightSelect.dataset.controlHeightWaypoint;
+    const height = Number(heightSelect.value);
+    if (waypoint && Number.isFinite(height)) {
+      selectedControlPhotoHeights.set(waypoint, height);
+      renderControlPhotoReview();
+    }
+    return;
+  }
   const choice = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-control-waypoint]');
   if (!choice) return;
   const waypoint = choice.dataset.controlWaypoint;
@@ -1802,6 +1859,10 @@ importControlPhotos.addEventListener('click', async () => {
       return [
         {
           ...selected,
+          captureModel: {
+            ...readOrthophotoModel(),
+            altitudeM: selectedControlPhotoHeights.get(waypoint) ?? readOrthophotoModel().altitudeM,
+          },
           label: `CONTROL_${waypoint}_${role.toUpperCase()}`,
           source: {
             ...selected.source,
