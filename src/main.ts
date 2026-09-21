@@ -147,6 +147,9 @@ const locationsList = requiredElement<HTMLElement>('locationsList');
 const addAllFilteredBtn = requiredElement<HTMLButtonElement>('addAllFiltered');
 const orthophotoRandomCount = requiredElement<HTMLInputElement>('orthophotoRandomCount');
 const orthophotoAltitude = requiredElement<HTMLInputElement>('orthophotoAltitude');
+const orthophotoHeightPresets = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('[data-orthophoto-height]')
+);
 const orthophotoFocalLength = requiredElement<HTMLInputElement>('orthophotoFocalLength');
 const orthophotoDepression = requiredElement<HTMLInputElement>('orthophotoDepression');
 const orthophotoCoveragePreview = requiredElement<HTMLElement>('orthophotoCoveragePreview');
@@ -856,6 +859,10 @@ function readOrthophotoModel(): OrthophotoCaptureModel {
 }
 
 function updateOrthophotoCoveragePreview(): void {
+  const altitude = Number(orthophotoAltitude.value);
+  for (const preset of orthophotoHeightPresets) {
+    preset.setAttribute('aria-pressed', String(Number(preset.dataset.orthophotoHeight) === altitude));
+  }
   try {
     const coverage = orthophotoCoverage(readOrthophotoModel());
     orthophotoCoveragePreview.textContent = `≈ ${coverage.widthM.toFixed(0)} × ${coverage.heightM.toFixed(0)} m`;
@@ -1342,6 +1349,22 @@ function appendOrthophotoTargetRows(targets: OrthophotoTarget[]): void {
 
 for (const input of [orthophotoAltitude, orthophotoFocalLength, orthophotoDepression]) {
   input.addEventListener('input', updateOrthophotoCoveragePreview);
+  input.addEventListener('change', () => {
+    try {
+      readOrthophotoModel();
+      if (!osmCandidateReview.hidden && discoveredOsmCandidates.length > 0) renderOsmCandidateReview();
+      if (!controlPhotoReview.hidden && controlPhotoProposals.length > 0) renderControlPhotoReview();
+    } catch {
+      // The coverage badge already explains that the current camera model is invalid.
+    }
+  });
+}
+for (const preset of orthophotoHeightPresets) {
+  preset.addEventListener('click', () => {
+    orthophotoAltitude.value = preset.dataset.orthophotoHeight ?? '100';
+    orthophotoAltitude.dispatchEvent(new Event('input', { bubbles: true }));
+    orthophotoAltitude.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 }
 orthophotoRandomCount.addEventListener('input', () => {
   if (discoveredOsmCandidates.length === 0) return;

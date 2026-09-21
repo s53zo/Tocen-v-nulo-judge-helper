@@ -214,9 +214,22 @@ FP,46.608093,16.234769</textarea>
                 <button type="button" id="loadWaypointOrthophotos" class="btn btn-secondary">Load PHOTO_ coordinates</button>
               </div>
 
-              <details class="advanced-panel compact-advanced"><summary>DOF025 crop settings <span id="orthophotoCoveragePreview" class="coverage-badge"></span></summary>
+              <section class="orthophoto-height-setting" aria-labelledby="orthophotoHeightTitle">
+                <div class="orthophoto-height-copy">
+                  <strong id="orthophotoHeightTitle">Orthophoto relative height AGL</strong>
+                  <span id="orthophotoCoveragePreview" class="coverage-badge"></span>
+                  <small>Higher values show a larger ground area, as if photographed from that height.</small>
+                </div>
+                <div class="orthophoto-height-presets" role="group" aria-label="Orthophoto relative height presets">
+                  <button type="button" class="btn btn-ghost btn-small" data-orthophoto-height="100" aria-pressed="true">100 m</button>
+                  <button type="button" class="btn btn-ghost btn-small" data-orthophoto-height="150" aria-pressed="false">150 m</button>
+                  <button type="button" class="btn btn-ghost btn-small" data-orthophoto-height="300" aria-pressed="false">300 m</button>
+                  <label>Custom <input id="orthophotoAltitude" type="number" min="10" max="1000" step="10" value="100" aria-label="Custom orthophoto relative height AGL in metres"></label>
+                </div>
+              </section>
+
+              <details class="advanced-panel compact-advanced"><summary>Advanced DOF025 camera model</summary>
                 <div class="orthophoto-controls">
-                  <label>Height AGL (m)<input id="orthophotoAltitude" type="number" min="10" max="1000" step="10" value="100"></label>
                   <label>35 mm equivalent focal length (mm)<input id="orthophotoFocalLength" type="number" min="10" max="300" step="1" value="60"></label>
                   <label>Depression angle (°)<input id="orthophotoDepression" type="number" min="10" max="90" step="1" value="45"></label>
                 </div>

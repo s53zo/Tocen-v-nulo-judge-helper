@@ -283,6 +283,8 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   await page.locator('#speed').selectOption('custom-1');
   await page.locator('[data-map-key="p250"]').click();
   await goToStage(page, 2);
+  await page.locator('[data-orthophoto-height="300"]').click();
+  await expect(page.locator('#orthophotoCoveragePreview')).toContainText('306 × 208 m');
   await page.locator('#photoFiles').setInputFiles({
     name: 'IMG_saved_project.jpg',
     mimeType: 'image/jpeg',
@@ -305,6 +307,7 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   expect(savedProject.format).toBe('tocen-v-nulo-route-project');
   expect(savedProject.schemaVersion).toBe(2);
   expect(savedProject.settings.customSpeeds[0]).toEqual({ value: '154', unit: 'kmh' });
+  expect(savedProject.settings.orthophotoAltitude).toBe('300');
 
   await page.locator('.photo-card [data-action="remove"]').click();
   await goToStage(page, 1);
@@ -314,6 +317,7 @@ test('a saved project restores route settings and embedded photos', async ({ pag
   await expect(page.locator('#speed')).toHaveValue('custom-1');
   await expect(page.locator('[data-custom-speed-value="1"]')).toHaveValue('154');
   await expect(page.locator('[data-custom-speed-unit="1"]')).toHaveValue('kmh');
+  await expect(page.locator('[data-orthophoto-height="300"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-map-key="p250"]')).toHaveAttribute('aria-pressed', 'true');
   await goToStage(page, 3);
   await expect(page.locator('.photo-card')).toHaveCount(1);

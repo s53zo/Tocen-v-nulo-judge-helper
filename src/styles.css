@@ -907,6 +907,59 @@ th:not(:first-child) {
   font-weight: 700;
 }
 
+.orthophoto-height-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+  padding: 0.8rem;
+  border: 1px solid #bfd2ca;
+  border-radius: 8px;
+  background: #f5faf8;
+}
+
+.orthophoto-height-copy {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: start;
+  gap: 0.25rem 0.55rem;
+}
+
+.orthophoto-height-copy small {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+}
+
+.orthophoto-height-presets {
+  display: flex;
+  align-items: end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.orthophoto-height-presets button[aria-pressed="true"] {
+  border-color: #287254;
+  background: #dceee8;
+  color: #145a43;
+}
+
+.orthophoto-height-presets label {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0 0 0 0.2rem;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.orthophoto-height-presets input {
+  width: 5.5rem;
+  min-height: 2rem;
+}
+
 .orthophoto-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1286,6 +1339,15 @@ th:not(:first-child) {
 }
 
 @media (max-width: 780px) {
+  .orthophoto-height-setting {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .orthophoto-height-presets {
+    justify-content: flex-start;
+  }
+
   .orthophoto-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
