@@ -112,6 +112,7 @@ export interface OsmPhotoCandidate extends OrthophotoTarget {
   category: string;
   featureType: string;
   score: number;
+  diversityGroup: string;
   confidence: 'excellent' | 'strong' | 'good' | 'fallback';
   lateralDistanceM: number;
   previousControlPoint: string;
@@ -743,6 +744,20 @@ function elementCoordinate(element: OverpassElement): OsmCoordinate | null {
 }
 
 function candidateDefinition(tags: Record<string, string>): CandidateDefinition | null {
+  const catalogScore = Number(tags.__candidate_score);
+  if (
+    tags.__candidate_category &&
+    tags.__candidate_feature_type &&
+    Number.isFinite(catalogScore) &&
+    catalogScore > 0
+  ) {
+    return {
+      category: tags.__candidate_category,
+      featureType: tags.__candidate_feature_type,
+      score: catalogScore,
+      name: tags.name,
+    };
+  }
   if (tags.railway === 'level_crossing') {
     return { category: 'rail-crossing', featureType: 'Road–rail level crossing', score: 99 };
   }
@@ -935,6 +950,8 @@ function toCandidate(
     name: normalizedOsmText(definition.name ?? tags.name) ?? null,
     score: definition.score,
     attribution: OSM_ATTRIBUTION,
+    ...(tags.__provider_category ? { providerCategory: tags.__provider_category } : {}),
+    ...(tags.__diversity_group ? { diversityGroup: tags.__diversity_group } : {}),
   };
   return {
     id,
@@ -946,6 +963,7 @@ function toCandidate(
     category: definition.category,
     featureType: definition.featureType,
     score: definition.score,
+    diversityGroup: tags.__diversity_group ?? definition.category,
     confidence: confidence(definition.score),
     lateralDistanceM: analysis.lateralDistanceM,
     previousControlPoint: analysis.previousControlPoint,
@@ -1351,7 +1369,7 @@ function selectGroup(
     .sort((left, right) => right.rank - left.rank)
     .map(({ candidate }) => candidate);
   const selected: OsmPhotoCandidate[] = [];
-  const canSelect = (candidate: OsmPhotoCandidate, enforceCategoryLimit: boolean): boolean => {
+  const canSelect = (candidate: OsmPhotoCandidate, enforceDiversityLimit: boolean): boolean => {
     const combined = [...alreadySelected, ...selected];
     if (
       combined.some(
@@ -1362,8 +1380,11 @@ function selectGroup(
       return false;
     }
     return (
-      !enforceCategoryLimit ||
-      combined.filter((existing) => existing.category === candidate.category).length < CATEGORY_LIMIT
+      !enforceDiversityLimit ||
+      combined.filter(
+        (existing) =>
+          (existing.diversityGroup ?? existing.category) === (candidate.diversityGroup ?? candidate.category)
+      ).length < CATEGORY_LIMIT
     );
   };
 

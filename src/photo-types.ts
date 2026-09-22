@@ -88,6 +88,8 @@ export interface GeneratedOrthophotoInfo {
     name: string | null;
     score: number;
     attribution: string;
+    providerCategory?: string;
+    diversityGroup?: string;
     selectionSalt?: string;
     controlRole?: 'true' | 'false';
     controlWaypoint?: string;

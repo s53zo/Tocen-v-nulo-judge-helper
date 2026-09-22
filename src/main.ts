@@ -1,6 +1,7 @@
 import { strToU8, Zip, ZipPassThrough } from 'fflate';
 import type { LatLngExpression } from 'leaflet';
 import notoSansBoldUrl from 'notosans-fontface/fonts/NotoSans-Bold.ttf?url';
+import { CANDIDATE_CATALOG_VERSION } from './candidate-catalog';
 import { chooseTrueScaleCropPage } from './crop';
 import { parseCsv } from './csv';
 import { decodeDataUrl } from './data-url';
@@ -807,6 +808,8 @@ const osmDiscoveryWarningLegs = new Set<number>();
 const osmDiscoveryCache = new Map<string, { data: OverpassResponse; cachedAt: number }>();
 const OSM_CACHE_MAXIMUM_ENTRIES = 5;
 const OSM_CACHE_TTL_MS = 10 * 60_000;
+const PERSISTED_CANDIDATE_CACHE_PREFIX = 'tocen-route-candidates';
+const PERSISTED_CANDIDATE_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
 let osmDiscoveryStartedAt = 0;
 let osmDiscoveryElapsedTimer: ReturnType<typeof setInterval> | null = null;
 let osmDiscoveryController: AbortController | null = null;
@@ -909,6 +912,38 @@ function cacheOsmData(key: string, data: OverpassResponse): void {
     const oldestKey = osmDiscoveryCache.keys().next().value;
     if (typeof oldestKey !== 'string') break;
     osmDiscoveryCache.delete(oldestKey);
+  }
+}
+
+function persistedCandidateCacheKey(provider: string, points: Waypoint[]): string {
+  return `${PERSISTED_CANDIDATE_CACHE_PREFIX}:${JSON.stringify({ provider, points, catalog: CANDIDATE_CATALOG_VERSION })}`;
+}
+
+function readPersistedCandidates(key: string): OsmPhotoCandidate[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as { cachedAt?: unknown; candidates?: unknown };
+    if (
+      !Number.isFinite(value.cachedAt) ||
+      Date.now() - Number(value.cachedAt) > PERSISTED_CANDIDATE_CACHE_TTL_MS ||
+      !Array.isArray(value.candidates) ||
+      value.candidates.some((candidate) => !candidate || typeof candidate !== 'object')
+    ) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return value.candidates as OsmPhotoCandidate[];
+  } catch {
+    return null;
+  }
+}
+
+function persistCandidates(key: string, candidates: OsmPhotoCandidate[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), candidates }));
+  } catch {
+    // Candidate discovery remains usable if browser storage is unavailable or full.
   }
 }
 
@@ -1333,7 +1368,7 @@ function renderOsmCandidateReview(): void {
     const title = document.createElement('strong');
     title.textContent = candidate.name;
     const context = document.createElement('span');
-    context.textContent = `${candidate.featureType} · ${candidate.routeLegName}`;
+    context.textContent = `${candidate.featureType} · ${candidate.routeLegName}${candidate.source.providerCategory ? ` · ${candidate.source.providerCategory}` : ''}`;
     copy.append(title, context);
     const confidence = document.createElement('span');
     confidence.className = 'osm-confidence';
@@ -1345,7 +1380,7 @@ function renderOsmCandidateReview(): void {
     const technicalSummary = document.createElement('summary');
     technicalSummary.textContent = 'Route and OSM details';
     const technicalCopy = document.createElement('p');
-    technicalCopy.textContent = `${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint} · ${candidate.source.elementId} · ${candidate.source.attribution}`;
+    technicalCopy.textContent = `${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint} · diversity ${candidate.diversityGroup} · ${candidate.source.elementId} · ${candidate.source.attribution}`;
     technical.append(technicalSummary, technicalCopy);
     row.append(choice, technical);
     currentLegGrid?.appendChild(row);
@@ -1433,36 +1468,43 @@ addRandomOrthophotos.addEventListener('click', async () => {
     const geoapifyApiKey = geoapifyApiKeyInput.value.trim();
     const providerKey = geoapifyApiKey ? 'geoapify' : 'overpass';
     const cacheKey = `${providerKey}:${osmCacheKey(points, count, splitAfterM)}`;
-    const cachedData = readCachedOsmData(cacheKey);
+    const persistedCacheKey = persistedCandidateCacheKey(providerKey, points);
+    const cachedCandidates = readPersistedCandidates(persistedCacheKey);
+    const cachedData = cachedCandidates ? null : readCachedOsmData(cacheKey);
     clearOsmCandidateReview();
     osmSelectionSalt = newOsmSelectionSalt();
     beginOsmDiscoveryProgress(points);
-    if (!cachedData) {
+    if (!cachedData && !cachedCandidates) {
       osmDiscoveryController = new AbortController();
     }
     setOsmDiscoveryBusy(true);
     setStatus(
-      cachedData
-        ? 'Reusing the complete cached OpenStreetMap discovery with a new selection mix…'
+      cachedCandidates || cachedData
+        ? 'Reusing cached route candidates with a new selection mix…'
         : `Searching ${geoapifyApiKey ? 'Geoapify' : 'OpenStreetMap'} leg by leg (1 of ${points.length - 1})…`
     );
-    const data =
-      cachedData ??
-      (geoapifyApiKey
-        ? await fetchGeoapifyPhotoData(points, {
-            apiKey: geoapifyApiKey,
-            route,
-            signal: osmDiscoveryController?.signal,
-            onProgress: updateOsmDiscoveryProgress,
-          })
-        : await fetchOverpassPhotoData(points, {
-            route,
-            requestedCount: count,
-            splitAfterM,
-            signal: osmDiscoveryController?.signal,
-            onProgress: updateOsmDiscoveryProgress,
-          }));
-    const newlyDiscoveredCandidates = discoverOsmPhotoCandidates(data, route, points);
+    const data = cachedCandidates
+      ? null
+      : (cachedData ??
+        (geoapifyApiKey
+          ? await fetchGeoapifyPhotoData(points, {
+              apiKey: geoapifyApiKey,
+              route,
+              signal: osmDiscoveryController?.signal,
+              onProgress: updateOsmDiscoveryProgress,
+            })
+          : await fetchOverpassPhotoData(points, {
+              route,
+              requestedCount: count,
+              splitAfterM,
+              signal: osmDiscoveryController?.signal,
+              onProgress: updateOsmDiscoveryProgress,
+            })));
+    const newlyDiscoveredCandidates = cachedCandidates
+      ? cachedCandidates
+      : data
+        ? discoverOsmPhotoCandidates(data, route, points)
+        : [];
     discoveredOsmCandidates = [
       ...new Map(
         [...retainedCandidates, ...newlyDiscoveredCandidates].map((candidate) => [candidate.id, candidate])
@@ -1472,20 +1514,21 @@ addRandomOrthophotos.addEventListener('click', async () => {
     if (discoveredOsmCandidates.length === 0) {
       throw new Error('No identifiable OSM targets met the route, clearance, and distance requirements.');
     }
-    if (!cachedData) cacheOsmData(cacheKey, data);
-    failedOsmRequests = data.failedRequests ?? [];
-    finishOsmDiscoveryProgress(discoveredOsmCandidates.length, data.warnings ?? []);
+    if (data && !cachedData) cacheOsmData(cacheKey, data);
+    if (data && !data.warnings?.length) persistCandidates(persistedCacheKey, newlyDiscoveredCandidates);
+    failedOsmRequests = data?.failedRequests ?? [];
+    finishOsmDiscoveryProgress(discoveredOsmCandidates.length, data?.warnings ?? []);
     chooseOsmCandidateProposal();
     const selectedCount = selectedOsmCandidateIds.size;
-    const partialWarning = data.warnings?.length
-      ? ` ${data.warnings.length} OpenStreetMap request${data.warnings.length === 1 ? '' : 's'} could not be loaded; completed results were retained.`
+    const partialWarning = data?.warnings?.length
+      ? ` ${data.warnings.length} provider request${data.warnings.length === 1 ? '' : 's'} could not be loaded; completed results were retained.`
       : '';
     const accumulatedNotice = retainedCandidates.length
       ? ` Results were merged with ${retainedCandidates.length} candidates retained from the previous attempt.`
       : '';
     setStatus(
       `${`Found ${discoveredOsmCandidates.length} eligible OSM features and displayed all of them. ${selectedCount} are initially selected; choose any number before importing.`}${partialWarning}${accumulatedNotice}`,
-      data.warnings?.length ? 'warning' : 'success'
+      data?.warnings?.length ? 'warning' : 'success'
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

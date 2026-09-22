@@ -1,3 +1,9 @@
+import {
+  catalogEntryForGeoapifyCategories,
+  GEOAPIFY_CANDIDATE_CATALOG,
+  GEOAPIFY_SEARCH_CATEGORIES,
+  type GeoapifyCandidateCatalogEntry,
+} from './candidate-catalog';
 import { haversine, type Route, type Waypoint } from './domain';
 import type {
   ControlDiscoveryProgress,
@@ -56,6 +62,10 @@ export interface FetchGeoapifyPhotoOptions {
   onProgress?: (progress: OsmDiscoveryProgress) => void;
 }
 
+function catalogEntryForFeature(feature: GeoapifyFeature): GeoapifyCandidateCatalogEntry | null {
+  return catalogEntryForGeoapifyCategories(feature.properties?.categories ?? []);
+}
+
 const CATEGORY_DEFINITIONS = [
   ['man_made.bridge', 'Bridge', 'bridge', 95],
   ['religion.place_of_worship', 'Church or place of worship', 'landmark', 96],
@@ -110,9 +120,11 @@ const CATEGORY_DEFINITIONS = [
   ['waterway', 'Waterway', 'water', 82],
 ] as const;
 
-const SEARCH_CATEGORIES = CATEGORY_DEFINITIONS.map(([category]) => category).join(',');
+const SEARCH_CATEGORIES = GEOAPIFY_SEARCH_CATEGORIES;
 
 function categoryTags(feature: GeoapifyFeature): Record<string, string> | null {
+  const catalogEntry = catalogEntryForFeature(feature);
+  if (catalogEntry) return catalogEntry.osmTags;
   const categories = feature.properties?.categories ?? [];
   if (
     categories.some((category) => category === 'man_made.bridge' || category.startsWith('man_made.bridge.'))
@@ -223,18 +235,28 @@ function coordinateFromFeature(feature: GeoapifyFeature): { latitude: number; lo
   return null;
 }
 
-function definitionForFeature(feature: GeoapifyFeature): (typeof CATEGORY_DEFINITIONS)[number] | null {
+function definitionForFeature(feature: GeoapifyFeature): GeoapifyCandidateCatalogEntry | null {
   const categories = feature.properties?.categories ?? [];
-  return (
-    CATEGORY_DEFINITIONS.find(([category]) =>
-      categories.some((candidate) => candidate === category || candidate.startsWith(`${category}.`))
-    ) ?? null
+  const catalogEntry = catalogEntryForFeature(feature);
+  if (catalogEntry) return catalogEntry;
+  const legacyEntry = CATEGORY_DEFINITIONS.find(([category]) =>
+    categories.some((candidate) => candidate === category || candidate.startsWith(`${category}.`))
   );
+  return legacyEntry
+    ? {
+        geoapifyCategory: legacyEntry[0],
+        featureType: legacyEntry[1],
+        category: legacyEntry[2],
+        diversityGroup: legacyEntry[2],
+        score: legacyEntry[3],
+        osmTags: {},
+      }
+    : null;
 }
 
 function sourceForFeature(
   feature: GeoapifyFeature,
-  definition: (typeof CATEGORY_DEFINITIONS)[number],
+  definition: GeoapifyCandidateCatalogEntry,
   waypoint: Waypoint,
   role: 'true' | 'false',
   correct?: { latitude: number; longitude: number }
@@ -246,11 +268,13 @@ function sourceForFeature(
   return {
     provider: 'OpenStreetMap',
     elementId: `geoapify:${osmType}/${osmId}`,
-    category: definition[2],
-    featureType: definition[1],
+    category: definition.category,
+    featureType: definition.featureType,
     name: properties.name ?? null,
-    score: definition[3],
+    score: definition.score,
     attribution: '© OpenStreetMap contributors; accessed through Geoapify',
+    providerCategory: definition.geoapifyCategory,
+    diversityGroup: definition.diversityGroup,
     controlRole: role,
     controlWaypoint: waypoint[0],
     ...(correct
@@ -279,16 +303,16 @@ function toCandidate(
     ? haversine(correct.latitude, correct.longitude, coordinate.latitude, coordinate.longitude)
     : 0;
   return {
-    featureType: definition[1],
+    featureType: definition.featureType,
     candidate: {
       id: source.elementId,
       label: '',
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
-      name: source.name ?? definition[1],
-      category: definition[2],
-      featureType: definition[1],
-      score: definition[3],
+      name: source.name ?? definition.featureType,
+      category: definition.category,
+      featureType: definition.featureType,
+      score: definition.score,
       distanceFromWaypointM,
       distanceFromCorrectM,
       source,
@@ -344,8 +368,9 @@ async function fetchPlacesInRect(
 function geoFeaturesToElements(features: GeoapifyFeature[], legIndex: number) {
   return features.flatMap((feature, featureIndex) => {
     const coordinate = coordinateFromFeature(feature);
+    const definition = definitionForFeature(feature);
     const tags = categoryTags(feature);
-    if (!coordinate || !tags) return [];
+    if (!coordinate || !definition || !tags) return [];
     const rawId = feature.properties?.place_id ?? `${legIndex}-${featureIndex}`;
     let id = 0;
     for (const character of rawId) id = (Math.imul(id, 31) + character.charCodeAt(0)) >>> 0;
@@ -357,6 +382,11 @@ function geoFeaturesToElements(features: GeoapifyFeature[], legIndex: number) {
         lon: coordinate.longitude,
         tags: {
           ...tags,
+          __candidate_category: definition.category,
+          __candidate_feature_type: definition.featureType,
+          __candidate_score: String(definition.score),
+          __diversity_group: definition.diversityGroup,
+          __provider_category: definition.geoapifyCategory,
           ...(feature.properties?.name ? { name: feature.properties.name } : {}),
         },
       },
@@ -543,9 +573,9 @@ export async function fetchGeoapifyControlPhotoProposals(
       const point = points[index];
       emit(index, 'false', 'started');
       try {
-        const category = CATEGORY_DEFINITIONS.find(
-          ([, featureType]) => featureType === correct.featureType
-        )?.[0];
+        const category = GEOAPIFY_CANDIDATE_CATALOG.find(
+          (entry) => entry.featureType === correct.featureType
+        )?.geoapifyCategory;
         if (!category) throw new Error(`Geoapify has no category mapping for ${correct.featureType}.`);
         const features = await fetchPlaces(
           correct.latitude,
