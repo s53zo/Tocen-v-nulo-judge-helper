@@ -1217,6 +1217,8 @@ function renderControlPhotoReview(): void {
       const preview = document.createElement('img');
       preview.alt = `${waypointName} ${role} orthophoto preview`;
       preview.loading = 'lazy';
+      preview.tabIndex = 0;
+      preview.title = 'Hover or focus to enlarge';
       preview.src = orthophotoRequestUrl(target.latitude, target.longitude, coverage, 800);
       label.append(choice, title, metrics, preview);
       const technical = document.createElement('details');

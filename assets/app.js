@@ -4527,7 +4527,7 @@ function qs() {
 			let l = document.createElement("span");
 			l.className = "note", l.textContent = e === "true" ? `OSM reference: ${t.name} (${t.featureType}), ${t.distanceFromWaypointM.toFixed(0)} m away` : `${t.featureType} · ${(t.distanceFromCorrectM / 1852).toFixed(2)} NM from the true object`;
 			let d = document.createElement("img");
-			d.alt = `${i} ${e} orthophoto preview`, d.loading = "lazy", d.src = ct(t.latitude, t.longitude, u, 800), r.append(s, c, l, d);
+			d.alt = `${i} ${e} orthophoto preview`, d.loading = "lazy", d.tabIndex = 0, d.title = "Hover or focus to enlarge", d.src = ct(t.latitude, t.longitude, u, 800), r.append(s, c, l, d);
 			let f = document.createElement("details");
 			f.className = "candidate-technical-details";
 			let p = document.createElement("summary");
