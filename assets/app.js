@@ -4570,41 +4570,43 @@ function Qs(e) {
 	return t;
 }
 function $s() {
-	let e = Zs(), t = Qs(e), n = Y.records.length + e.length > z.maximumCount;
-	Ki.textContent = `All ${X.length} eligible OSM feature${X.length === 1 ? " is" : "s are"} shown. ${e.length} selected. Selection mix ${fs.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`, Ji.textContent = e.length === 0 ? "Select at least one target to import." : n ? `${e.length} selected · app safety limit: a maximum of ${z.maximumCount} total photos can be loaded.` : t.length ? `${e.length} selected · ${t.join(" ")}` : `${e.length} selected · ready for DOF025 import`, Ji.dataset.tone = e.length === 0 || n || t.length ? "warning" : "ok", Qi.disabled = Z || e.length === 0 || n;
-	let r = document.createDocumentFragment(), i = /* @__PURE__ */ new Map();
-	for (let e of X) i.set(e.routeLegIndex, (i.get(e.routeLegIndex) ?? 0) + 1);
-	let a = -1, o = null;
+	let e = Zs(), t = Qs(e), n = st(ks()), r = Y.records.length + e.length > z.maximumCount;
+	Ki.textContent = `All ${X.length} eligible OSM feature${X.length === 1 ? " is" : "s are"} shown. ${e.length} selected. Selection mix ${fs.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`, Ji.textContent = e.length === 0 ? "Select at least one target to import." : r ? `${e.length} selected · app safety limit: a maximum of ${z.maximumCount} total photos can be loaded.` : t.length ? `${e.length} selected · ${t.join(" ")}` : `${e.length} selected · ready for DOF025 import`, Ji.dataset.tone = e.length === 0 || r || t.length ? "warning" : "ok", Qi.disabled = Z || e.length === 0 || r;
+	let i = document.createDocumentFragment(), a = /* @__PURE__ */ new Map();
+	for (let e of X) a.set(e.routeLegIndex, (a.get(e.routeLegIndex) ?? 0) + 1);
+	let o = -1, s = null;
 	for (let e of X) {
-		if (e.routeLegIndex !== a) {
-			a = e.routeLegIndex;
+		if (e.routeLegIndex !== o) {
+			o = e.routeLegIndex;
 			let t = document.createElement("section");
-			t.className = "osm-candidate-leg-group", t.dataset.legIndex = String(a);
+			t.className = "osm-candidate-leg-group", t.dataset.legIndex = String(o);
 			let n = document.createElement("h5");
-			n.className = "osm-candidate-leg-heading", n.textContent = `${e.routeLegName} · ${i.get(a) ?? 0} candidate${i.get(a) === 1 ? "" : "s"}`, o = document.createElement("div"), o.className = "osm-candidate-leg-grid", t.append(n, o), r.appendChild(t);
+			n.className = "osm-candidate-leg-heading", n.textContent = `${e.routeLegName} · ${a.get(o) ?? 0} candidate${a.get(o) === 1 ? "" : "s"}`, s = document.createElement("div"), s.className = "osm-candidate-leg-grid", t.append(n, s), i.appendChild(t);
 		}
 		let t = document.createElement("article");
 		t.className = "osm-candidate";
-		let n = document.createElement("label");
-		n.className = "osm-candidate-choice";
-		let s = document.createElement("input");
-		s.type = "checkbox", s.checked = us.has(e.id), s.dataset.osmCandidateId = e.id;
-		let c = document.createElement("span");
-		c.className = "osm-candidate-copy";
-		let l = document.createElement("strong");
-		l.textContent = e.name;
-		let u = document.createElement("span");
-		u.textContent = `${e.featureType} · ${e.routeLegName}${e.source.providerCategory ? ` · ${e.source.providerCategory}` : ""}`, c.append(l, u);
+		let r = document.createElement("label");
+		r.className = "osm-candidate-choice";
+		let c = document.createElement("input");
+		c.type = "checkbox", c.checked = us.has(e.id), c.dataset.osmCandidateId = e.id;
+		let l = document.createElement("span");
+		l.className = "osm-candidate-copy";
+		let u = document.createElement("strong");
+		u.textContent = e.name;
 		let d = document.createElement("span");
-		d.className = "osm-confidence", d.dataset.confidence = e.confidence, d.textContent = `heuristic ${e.confidence} ${e.score}`, n.append(s, c, d);
-		let f = document.createElement("details");
-		f.className = "candidate-technical-details";
-		let p = document.createElement("summary");
-		p.textContent = "Route and OSM details";
-		let m = document.createElement("p");
-		m.textContent = `${((e.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${e.lateralDistanceM.toFixed(0)} m lateral · ${e.distanceAfterControlM.toFixed(0)} m after ${e.previousControlPoint} · diversity ${e.diversityGroup} · ${e.source.elementId} · ${e.source.attribution}`, f.append(p, m), t.append(n, f), o?.appendChild(t);
+		d.textContent = `${e.featureType} · ${e.routeLegName}${e.source.providerCategory ? ` · ${e.source.providerCategory}` : ""}`, l.append(u, d);
+		let f = document.createElement("span");
+		f.className = "osm-confidence", f.dataset.confidence = e.confidence, f.textContent = `heuristic ${e.confidence} ${e.score}`, r.append(c, l, f);
+		let p = document.createElement("img");
+		p.className = "osm-candidate-preview", p.alt = `${e.name} orthophoto preview`, p.loading = "lazy", p.tabIndex = 0, p.title = "Hover or focus to enlarge", p.src = ct(e.latitude, e.longitude, n, 640);
+		let m = document.createElement("details");
+		m.className = "candidate-technical-details";
+		let h = document.createElement("summary");
+		h.textContent = "Route and OSM details";
+		let g = document.createElement("p");
+		g.textContent = `${((e.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${e.lateralDistanceM.toFixed(0)} m lateral · ${e.distanceAfterControlM.toFixed(0)} m after ${e.previousControlPoint} · diversity ${e.diversityGroup} · ${e.source.elementId} · ${e.source.attribution}`, m.append(h, g), t.append(r, p, m), s?.appendChild(t);
 	}
-	qi.replaceChildren(r), Gi.hidden = !1, $();
+	qi.replaceChildren(i), Gi.hidden = !1, $();
 }
 function ec() {
 	let e = fn(X, js(), Y.handoutOptions.splitAfterM, Lt(fs));

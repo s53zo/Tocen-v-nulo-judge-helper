@@ -1154,6 +1154,16 @@ th:not(:first-child) {
   min-width: 0;
 }
 
+.osm-candidate-preview {
+  display: block;
+  width: 100%;
+  margin-top: 0.55rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #eef2f0;
+}
+
 .control-photo-list {
   display: grid;
   gap: 0.75rem;
@@ -1296,7 +1306,7 @@ th:not(:first-child) {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .control-photo-choice img {
+  :is(.control-photo-choice img, .osm-candidate-preview) {
     position: relative;
     cursor: zoom-in;
     transition:
@@ -1304,8 +1314,8 @@ th:not(:first-child) {
       box-shadow 160ms ease;
   }
 
-  .control-photo-choice img:hover,
-  .control-photo-choice img:focus-visible {
+  :is(.control-photo-choice img, .osm-candidate-preview):hover,
+  :is(.control-photo-choice img, .osm-candidate-preview):focus-visible {
     z-index: 10;
     transform: scale(1.85);
     cursor: zoom-out;

@@ -1322,6 +1322,7 @@ function osmSelectionWarnings(selected: OsmPhotoCandidate[]): string[] {
 function renderOsmCandidateReview(): void {
   const selected = selectedOsmCandidates();
   const warnings = osmSelectionWarnings(selected);
+  const previewCoverage = orthophotoCoverage(readOrthophotoModel());
   const exceedsImportCapacity =
     photoWorkflow.records.length + selected.length > PHOTO_IMPORT_LIMITS.maximumCount;
   osmCandidateSummary.textContent = `All ${discoveredOsmCandidates.length} eligible OSM feature${discoveredOsmCandidates.length === 1 ? ' is' : 's are'} shown. ${selected.length} selected. Selection mix ${osmSelectionSalt.slice(0, 8)}. The initial selection is only a suggestion; select any number of targets.`;
@@ -1377,6 +1378,13 @@ function renderOsmCandidateReview(): void {
     confidence.dataset.confidence = candidate.confidence;
     confidence.textContent = `heuristic ${candidate.confidence} ${candidate.score}`;
     choice.append(checkbox, copy, confidence);
+    const preview = document.createElement('img');
+    preview.className = 'osm-candidate-preview';
+    preview.alt = `${candidate.name} orthophoto preview`;
+    preview.loading = 'lazy';
+    preview.tabIndex = 0;
+    preview.title = 'Hover or focus to enlarge';
+    preview.src = orthophotoRequestUrl(candidate.latitude, candidate.longitude, previewCoverage, 640);
     const technical = document.createElement('details');
     technical.className = 'candidate-technical-details';
     const technicalSummary = document.createElement('summary');
@@ -1384,7 +1392,7 @@ function renderOsmCandidateReview(): void {
     const technicalCopy = document.createElement('p');
     technicalCopy.textContent = `${((candidate.alongRouteM ?? 0) / 1852).toFixed(1)} NM along route · ${candidate.lateralDistanceM.toFixed(0)} m lateral · ${candidate.distanceAfterControlM.toFixed(0)} m after ${candidate.previousControlPoint} · diversity ${candidate.diversityGroup} · ${candidate.source.elementId} · ${candidate.source.attribution}`;
     technical.append(technicalSummary, technicalCopy);
-    row.append(choice, technical);
+    row.append(choice, preview, technical);
     currentLegGrid?.appendChild(row);
   }
   osmCandidateList.replaceChildren(fragment);
