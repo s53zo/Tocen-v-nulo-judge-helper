@@ -292,7 +292,7 @@ FP,46.608093,16.234769</textarea>
       <section class="workflow-stage results-panel" id="workflowStage4" data-workflow-stage="4" aria-labelledby="workflowStage4Title" hidden>
         <div class="panel-content">
           <div class="results-progress-header"><div><span class="stage-eyebrow">Step 4 of 4</span><h2 id="workflowStage4Title">Generate package</h2></div><button id="cancelGeneration" class="btn btn-secondary" hidden>Cancel generation</button></div>
-          <progress id="generationProgress" value="0" max="7"></progress>
+          <progress id="generationProgress" value="0" max="8"></progress>
           <div id="resultsPlaceholder" class="results-placeholder">
             <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
               <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>
@@ -340,12 +340,14 @@ FP,46.608093,16.234769</textarea>
                   <a id="downloadOverlay" href="#" class="btn btn-ghost">Competitor route map (PDF)</a>
                   <a id="downloadCompetitorPhotoHandout" href="#" class="btn btn-ghost">Competitor photo handout (PDF)</a>
                   <a id="downloadCropped" href="#" class="btn btn-ghost">Empty map (PDF)</a>
+                  <a id="downloadRulers" class="btn btn-ghost" style="display:none">Pilot rulers - all speeds (PDF)</a>
                 </div></section>
               </div>
               <ul id="artifactStatuses" class="artifact-statuses" aria-live="polite">
                 <li data-artifact="map">Judge map: not started</li>
                 <li data-artifact="overlay">Competitor route: not started</li>
                 <li data-artifact="crop">Empty map: not started</li>
+                <li data-artifact="rulers">Pilot rulers: not started</li>
                 <li data-artifact="preview">Preview: not started</li>
                 <li data-artifact="data">CSV/JSON: not started</li>
                 <li data-artifact="handout">Judge photo handout: not started</li>

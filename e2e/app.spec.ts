@@ -169,6 +169,11 @@ async function generateAndVerify(page, mapKey: 'vfr' | 'p250', browserName: stri
   await expectTrueScaleMapPdf(page, '#downloadPdf');
   await expectTrueScaleMapPdf(page, '#downloadOverlay');
   await expectTrueScaleMapPdf(page, '#downloadCropped');
+  await expect(page.locator('[data-artifact="rulers"]')).toHaveAttribute('data-state', 'ok');
+  const rulerDocument = await PDFDocument.load(await downloadBytes(page, '#downloadRulers'));
+  const mapDocument = await PDFDocument.load(await downloadBytes(page, '#downloadOverlay'));
+  expect(rulerDocument.getPages()[0].getSize()).toEqual(mapDocument.getPages()[0].getSize());
+  expect(rulerDocument.catalog.getViewerPreferences()?.getPrintScaling()).toBe(PrintScaling.None);
   await expectStructuredDownloads(page, false);
   await expect(page.locator('#downloadPhotoAnalysis')).toBeHidden();
   await expect(page.locator('[data-artifact="handout"]')).toContainText('omitted');
@@ -414,6 +419,7 @@ test('speed-edition ZIP contains default, custom, and shared competition files',
 
   for (const name of [
     'shared/empty_map.pdf',
+    'shared/pilot_rulers.pdf',
     'shared/judge_photo_handout.pdf',
     'shared/competitor_photo_handout.pdf',
   ]) {

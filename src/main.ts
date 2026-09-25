@@ -51,6 +51,7 @@ import {
 import { preparePhotoJpeg } from './photo-image';
 import { photoAnalysisCsv, photoOverlayKeyCsv, photoSummaryJson } from './photo-output';
 import { PHOTO_IMPORT_LIMITS, PhotoWorkflow } from './photo-workflow';
+import { buildPilotRulers } from './pilot-rulers';
 import {
   DEFAULT_CUSTOM_SPEEDS,
   PROJECT_FILE_FORMAT,
@@ -218,6 +219,7 @@ const workflowFindingGroups = requiredElement<HTMLElement>('workflowFindingGroup
 const downloadPdfLink = requiredElement<HTMLAnchorElement>('downloadPdf');
 const downloadOverlayLink = requiredElement<HTMLAnchorElement>('downloadOverlay');
 const downloadCroppedLink = requiredElement<HTMLAnchorElement>('downloadCropped');
+const downloadRulersLink = requiredElement<HTMLAnchorElement>('downloadRulers');
 const downloadSummaryLink = requiredElement<HTMLAnchorElement>('downloadSummary');
 const downloadPhotoAnalysisLink = requiredElement<HTMLAnchorElement>('downloadPhotoAnalysis');
 const downloadPhotoKeyLink = requiredElement<HTMLAnchorElement>('downloadPhotoKey');
@@ -227,6 +229,7 @@ const downloadCompetitorPhotoHandoutLink = requiredElement<HTMLAnchorElement>(
 );
 downloadCroppedLink.style.display = 'none';
 const downloadUrls = {
+  rulers: null,
   pdf: null,
   overlay: null,
   cropped: null,
@@ -236,8 +239,15 @@ const downloadUrls = {
   photoHandout: null,
   competitorPhotoHandout: null,
 };
-type SharedArtifactKey = 'cropped' | 'photoAnalysis' | 'photoKey' | 'photoHandout' | 'competitorPhotoHandout';
+type SharedArtifactKey =
+  | 'rulers'
+  | 'cropped'
+  | 'photoAnalysis'
+  | 'photoKey'
+  | 'photoHandout'
+  | 'competitorPhotoHandout';
 const sharedArtifactBytes: Record<SharedArtifactKey, Uint8Array | null> = {
+  rulers: null,
   cropped: null,
   photoAnalysis: null,
   photoKey: null,
@@ -280,6 +290,7 @@ function setArtifactState(artifact: string, state: ArtifactState, detail: string
     map: 'Judge map',
     overlay: 'Competitor route',
     crop: 'Empty map',
+    rulers: 'Pilot rulers',
     preview: 'Preview',
     data: 'CSV/JSON',
     handout: 'Judge photo handout',
@@ -294,7 +305,16 @@ function setArtifactState(artifact: string, state: ArtifactState, detail: string
 
 function resetArtifactStates(): void {
   generationProgress.value = 0;
-  for (const artifact of ['map', 'overlay', 'crop', 'preview', 'data', 'handout', 'competitorHandout']) {
+  for (const artifact of [
+    'map',
+    'overlay',
+    'crop',
+    'rulers',
+    'preview',
+    'data',
+    'handout',
+    'competitorHandout',
+  ]) {
     setArtifactState(artifact, 'not-started', 'not started');
   }
 }
@@ -525,6 +545,7 @@ function invalidateGeneratedPackage(): void {
     ['pdf', downloadPdfLink],
     ['overlay', downloadOverlayLink],
     ['cropped', downloadCroppedLink],
+    ['rulers', downloadRulersLink],
     ['summary', downloadSummaryLink],
     ['photoAnalysis', downloadPhotoAnalysisLink],
     ['photoKey', downloadPhotoKeyLink],
@@ -3105,6 +3126,8 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       clearDownloadUrl('pdf', downloadPdfLink);
       clearDownloadUrl('overlay', downloadOverlayLink);
       clearDownloadUrl('cropped', downloadCroppedLink);
+      clearDownloadUrl('rulers', downloadRulersLink);
+      downloadRulersLink.style.display = 'none';
       clearDownloadUrl('summary', downloadSummaryLink);
       clearDownloadUrl('photoAnalysis', downloadPhotoAnalysisLink);
       clearDownloadUrl('photoKey', downloadPhotoKeyLink);
@@ -3957,6 +3980,25 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             downloadCroppedLink
           );
           sharedArtifactBytes.cropped = Uint8Array.from(emptyCroppedBytes);
+          try {
+            setArtifactState('rulers', 'processing', 'building all speed rulers');
+            const rulerBytes = await buildPilotRulers({
+              widthMm: summaryCropped.widthMm,
+              heightMm: summaryCropped.heightMm,
+              scaleDenominator: mapConfig.scaleDenominator,
+              speeds: requestedSpeedEditions().map((edition) => ({
+                label: edition.label,
+                knots: parseSpeed(edition.speedText).knots,
+              })),
+            });
+            sharedArtifactBytes.rulers = Uint8Array.from(rulerBytes);
+            setDownloadUrl('rulers', createPdfObjectUrl(rulerBytes), 'pilot_rulers.pdf', downloadRulersLink);
+            setArtifactState('rulers', 'ok', 'all default and configured custom speeds; print at 100%');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            artifactFailures.push(`pilot rulers: ${message}`);
+            setArtifactState('rulers', 'failed', message);
+          }
           downloadCroppedLink.style.display = 'inline-flex';
           void renderCroppedPreview(previewOptions);
         }
@@ -4153,6 +4195,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       setArtifactState('map', 'manual-review', 'interactive OSM print view');
       setArtifactState('overlay', 'manual-review', 'included in interactive view');
       setArtifactState('crop', 'manual-review', 'not available for OSM');
+      setArtifactState('rulers', 'manual-review', 'requires a calibrated PDF map');
       setArtifactState('preview', 'manual-review', 'interactive map is the preview');
     }
 
@@ -4468,6 +4511,7 @@ async function addSharedCompetitionFiles(
   archive: ReturnType<typeof createSpeedEditionArchive>
 ): Promise<void> {
   const entries: Array<[SharedArtifactKey, string, string]> = [
+    ['rulers', 'pilot rulers', 'shared/pilot_rulers.pdf'],
     ['cropped', 'empty map', 'shared/empty_map.pdf'],
   ];
   if (photoWorkflow.records.length > 0) {
