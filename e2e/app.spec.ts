@@ -3,7 +3,30 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { strFromU8, unzipSync } from 'fflate';
-import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream, PrintScaling } from 'pdf-lib';
+import {
+  decodePDFRawStream,
+  PDFArray,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+  PrintScaling,
+} from 'pdf-lib';
+
+function expectRouteOpeningView(document: PDFDocument): void {
+  const destination = document.catalog.lookup(PDFName.of('OpenAction'), PDFArray);
+  expect(destination.get(0)).toEqual(document.getPage(0).ref);
+  expect(destination.get(1).toString()).toBe('/FitR');
+  const [left, bottom, right, top] = [2, 3, 4, 5].map((index) =>
+    destination.lookup(index, PDFNumber).asNumber()
+  );
+  expect(left).toBeGreaterThanOrEqual(0);
+  expect(bottom).toBeGreaterThanOrEqual(0);
+  expect(right).toBeLessThanOrEqual(document.getPage(0).getWidth());
+  expect(top).toBeLessThanOrEqual(document.getPage(0).getHeight());
+  expect(right).toBeGreaterThan(left);
+  expect(top).toBeGreaterThan(bottom);
+}
 
 async function expectPdfBlob(page, selector: string): Promise<void> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
@@ -27,6 +50,7 @@ async function expectTrueScaleMapPdf(page, selector: string): Promise<void> {
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   const document = await PDFDocument.load(bytes);
   const pages = document.getPages();
+  expectRouteOpeningView(document);
   expect(pages).toHaveLength(1);
   const { width, height } = pages[0].getSize();
   const millimetersToPoints = 72 / 25.4;
@@ -432,6 +456,7 @@ test('speed-edition ZIP contains default, custom, and shared competition files',
     await writeFile(test.info().outputPath(name), archive[name]);
     const pack = await PDFDocument.load(archive[name]);
     expect(pack.getPageCount()).toBe(12);
+    expectRouteOpeningView(pack);
     const expectedSpeeds = [...Array.from({ length: 11 }, (_, index) => `${50 + index * 5} kt`), '140 km/h'];
     for (const [pageIndex, pdfPage] of pack.getPages().entries()) {
       const contents = pdfPage.node.Contents();
@@ -441,7 +466,7 @@ test('speed-edition ZIP contains default, custom, and shared competition files',
         .filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
         .map((stream) => Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1'))
         .join('\n');
-      const heading = Buffer.from(`GROUNDSPEED: ${expectedSpeeds[pageIndex]}`, 'latin1')
+      const heading = Buffer.from(expectedSpeeds[pageIndex].replace(/\s+/g, ''), 'latin1')
         .toString('hex')
         .toUpperCase();
       expect(decoded).toContain(`<${heading}>`);

@@ -3191,7 +3191,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
     const mapFilename = mapConfig.type === 'pdf' ? mapConfig.fileName : null;
 
     if (mapConfig.type === 'pdf') {
-      const [{ degrees, PDFDocument, PrintScaling, rgb, StandardFonts }, { default: fontkit }] =
+      const [{ degrees, PDFDocument, PDFName, PrintScaling, rgb, StandardFonts }, { default: fontkit }] =
         await Promise.all([import('pdf-lib'), import('@pdf-lib/fontkit')]);
       const mapBytes = await ensurePresetBuffer(runMapKey, { signal: controller.signal });
       if (!mapBytes) {
@@ -3837,9 +3837,8 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
         const printScale = mapConfig.printScale ?? 1;
-        const headerHeight = 20 * MM_TO_PT;
-        const footerHeight = 16 * MM_TO_PT;
-        const m = (10 * MM_TO_PT) / printScale;
+        // Speed and print check fit inside the crop padding; they do not enlarge the sheet.
+        const m = (12 * MM_TO_PT) / printScale;
         const [minX, minY, maxX, maxY] = [bounds.minX - m, bounds.minY - m, bounds.maxX + m, bounds.maxY + m];
         if (maxX > minX + 1 && maxY > minY + 1) {
           const sourceContentWidth = maxX - minX;
@@ -3850,12 +3849,11 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             contentWidth,
             contentHeight,
             [210 * MM_TO_PT, 297 * MM_TO_PT],
-            [297 * MM_TO_PT, 420 * MM_TO_PT],
-            headerHeight + footerHeight
+            [297 * MM_TO_PT, 420 * MM_TO_PT]
           );
           if (!targetPage) {
             const requiredWidthMm = contentWidth / MM_TO_PT;
-            const requiredHeightMm = (contentHeight + headerHeight + footerHeight) / MM_TO_PT;
+            const requiredHeightMm = contentHeight / MM_TO_PT;
             throw new Error(
               `The true-scale route requires ${requiredWidthMm.toFixed(0)} × ${requiredHeightMm.toFixed(0)} mm, which exceeds A3. Shorten or reshape the route; the map will not be shrunk or tiled.`
             );
@@ -3874,48 +3872,45 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             const rotated = targetPage.rotateContent === true;
             const drawnWidth = rotated ? contentHeight : contentWidth;
             const drawnHeight = rotated ? contentWidth : contentHeight;
+            const mapLeft = (targetPage.width - drawnWidth) / 2;
+            const mapBottom = (targetPage.height - drawnHeight) / 2;
+            const mapTop = mapBottom + drawnHeight;
             cropPage.drawPage(embedded, {
-              x: (targetPage.width - drawnWidth) / 2 + (rotated ? drawnWidth : 0),
-              y: footerHeight + (targetPage.height - headerHeight - footerHeight - drawnHeight) / 2,
+              x: mapLeft + (rotated ? drawnWidth : 0),
+              y: mapBottom,
               width: contentWidth,
               height: contentHeight,
               rotate: degrees(rotated ? 90 : 0),
             });
             const verificationFont = await cropDoc.embedFont(StandardFonts.Helvetica);
             const speedFont = await cropDoc.embedFont(StandardFonts.HelveticaBold);
-            cropPage.drawRectangle({
-              x: 0,
-              y: targetPage.height - headerHeight,
-              width: targetPage.width,
-              height: headerHeight,
-              color: rgb(1, 1, 1),
-            });
-            cropPage.drawRectangle({
-              x: 0,
-              y: 0,
-              width: targetPage.width,
-              height: footerHeight,
-              color: rgb(1, 1, 1),
-            });
-            const heading = `GROUNDSPEED: ${speed.label}`;
+            const heading = speed.label.replace(/\s+/g, '');
             const headingSize = Math.min(
-              24,
-              (targetPage.width - 20 * MM_TO_PT) / speedFont.widthOfTextAtSize(heading, 1)
+              16,
+              (drawnWidth - 12 * MM_TO_PT) / speedFont.widthOfTextAtSize(heading, 1)
             );
+            cropPage.drawRectangle({
+              x: mapLeft + 5 * MM_TO_PT,
+              y: mapTop - 12 * MM_TO_PT,
+              width: speedFont.widthOfTextAtSize(heading, headingSize) + 4 * MM_TO_PT,
+              height: 8 * MM_TO_PT,
+              color: rgb(1, 1, 1),
+            });
             cropPage.drawText(heading, {
-              x: 10 * MM_TO_PT,
-              y: targetPage.height - 12 * MM_TO_PT,
+              x: mapLeft + 7 * MM_TO_PT,
+              y: mapTop - 11 * MM_TO_PT,
               size: headingSize,
               font: speedFont,
+              color: rgb(0.82, 0, 0),
             });
             const checkStartX = 10 * MM_TO_PT;
             const checkEndX = checkStartX + 100 * MM_TO_PT;
-            const checkY = 7 * MM_TO_PT;
+            const checkY = 6 * MM_TO_PT;
             cropPage.drawRectangle({
               x: 8 * MM_TO_PT,
-              y: 5 * MM_TO_PT,
+              y: 4 * MM_TO_PT,
               width: 106 * MM_TO_PT,
-              height: 8 * MM_TO_PT,
+              height: 7 * MM_TO_PT,
               color: rgb(1, 1, 1),
               opacity: 0.92,
             });
@@ -3937,7 +3932,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
               `100 mm print check - Actual size / 100% - 1:${mapConfig.scaleDenominator.toLocaleString('en-US')}`,
               {
                 x: checkStartX,
-                y: 10.2 * MM_TO_PT,
+                y: 8.2 * MM_TO_PT,
                 size: 5.5,
                 font: verificationFont,
                 color: rgb(0, 0, 0),
@@ -3946,6 +3941,17 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             const viewerPreferences = cropDoc.catalog.getOrCreateViewerPreferences();
             viewerPreferences.setPrintScaling(PrintScaling.None);
             viewerPreferences.setPickTrayByPDFSize(true);
+            cropDoc.catalog.set(
+              PDFName.of('OpenAction'),
+              cropDoc.context.obj([
+                cropPage.ref,
+                PDFName.of('FitR'),
+                mapLeft,
+                mapBottom,
+                mapLeft + drawnWidth,
+                mapTop,
+              ])
+            );
             return cropDoc.save();
           };
           [judgeCroppedBytes, competitorCroppedBytes, emptyCroppedBytes] = await Promise.all([
@@ -4618,7 +4624,7 @@ async function generateSpeedEditionSet(): Promise<void> {
     )
   );
   try {
-    const { PDFDocument, PrintScaling } = await import('pdf-lib');
+    const { PDFArray, PDFDocument, PDFName, PrintScaling } = await import('pdf-lib');
     const judgePack = await PDFDocument.create();
     const competitorPack = await PDFDocument.create();
     speedSetProgressText.textContent = 'Refreshing speed-independent competition files…';
@@ -4638,7 +4644,15 @@ async function generateSpeedEditionSet(): Promise<void> {
       ] as const) {
         const source = await PDFDocument.load(bytes);
         const pages = await pack.copyPages(source, source.getPageIndices());
+        const firstEdition = pack.getPageCount() === 0;
         for (const page of pages) pack.addPage(page);
+        if (firstEdition) {
+          const destination = source.catalog.lookup(PDFName.of('OpenAction'), PDFArray);
+          pack.catalog.set(
+            PDFName.of('OpenAction'),
+            pack.context.obj([pages[0].ref, ...destination.asArray().slice(1)])
+          );
+        }
       }
       speedSetProgressBar.value = index + 1;
       speedSetProgressCount.textContent = `${index + 1} of ${editions.length}`;
