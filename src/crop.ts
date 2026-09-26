@@ -2,6 +2,7 @@ export interface CropPageChoice {
   width: number;
   height: number;
   format: 'A4 portrait' | 'A4 landscape' | 'A3 portrait' | 'A3 landscape';
+  rotateContent?: boolean;
 }
 
 export function choosePreviewScale(
@@ -28,7 +29,8 @@ export function chooseTrueScaleCropPage(
   contentWidth: number,
   contentHeight: number,
   a4Portrait: readonly [number, number],
-  a3Portrait: readonly [number, number]
+  a3Portrait: readonly [number, number],
+  reservedHeight = 0
 ): CropPageChoice | null {
   if (![contentWidth, contentHeight, ...a4Portrait, ...a3Portrait].every(Number.isFinite)) {
     throw new Error('Crop dimensions must be finite.');
@@ -64,9 +66,21 @@ export function chooseTrueScaleCropPage(
   };
   const orient = (portrait: CropPageChoice, landscape: CropPageChoice) =>
     contentWidth > contentHeight ? [landscape, portrait] : [portrait, landscape];
-  return (
-    [...orient(a4PortraitChoice, a4LandscapeChoice), ...orient(a3PortraitChoice, a3LandscapeChoice)].find(
-      ({ width, height }) => contentWidth <= width && contentHeight <= height
-    ) ?? null
-  );
+  if (!Number.isFinite(reservedHeight) || reservedHeight < 0) {
+    throw new Error('Reserved page height must be finite and non-negative.');
+  }
+  for (const choices of [
+    orient(a4PortraitChoice, a4LandscapeChoice),
+    orient(a3PortraitChoice, a3LandscapeChoice),
+  ]) {
+    const normal = choices.find(
+      ({ width, height }) => contentWidth <= width && contentHeight + reservedHeight <= height
+    );
+    if (normal) return normal;
+    const rotated = choices.find(
+      ({ width, height }) => contentHeight <= width && contentWidth + reservedHeight <= height
+    );
+    if (rotated) return { ...rotated, rotateContent: true };
+  }
+  return null;
 }

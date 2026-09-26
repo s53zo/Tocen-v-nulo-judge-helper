@@ -3745,6 +3745,12 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             ((distanceM * Math.sin(radians)) / (6371008.8 * Math.cos((latitude * Math.PI) / 180))) *
               (180 / Math.PI);
           const endpoint = projectToPdf(headingLat, headingLon);
+          if (photoLayerOptions.includeInCrop) {
+            for (const [x, y] of [cameraExact, endpoint]) {
+              expandBounds(x - photoLineWidth, y - photoLineWidth);
+              expandBounds(x + photoLineWidth, y + photoLineWidth);
+            }
+          }
           solutionTargets.forEach((target) => {
             target.page.drawLine({
               start: { x: cameraExact[0], y: cameraExact[1] },
@@ -3756,7 +3762,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
         }
         if (photoLayerOptions.includeInCrop) {
           const cropPoints = [projectedCamera];
-          if (photoLayerOptions.exactDots) cropPoints.push(cameraExact);
+          if (photoLayerOptions.exactDots || photoLayerOptions.connectors) cropPoints.push(cameraExact);
           cropPoints.filter(Boolean).forEach(([x, y]) => {
             expandBounds(x - photoTickHalf * 2, y - photoTickHalf * 2);
             expandBounds(x + photoTickHalf * 2, y + photoTickHalf * 2);
@@ -3809,12 +3815,19 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       const markedBytes = await pdfDoc.save();
       const competitorDoc = await PDFDocument.load(mapBytes);
       const [competitorPage] = competitorDoc.getPages();
-      const [embeddedRouteOverlay] = await competitorDoc.embedPdf(routeOverlayBytes, [0]);
+      const routeOverlayDoc = await PDFDocument.load(routeOverlayBytes);
+      const overlayBounds = {
+        left: Math.min(0, bounds.minX),
+        bottom: Math.min(0, bounds.minY),
+        right: Math.max(pageWidth, bounds.maxX),
+        top: Math.max(pageHeight, bounds.maxY),
+      };
+      const embeddedRouteOverlay = await competitorDoc.embedPage(routeOverlayDoc.getPage(0), overlayBounds);
       competitorPage.drawPage(embeddedRouteOverlay, {
-        x: 0,
-        y: 0,
-        width: pageWidth,
-        height: pageHeight,
+        x: overlayBounds.left,
+        y: overlayBounds.bottom,
+        width: embeddedRouteOverlay.width,
+        height: embeddedRouteOverlay.height,
       });
       const competitorBytes = await competitorDoc.save();
       controller.signal.throwIfAborted();
@@ -3824,13 +3837,10 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
       let previewOptions = null;
       if (Object.values(bounds).every(Number.isFinite)) {
         const printScale = mapConfig.printScale ?? 1;
+        const headerHeight = 20 * MM_TO_PT;
+        const footerHeight = 16 * MM_TO_PT;
         const m = (10 * MM_TO_PT) / printScale;
-        const [minX, minY, maxX, maxY] = [
-          Math.max(0, bounds.minX - m),
-          Math.max(0, bounds.minY - m),
-          Math.min(pageWidth, bounds.maxX + m),
-          Math.min(pageHeight, bounds.maxY + m),
-        ];
+        const [minX, minY, maxX, maxY] = [bounds.minX - m, bounds.minY - m, bounds.maxX + m, bounds.maxY + m];
         if (maxX > minX + 1 && maxY > minY + 1) {
           const sourceContentWidth = maxX - minX;
           const sourceContentHeight = maxY - minY;
@@ -3840,32 +3850,70 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             contentWidth,
             contentHeight,
             [210 * MM_TO_PT, 297 * MM_TO_PT],
-            [297 * MM_TO_PT, 420 * MM_TO_PT]
+            [297 * MM_TO_PT, 420 * MM_TO_PT],
+            headerHeight + footerHeight
           );
           if (!targetPage) {
             const requiredWidthMm = contentWidth / MM_TO_PT;
-            const requiredHeightMm = contentHeight / MM_TO_PT;
+            const requiredHeightMm = (contentHeight + headerHeight + footerHeight) / MM_TO_PT;
             throw new Error(
               `The true-scale route requires ${requiredWidthMm.toFixed(0)} × ${requiredHeightMm.toFixed(0)} mm, which exceeds A3. Shorten or reshape the route; the map will not be shrunk or tiled.`
             );
           }
           const cropPdf = async (sourceBytes) => {
             const cropDoc = await PDFDocument.create();
-            const [embedded] = await cropDoc.embedPdf(sourceBytes, [0]);
+            const sourceDoc = await PDFDocument.load(sourceBytes);
+            // Preserve annotation commands beyond the chart edge in the white margin.
+            const embedded = await cropDoc.embedPage(sourceDoc.getPage(0), {
+              left: minX,
+              bottom: minY,
+              right: maxX,
+              top: maxY,
+            });
             const cropPage = cropDoc.addPage([targetPage.width, targetPage.height]);
+            const rotated = targetPage.rotateContent === true;
+            const drawnWidth = rotated ? contentHeight : contentWidth;
+            const drawnHeight = rotated ? contentWidth : contentHeight;
             cropPage.drawPage(embedded, {
-              x: -minX * printScale + (targetPage.width - contentWidth) / 2,
-              y: -minY * printScale + (targetPage.height - contentHeight) / 2,
-              width: pageWidth * printScale,
-              height: pageHeight * printScale,
+              x: (targetPage.width - drawnWidth) / 2 + (rotated ? drawnWidth : 0),
+              y: footerHeight + (targetPage.height - headerHeight - footerHeight - drawnHeight) / 2,
+              width: contentWidth,
+              height: contentHeight,
+              rotate: degrees(rotated ? 90 : 0),
             });
             const verificationFont = await cropDoc.embedFont(StandardFonts.Helvetica);
+            const speedFont = await cropDoc.embedFont(StandardFonts.HelveticaBold);
+            cropPage.drawRectangle({
+              x: 0,
+              y: targetPage.height - headerHeight,
+              width: targetPage.width,
+              height: headerHeight,
+              color: rgb(1, 1, 1),
+            });
+            cropPage.drawRectangle({
+              x: 0,
+              y: 0,
+              width: targetPage.width,
+              height: footerHeight,
+              color: rgb(1, 1, 1),
+            });
+            const heading = `GROUNDSPEED: ${speed.label}`;
+            const headingSize = Math.min(
+              24,
+              (targetPage.width - 20 * MM_TO_PT) / speedFont.widthOfTextAtSize(heading, 1)
+            );
+            cropPage.drawText(heading, {
+              x: 10 * MM_TO_PT,
+              y: targetPage.height - 12 * MM_TO_PT,
+              size: headingSize,
+              font: speedFont,
+            });
             const checkStartX = 10 * MM_TO_PT;
             const checkEndX = checkStartX + 100 * MM_TO_PT;
-            const checkY = 4 * MM_TO_PT;
+            const checkY = 7 * MM_TO_PT;
             cropPage.drawRectangle({
               x: 8 * MM_TO_PT,
-              y: 2 * MM_TO_PT,
+              y: 5 * MM_TO_PT,
               width: 106 * MM_TO_PT,
               height: 8 * MM_TO_PT,
               color: rgb(1, 1, 1),
@@ -3889,7 +3937,7 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
               `100 mm print check - Actual size / 100% - 1:${mapConfig.scaleDenominator.toLocaleString('en-US')}`,
               {
                 x: checkStartX,
-                y: 6.2 * MM_TO_PT,
+                y: 10.2 * MM_TO_PT,
                 size: 5.5,
                 font: verificationFont,
                 color: rgb(0, 0, 0),
@@ -3910,7 +3958,12 @@ async function generate(options: GenerateOptions = {}): Promise<GeneratedMapPair
             tileSet: mapConfig.previewTiles,
             pageWidth,
             pageHeight,
-            crop: { minX, minY, maxX, maxY },
+            crop: {
+              minX: Math.max(0, minX),
+              minY: Math.max(0, minY),
+              maxX: Math.min(pageWidth, maxX),
+              maxY: Math.min(pageHeight, maxY),
+            },
             route: projected.map(({ name, pdf: [x, y] }) => ({ x, y, label: name })),
             photos: judgePhotos.flatMap((photo) => {
               if (!photo.analysis) return [];
@@ -4561,10 +4614,13 @@ async function generateSpeedEditionSet(): Promise<void> {
   archive.add(
     'README.txt',
     strToU8(
-      'Speed editions generated by Route Overlay Generator.\nEach speed folder contains a judge solution map and a competitor route map for the stated groundspeed.\nThe archive contains the default 50–100 kt set and configured non-duplicate custom speeds.\nThe shared folder contains all speed-independent competition files and a versioned route project that can recreate the package.\n'
+      'Speed editions generated by Route Overlay Generator.\ncompetitor_route_map_all_speeds.pdf and judge_solution_map_all_speeds.pdf contain one page per speed edition, in order.\nPrint at Actual size / 100%. Each page is A4 or A3; select paper by PDF page size. Verify the 100 mm check line.\nThe shared folder contains all speed-independent competition files and a versioned route project that can recreate the package.\n'
     )
   );
   try {
+    const { PDFDocument, PrintScaling } = await import('pdf-lib');
+    const judgePack = await PDFDocument.create();
+    const competitorPack = await PDFDocument.create();
     speedSetProgressText.textContent = 'Refreshing speed-independent competition files…';
     speedSetProgressCount.textContent = `0 of ${editions.length}`;
     setStatus('Speed editions: preparing shared competition files and route project…');
@@ -4576,13 +4632,28 @@ async function generateSpeedEditionSet(): Promise<void> {
       setStatus(`Speed editions: preparing ${edition.label} (${index + 1} of ${editions.length})…`);
       const maps = await generate({ speedText: edition.speedText, mapsOnly: true });
       if (!maps) throw new Error(`The ${edition.label} edition could not be generated.`);
-      archive.add(`${edition.slug}/judge_solution_map_${edition.slug}.pdf`, maps.judge);
-      archive.add(`${edition.slug}/competitor_route_map_${edition.slug}.pdf`, maps.competitor);
+      for (const [pack, bytes] of [
+        [judgePack, maps.judge],
+        [competitorPack, maps.competitor],
+      ] as const) {
+        const source = await PDFDocument.load(bytes);
+        const pages = await pack.copyPages(source, source.getPageIndices());
+        for (const page of pages) pack.addPage(page);
+      }
       speedSetProgressBar.value = index + 1;
       speedSetProgressCount.textContent = `${index + 1} of ${editions.length}`;
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     speedSetProgressText.textContent = 'Finalizing ZIP archive…';
+    for (const [pack, name] of [
+      [judgePack, 'judge_solution_map_all_speeds.pdf'],
+      [competitorPack, 'competitor_route_map_all_speeds.pdf'],
+    ] as const) {
+      const preferences = pack.catalog.getOrCreateViewerPreferences();
+      preferences.setPrintScaling(PrintScaling.None);
+      preferences.setPickTrayByPDFSize(true);
+      archive.add(name, await pack.save());
+    }
     const blob = await archive.finish();
     speedSetObjectUrl = URL.createObjectURL(blob);
     downloadSpeedSetLink.href = speedSetObjectUrl;

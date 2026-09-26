@@ -5,6 +5,11 @@ const A4 = [595.28, 841.89] as const;
 const A3 = [841.89, 1190.55] as const;
 
 describe('true-scale crop page selection', () => {
+  it('rotates a tall crop to retain A3 scale with header and footer space', () => {
+    const page = chooseTrueScaleCropPage(250, 400, [210, 297], [297, 420], 36);
+    expect(page?.format).toBe('A3 landscape');
+    expect(page?.rotateContent).toBe(true);
+  });
   it('uses an A4 orientation when the content fits', () => {
     expect(chooseTrueScaleCropPage(500, 700, A4, A3)?.format).toBe('A4 portrait');
     expect(chooseTrueScaleCropPage(700, 500, A4, A3)?.format).toBe('A4 landscape');

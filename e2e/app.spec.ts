@@ -1,9 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { strFromU8, unzipSync } from 'fflate';
-import { PDFDocument, PrintScaling } from 'pdf-lib';
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream, PrintScaling } from 'pdf-lib';
 
 async function expectPdfBlob(page, selector: string): Promise<void> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
@@ -22,6 +22,8 @@ async function downloadBytes(page, selector: string): Promise<Buffer> {
 
 async function expectTrueScaleMapPdf(page, selector: string): Promise<void> {
   const bytes = await downloadBytes(page, selector);
+  await test.info().attach(`${selector.slice(1)}.pdf`, { body: bytes, contentType: 'application/pdf' });
+  await writeFile(test.info().outputPath(`${selector.slice(1)}.pdf`), bytes);
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   const document = await PDFDocument.load(bytes);
   const pages = document.getPages();
@@ -361,6 +363,20 @@ test('generating after loading a project exposes every package download', async 
   await expectTrueScaleMapPdf(page, '#downloadPdf');
 });
 
+test('a wider route automatically uses A3 at actual scale', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#waypoints').fill('SP,46.3,14.7\nTP1,46.3,15.8\nFP,46.0,15.8');
+  await goToStage(page, 3);
+  await page.locator('#generate').click();
+  await expect(page.locator('#status')).toHaveAttribute('aria-busy', 'false', { timeout: 60000 });
+  await expect(page.locator('#status')).toContainText('Generated');
+  await expectTrueScaleMapPdf(page, '#downloadPdf');
+  const pdf = await PDFDocument.load(await downloadBytes(page, '#downloadPdf'));
+  const size = pdf.getPage(0).getSize();
+  expect(Math.max(size.width, size.height)).toBeCloseTo((420 * 72) / 25.4, 1);
+  expect(Math.min(size.width, size.height)).toBeCloseTo((297 * 72) / 25.4, 1);
+});
+
 test('speed-edition ZIP contains default, custom, and shared competition files', async ({
   page,
   browserName,
@@ -407,15 +423,43 @@ test('speed-edition ZIP contains default, custom, and shared competition files',
   const speedPdfNames = Object.keys(archive).filter(
     (name) => !name.startsWith('shared/') && name.endsWith('.pdf')
   );
-  expect(speedPdfNames).toHaveLength(24);
-  for (const speed of [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]) {
-    const judge = archive[`${speed}kt/judge_solution_map_${speed}kt.pdf`];
-    const competitor = archive[`${speed}kt/competitor_route_map_${speed}kt.pdf`];
-    expect(Buffer.from(judge.subarray(0, 5)).toString()).toBe('%PDF-');
-    expect(Buffer.from(competitor.subarray(0, 5)).toString()).toBe('%PDF-');
+  expect(speedPdfNames.sort()).toEqual([
+    'competitor_route_map_all_speeds.pdf',
+    'judge_solution_map_all_speeds.pdf',
+  ]);
+  for (const name of speedPdfNames) {
+    await test.info().attach(name, { body: Buffer.from(archive[name]), contentType: 'application/pdf' });
+    await writeFile(test.info().outputPath(name), archive[name]);
+    const pack = await PDFDocument.load(archive[name]);
+    expect(pack.getPageCount()).toBe(12);
+    const expectedSpeeds = [...Array.from({ length: 11 }, (_, index) => `${50 + index * 5} kt`), '140 km/h'];
+    for (const [pageIndex, pdfPage] of pack.getPages().entries()) {
+      const contents = pdfPage.node.Contents();
+      const streams =
+        contents instanceof PDFArray ? contents.asArray().map((ref) => pack.context.lookup(ref)) : [contents];
+      const decoded = streams
+        .filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+        .map((stream) => Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1'))
+        .join('\n');
+      const heading = Buffer.from(`GROUNDSPEED: ${expectedSpeeds[pageIndex]}`, 'latin1')
+        .toString('hex')
+        .toUpperCase();
+      expect(decoded).toContain(`<${heading}>`);
+    }
+    const preferences = pack.catalog.getOrCreateViewerPreferences();
+    expect(preferences.getPrintScaling()).toBe('None');
+    expect(preferences.getPickTrayByPDFSize()).toBe(true);
+    for (const pdfPage of pack.getPages()) {
+      const dimensions = [pdfPage.getWidth(), pdfPage.getHeight()].sort((a, b) => a - b);
+      const a4 =
+        Math.abs(dimensions[0] - (210 * 72) / 25.4) < 0.1 &&
+        Math.abs(dimensions[1] - (297 * 72) / 25.4) < 0.1;
+      const a3 =
+        Math.abs(dimensions[0] - (297 * 72) / 25.4) < 0.1 &&
+        Math.abs(dimensions[1] - (420 * 72) / 25.4) < 0.1;
+      expect(a4 || a3).toBe(true);
+    }
   }
-  expect(archive['custom1_140kmh/judge_solution_map_custom1_140kmh.pdf']).toBeDefined();
-  expect(archive['custom1_140kmh/competitor_route_map_custom1_140kmh.pdf']).toBeDefined();
 
   for (const name of [
     'shared/empty_map.pdf',
